@@ -9,9 +9,8 @@ import TgramOutJson (Outbound)
 import AppTypes (BotToken)
 import qualified Data.ByteString.Lazy as LB
 
---reqSend_ :: BotToken -> T.Text -> Outbound -> IgnoreResponse
--- sends HTTP requests to Telegram service, ignoring the response
 reqSend_ :: MonadIO m => BotToken -> T.Text -> Outbound -> m IgnoreResponse
+-- sends HTTP requests to Telegram service, ignoring the response
 reqSend_ tok postMeth encodedMsg = withReqManager $ runReq defaultHttpConfig . pure request where
     request = 
         let reqUrl = https "api.telegram.org" /: tok /: postMeth
