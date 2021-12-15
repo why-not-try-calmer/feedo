@@ -56,7 +56,7 @@ evalMongoAct creds (GetFeed link) =
     withMongo creds $ findOne (select ["f_link" =: link] "feeds") >>= \case
         Just doc -> pure $ DbFeeds [bsonToFeed doc]
         Nothing -> pure DbNoFeed
-evalMongoAct creds GetAccessedFeeds =
+evalMongoAct creds Get100Feeds =
     withMongo creds $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
         >>= rest >>= \docs ->
             if null docs then pure DbNoFeed

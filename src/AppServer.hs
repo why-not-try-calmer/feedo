@@ -100,7 +100,7 @@ initStart :: AppConfig -> Maybe [T.Text] -> IO ()
 initStart config mb_urls = case mb_urls of
     Nothing -> runApp config startup
     Just urls -> runApp config $ evalFeedsAct (InitF urls) >> startup
-    where startup = loadChats >> runRefresh >> runJobs
+    where startup = evalFeedsAct LoadF >> loadChats >> runRefresh >> runJobs
 
 startApp :: IO ()
 startApp = do

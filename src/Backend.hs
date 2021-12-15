@@ -156,10 +156,13 @@ evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ do
             evalMongoAct config (UpsertFeeds refreshed_feeds) >>= \case
                 DbErr err -> print $ renderDbError err
                 _ -> pure ()
-            evalMongoAct config GetAccessedFeeds >>= \case
-                DbFeeds feeds -> modifyMVar_ (feeds_state env) $ \_ -> pure . HMS.fromList $ map (\f -> (f_link f, f)) feeds
-                _ -> putStrLn "evalFeedsAct.InitF.Right: No accessed feed found."
             pure FeedsOk
+evalFeedsAct LoadF = ask >>= \env -> liftIO $
+    evalMongoAct (mongo_config env) Get100Feeds >>= \case
+        DbFeeds feeds -> do
+            modifyMVar_ (feeds_state env) $ \_ -> pure . HMS.fromList $ map (\f -> (f_link f, f)) feeds
+            pure FeedsOk
+        _ -> pure $ FeedsError FailedToLoadFeeds
 evalFeedsAct (AddF feeds) = ask >>= \env -> do
     res <- liftIO . modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds

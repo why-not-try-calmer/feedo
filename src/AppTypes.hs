@@ -165,7 +165,7 @@ renderUserError NoSettings = "No settings found for the supscription to this fee
 
 data DbAction
   = UpsertFeeds [Feed]
-  | GetAccessedFeeds
+  | Get100Feeds
   | GetFeed FeedLink
   | RemoveFeeds [FeedLink]
   | GetAllChats
@@ -192,6 +192,7 @@ data DbError
   | FailedToDeleteAll
   | FailedToStoreAll
   | FailedToLog
+  | FailedToLoadFeeds
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
@@ -203,6 +204,8 @@ renderDbError (FailedToUpdateFeeds txt) = "Unable to update these items for this
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToStoreAll = "Unable to store all these items."
 renderDbError FailedToLog = "Failed to log"
+renderDbError FailedToLoadFeeds = "Failed to load feeds!"
+
 
 {- Feeds -}
 
@@ -213,6 +216,7 @@ data FeedsAction
   | GetAllXDays [FeedLink] Int
   | RefreshNotifyF
   | IncReadsF [FeedLink]
+  | LoadF
   deriving (Eq, Show)
 
 type FeedItems = [(Feed, [Item])]
