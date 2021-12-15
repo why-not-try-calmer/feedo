@@ -8,7 +8,7 @@ import Control.Concurrent
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.List (intersect, sort, sortBy)
+import Data.List (intersect, sortBy)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
@@ -20,7 +20,7 @@ import Database (evalMongoAct)
 import Parser (getFeedFromHref, rebuildFeed)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import Utils (maybeUserIdx, partitionEither)
+import Utils (partitionEither)
 
 {- Subscriptions -}
 
@@ -140,11 +140,6 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $ \chats_hmap 
     evalMongoAct (mongo_config env) GetAllChats >>= \case
         DbChats chats -> pure . HMS.fromList . map (\c -> (sub_chatid c, c)) $ chats
         _ -> pure chats_hmap
-
-lookUpRefChat :: SubChat -> FeedRef -> Maybe FeedLink
-lookUpRefChat c feedref = case feedref of
-    ById i -> maybeUserIdx (sort . S.toList . sub_feeds_links $ c) i
-    ByUrl url -> Just url
 
 evalFeedsAct :: MonadIO m => FeedsAction -> App m (FeedsRes a)
 evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ do
