@@ -127,11 +127,11 @@ withChat action cid = ask >>= \env -> liftIO $ modifyMVar (subs_state env) (`aft
                 in  evalMongoAct (mongo_config env) (UpsertChat updated_c) >>= \case
                     DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
                     _ -> pure (updated_cs, Right ())
-            Pause wants_pause ->
-                let updated_c = c { sub_is_paused = wants_pause }
+            Pause pause_or_resume ->
+                let updated_c = c { sub_is_paused = pause_or_resume }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                 in  evalMongoAct (mongo_config env) (UpsertChat updated_c) >>= \case
-                    DbErr _ -> pure (hmap, Left . UpdateError $ "Db could not pause/resume this chat")
+                    DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
                     _ -> pure (updated_cs, Right ())
             _ -> pure (hmap, Right ())
 

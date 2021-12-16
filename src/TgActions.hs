@@ -220,12 +220,11 @@ evalTgAct _ (SetSubFeedSettings settings) cid =
     withChat (SetSubFeedSettings settings) cid >>= \case
         Left _ -> pure . Right . PlainReply $ "Unable to udpate this chat settings"
         Right _ -> pure . Right . PlainReply $ "Settings applied successfully."
-evalTgAct _ (Pause wants_pause) cid =
-    withChat (Pause wants_pause) cid >>= \case
-        Left _ -> pure . Right . PlainReply $ failed
+evalTgAct _ (Pause pause_or_resume) cid =
+    withChat (Pause pause_or_resume) cid >>= \case
+        Left err -> pure . Right . PlainReply . renderUserError $ err
         Right _ -> pure . Right . PlainReply $ succeeded
     where
-        failed = if wants_pause then "Sorry, unable to pause" else "Sorry, unable to resume."
         succeeded = 
-            if wants_pause then "All notifications to this chat are now suspended. Use /resume to resume."
+            if pause_or_resume then "All notifications to this chat are now suspended. Use /resume to resume."
             else "Resuming notifications. This chat is receiving messages again."
