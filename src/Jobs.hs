@@ -1,18 +1,17 @@
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, mongo_config, server_config, subs_state, tasks_queue, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob), LogItem (LogItem), ServerConfig (bot_token), SubChat (sub_chatid, sub_last_notification), runApp)
+import AppTypes (App, AppConfig (last_worker_run, server_config, subs_state, tasks_queue, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert), ServerConfig (bot_token, alert_chat), SubChat (sub_chatid, sub_last_notification), runApp)
 import Backend (evalFeedsAct)
 import Control.Concurrent
 import Control.Concurrent.Async (async, mapConcurrently)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Reader (MonadReader (ask))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
-import Database (saveToLog)
 import Replies
+import Control.Monad.Reader (ask)
 
 {- Background tasks -}
 
@@ -25,9 +24,9 @@ runRefresh = do
     env <- ask
     let tok = bot_token . server_config $ env
         interval = worker_interval env
-        handler (SomeException e) = getCurrentTime >>= \now -> do
-            let report = LogItem now "runRefresh" ("Exception met : " `T.append` (T.pack . show $ e)) "error"
-            runApp env $ saveToLog (mongo_config  env) report
+        handler (SomeException e) = do
+            let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ e)
+            writeChan (tasks_queue env) . TgAlert $ report
             print $ "runRefresh bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling runRefresh now."
         action = do
             threadDelay interval
@@ -35,18 +34,15 @@ runRefresh = do
             -- rebuilding feeds and dispatching notifications
             runApp (env {last_worker_run = Just now}) $ do
                 evalFeedsAct RefreshNotifyF >>= \case
-                    FeedBatches p -> 
-                        liftIO ( do
-                            let listed = HMS.toList p
-                            notified_chats <- mapConcurrently (\(cid, feed_items) ->
-                                reply tok cid (toReply . FromFeedsItems $ feed_items) >> pure cid) listed
-                            modifyMVar_ (subs_state env) $
-                                pure . HMS.map (\c ->
-                                    if sub_chatid c `elem` notified_chats
-                                    then c { sub_last_notification = Just now }
-                                    else c)    
-                        ) >> saveToLog (mongo_config env) (LogItem now "runRefresh" (T.append "Refresh worker tried to send notification packages: " (T.pack . show $ p)) "worker_error")
-                    _ -> saveToLog (mongo_config env) $ LogItem now "runRefresh" "Worked failed to acquire notification package." "worker_error"
+                    FeedBatches p -> liftIO $ do
+                        let listed = HMS.toList p
+                        notified_chats <- mapConcurrently (\(cid, feed_items) ->
+                            reply tok cid (toReply . FromFeedsItems $ feed_items) >> pure cid) listed
+                        modifyMVar_ (subs_state env) $
+                            pure . HMS.map (\c ->
+                                if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
+                                else c)
+                    _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
     liftIO $ runForever_ action handler
 
 runJobs :: MonadIO m => App m ()
@@ -54,9 +50,11 @@ runJobs = ask >>= \env ->
     let q = tasks_queue env
         action = readChan q >>= \case
             IncReadsJob links -> void . runApp env $ evalFeedsAct (IncReadsF links)
-        handler (SomeException e) = getCurrentTime >>= \now ->
-            let report = LogItem now "runDbTasks" ("Exception met : " `T.append` (T.pack . show $ e)) "error"
-            in  do
-                runApp env $ saveToLog (mongo_config  env) report
-                print $ "runDbTasks bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling run_worker now."
+            TgAlert contents ->
+                let msg = PlainReply $ "feedfarer2 is sending an alert: " `T.append` contents
+                in  reply (bot_token . server_config $ env) (alert_chat . server_config $ env) msg
+        handler (SomeException e) = do
+            let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
+            writeChan (tasks_queue env) . TgAlert $ report
+            print $ "runDbTasks bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling run_worker now."
     in  liftIO $ runForever_ action handler

@@ -192,6 +192,7 @@ chatToBson SubChat{..} =
 toBsonBatch :: UTCTime -> (ChatId, FeedLink, [Item]) -> Document
 toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: map itemToBson i, "chat_id" =: cid]
 
+{-
 {- Logs -}
 
 saveToLog :: MonadIO m => MongoCreds -> LogItem -> App m ()
@@ -199,6 +200,7 @@ saveToLog creds item = liftIO (try . withMongo creds $ insert "logs" doc :: IO (
     Left _ -> liftIO $ print . renderDbError $ FailedToLog
     Right _ -> pure ()
     where   doc = ["log_type" =: log_type item, "log_when" =: log_when item, "log_who" =: log_who item, "log_what" =: log_what item]
+-}
 
 {- Cleanup -}
 

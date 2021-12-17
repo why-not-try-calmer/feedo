@@ -243,7 +243,8 @@ type BotToken = T.Text
 
 data ServerConfig = ServerConfig
   { bot_token :: BotToken,
-    webhook_url :: T.Text
+    webhook_url :: T.Text,
+    alert_chat :: ChatId
   }
   deriving (Show, Eq)
 
@@ -256,7 +257,9 @@ data MongoCreds = MongoCreds
 
 type KnownFeeds = HMS.HashMap T.Text Feed
 
-newtype Job = IncReadsJob [FeedLink] deriving (Eq, Show)
+data Job = 
+    IncReadsJob [FeedLink] |
+    TgAlert T.Text deriving (Eq, Show)
 
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,

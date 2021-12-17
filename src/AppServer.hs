@@ -66,6 +66,7 @@ withServer = serve botApi . initServer
 makeConfig :: [(String, String)] -> IO (Int, AppConfig, Maybe [T.Text])
 makeConfig env = do
     let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
+        alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
         webhook = 
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
             in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
@@ -80,7 +81,7 @@ makeConfig env = do
     chan <- newChan
     valid_creds <- getValidCreds creds 
     pure (port, AppConfig {
-        server_config = ServerConfig {bot_token = token, webhook_url = webhook},
+        server_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
