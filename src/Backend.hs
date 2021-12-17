@@ -53,14 +53,15 @@ notificationBatches feeds_hmap subs current_time =
         filterItemsWith _ _ Nothing items = items
         filterItemsWith FeedSettings{..} now (Just last_time) items =
             if      not settings_batch
-            then    filter (with_filters [blacklist, time_window]) items
+            then    filter (with_filters [blacklist, fresh]) items
             else    take size .
                     filter (with_filters [blacklist, time_window]) $ items
             where
                 with_filters fs i = all ($ i) fs
                 blacklist i = not . any (`T.isInfixOf` i_desc i) $ filters_blacklist settings_filters
+                fresh i = last_time < i_pubdate i
                 time_window i = case settings_batch_interval of
-                    Nothing -> last_time < i_pubdate i
+                    Nothing -> fresh i
                     Just d -> now < addUTCTime d (i_pubdate i)
                 size = if settings_batch_size == 0 then length items else settings_batch_size
 
