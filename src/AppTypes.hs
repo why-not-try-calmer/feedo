@@ -7,14 +7,14 @@ import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import qualified Data.HashMap.Strict as HMS
+import Data.IORef (IORef)
+import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import qualified Data.Map.Strict as Map
-import Data.IORef (IORef)
 
 -- -- Data -- --
 

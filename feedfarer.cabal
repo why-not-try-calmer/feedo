@@ -54,7 +54,6 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
-    , full-text-search
     , mongoDB
     , mtl
     , req
@@ -86,7 +85,6 @@ executable feedfarer-exe
     , bytestring
     , containers
     , feedfarer
-    , full-text-search
     , mongoDB
     , mtl
     , req
@@ -119,7 +117,6 @@ test-suite feedfarer-test
     , bytestring
     , containers
     , feedfarer
-    , full-text-search
     , mongoDB
     , mtl
     , req

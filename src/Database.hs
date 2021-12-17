@@ -84,19 +84,6 @@ evalMongoAct creds (IncReads links) =
 
 -- evalMongoAct creds _ = pure DbOk
 
-checkDbHealth :: MonadIO m => Pipe -> m (Either DbError ())
-checkDbHealth pipe =
-    let ref = "123" :: T.Text
-        sample = ["ref" =: ref]
-        go = runMongo pipe $ do
-            insert_ "test" sample
-            findOne (select sample "test") >>= \case
-                Nothing -> pure . Left $ DbChangedMaster
-                Just _ -> do
-                    _ <- deleteAll "test" [(sample, [])]
-                    pure . Right $ ()
-    in liftIO $ go `catch` \(SomeException _) -> pure . Left $ DbChangedMaster
-
 getValidCreds :: MongoCreds -> IO MongoCreds
 getValidCreds creds = folded >>= \(Just new_creds) -> pure new_creds
     where
@@ -111,6 +98,18 @@ getValidCreds creds = folded >>= \(Just new_creds) -> pure new_creds
                     close pipe
                     print $ "This one worked: " `T.append` v
                     pure $ Just new_creds
+        checkDbHealth :: MonadIO m => Pipe -> m (Either DbError ())
+        checkDbHealth pipe =
+            let ref = "123" :: T.Text
+                sample = ["ref" =: ref]
+                go = runMongo pipe $ do
+                    insert_ "test" sample
+                    findOne (select sample "test") >>= \case
+                        Nothing -> pure . Left $ DbChangedMaster
+                        Just _ -> do
+                            _ <- deleteAll "test" [(sample, [])]
+                            pure . Right $ ()
+            in liftIO $ go `catch` \(SomeException _) -> pure . Left $ DbChangedMaster
 
 {- Feeds -}
 

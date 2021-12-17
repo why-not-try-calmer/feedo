@@ -34,7 +34,6 @@ dependencies:
 - wai
 - warp
 - mongoDB
-- full-text-search
 
 library:
   source-dirs: src
