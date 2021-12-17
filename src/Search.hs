@@ -10,7 +10,9 @@ data MockDoc = MockDoc {
     contents :: T.Text
 }
 
-data Field = AsTitle | AsContents deriving (Eq, Ord, Enum, Bounded, Ix, Show)
+type Ref = Int
+
+data Field = Title | AsContents deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 someDocs :: [MockDoc]
 someDocs =
@@ -32,17 +34,25 @@ defaultSearchRankParameters =
     }
 
 defaultSearchConfig :: SearchConfig MockDoc Int Field NoFeatures
-defaultSearchConfig = 
+defaultSearchConfig =
     SearchConfig    {
         documentKey = ref,
         extractDocumentTerms = xtract,
         transformQueryTerm = xform,
         documentFeatureValue = const noFeatures
     }
-    where 
+    where
         xtract doc _ = T.words $ title doc `T.append` contents doc
         xform t _ = T.toCaseFold t
 
-loadSearchEngine :: SearchEngine MockDoc Int Field NoFeatures
-loadSearchEngine = insertDocs someDocs $ 
+toSearchEngine :: [MockDoc] -> SearchEngine MockDoc Int Field NoFeatures
+toSearchEngine docs = insertDocs docs $
     initSearchEngine defaultSearchConfig defaultSearchRankParameters
+
+queryEngine :: T.Text -> [Ref]
+queryEngine keystr = 
+    let query_string = T.words keystr
+    in  query (toSearchEngine someDocs) query_string
+
+test_search_engine :: IO ()
+test_search_engine = print $ queryEngine "2"
