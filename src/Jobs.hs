@@ -27,10 +27,12 @@ runRefresh = do
     env <- ask
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
+        -- regenerating connection handler upon failed connection
         handler (ConnectionFailure _) = do
-            creds <- readIORef $ db_config env
+            let conn = db_config env
+            creds <- readIORef conn
             refreshed <- getValidCreds creds
-            atomicModifyIORef' (db_config env) $ const (refreshed, ())
+            atomicModifyIORef' conn $ const (refreshed, ())
         handler err = do
             let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ err)
             writeChan (tasks_queue env) . TgAlert $ report
