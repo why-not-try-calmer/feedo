@@ -6,15 +6,16 @@ import Data.Ix (Ix)
 
 data MockDoc = MockDoc {
     ref :: Int,
+    title :: T.Text,
     contents :: T.Text
 }
 
-data Field = Ref deriving (Eq, Ord, Enum, Bounded, Ix, Show)
+data Field = AsTitle | AsContents deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 someDocs :: [MockDoc]
 someDocs =
     let toTxt n = T.pack . show $ n
-    in  map (\n -> MockDoc n ("val " `T.append` toTxt (n+1))) ([0..5] :: [Int])
+    in  map (\n -> MockDoc n ("title for " `T.append` toTxt (n+1)) ("val for " `T.append` toTxt (n+1))) ([0..5] :: [Int])
 
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
 defaultSearchRankParameters =
@@ -34,12 +35,13 @@ defaultSearchConfig :: SearchConfig MockDoc Int Field NoFeatures
 defaultSearchConfig = 
     SearchConfig    {
         documentKey = ref,
-        extractDocumentTerms = extractField,
-        transformQueryTerm = const,
+        extractDocumentTerms = xtract,
+        transformQueryTerm = xform,
         documentFeatureValue = const noFeatures
     }
     where 
-        extractField doc field = {-case field of Ref ->-} T.words . contents $ doc
+        xtract doc _ = T.words $ title doc `T.append` contents doc
+        xform t _ = T.toCaseFold t
 
 loadSearchEngine :: SearchEngine MockDoc Int Field NoFeatures
 loadSearchEngine = insertDocs someDocs $ 
