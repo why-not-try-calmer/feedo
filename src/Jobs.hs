@@ -1,20 +1,20 @@
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, tg_config, subs_state, tasks_queue, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert), ServerConfig (bot_token, alert_chat), SubChat (sub_chatid, sub_last_notification), runApp, db_config)
+import AppTypes (App, AppConfig (last_worker_run, subs_state, tasks_queue, tg_config, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert), ServerConfig (alert_chat, bot_token), SubChat (sub_chatid, sub_last_notification), db_config, runApp)
 import Backend (evalFeedsAct)
 import Control.Concurrent
 import Control.Concurrent.Async (async, mapConcurrently)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
+import Data.IORef (atomicModifyIORef', readIORef)
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
-import Replies
-import Control.Monad.Reader (ask)
-import Data.IORef (atomicModifyIORef', readIORef)
-import Database.MongoDB.Query (Failure(ConnectionFailure))
 import Database (getValidCreds)
+import Database.MongoDB.Query (Failure (ConnectionFailure))
+import Replies
 
 {- Background tasks -}
 

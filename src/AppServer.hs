@@ -2,15 +2,18 @@
 {-# LANGUAGE TypeOperators #-}
 
 module AppServer (startApp, registerWebhook, makeConfig) where
+
 import AppTypes
 import Backend
 import Control.Concurrent (newChan, newMVar)
 import Control.Concurrent.Async (concurrently_)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
+import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Database (getValidCreds, initMongoCredsFrom)
+import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Replies (reply)
@@ -21,9 +24,6 @@ import System.Environment
 import TgActions
 import TgramInJson (Message (chat, from, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
-import Jobs
-import Data.IORef (newIORef)
-
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] ()
