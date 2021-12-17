@@ -64,7 +64,7 @@ buildFeed ty url = do
                     Rss ->
                         let desc = T.concat $ child root >>= child >>= element "description" >>= child >>= content
                             title = T.concat $ child root >>= child >>= element "title" >>= child >>= content
-                            link = T.concat $ child root >>= child >>= element "link" >>= child >>= content
+                            -- link = T.concat $ child root >>= child >>= element "link" >>= child >>= content
                             get_item_data el =
                                 Item
                                 (T.concat $ child el >>= element "title" >>= child >>= content)
@@ -78,18 +78,20 @@ buildFeed ty url = do
                                     f_type = Rss,
                                     f_desc = desc,
                                     f_title = title,
-                                    f_link = ensureValidFeedLink link,
+                                    f_link = renderUrl url,
                                     f_items = items,
                                     f_avgInterval = interval,
                                     f_created = now,
                                     f_lastRefresh = Just now,
                                     f_reads = 0
                                 }
-                        in  faultyOrValid url res
+                        in  do
+                            liftIO $ print . renderUrl $ url
+                            faultyOrValid url res
                     Atom ->
                         let desc = T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
                             title = T.concat $ child root >>= laxElement "title" >>= child >>= content
-                            link = T.concat . attribute "href" . head $ child root >>= laxElement "link"
+                            -- link = T.concat . attribute "href" . head $ child root >>= laxElement "link"
                             get_item_data el =
                                 Item
                                 (T.concat $ child el >>= laxElement "title" >>= child >>= content)
@@ -103,7 +105,7 @@ buildFeed ty url = do
                                     f_type = Atom,
                                     f_desc = desc,
                                     f_title = title,
-                                    f_link = ensureValidFeedLink link,
+                                    f_link = renderUrl url,
                                     f_items = items,
                                     f_avgInterval = interval,
                                     f_created = now,
@@ -112,13 +114,6 @@ buildFeed ty url = do
                                 }
                         in  faultyOrValid url res
     where
-        ensureValidFeedLink lk
-            | T.null lk = lk
-            | end3 == "rss" = lk
-            | otherwise = if end == "/" then lk `T.append` "rss" else lk `T.append` "/rss"
-            where
-                end3 = T.takeEnd 3 lk
-                end = T.singleton . T.last $ lk
         faultyOrValid u res =
             if faultyFeed res
             then pure . Left . ParseError $ T.pack . show . renderUrl $ u

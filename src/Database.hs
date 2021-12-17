@@ -4,7 +4,7 @@
 
 module Database where
 
-import AppTypes (App, DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), LogItem (..), MongoCreds (..), SubChat (..), renderDbError, Filters (Filters, filters_blacklist), FeedLink)
+import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist), FeedLink)
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
