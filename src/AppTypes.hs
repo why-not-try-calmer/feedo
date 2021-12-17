@@ -14,6 +14,7 @@ import Data.Time (NominalDiffTime, UTCTime)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import qualified Data.Map.Strict as Map
+import Data.IORef (IORef)
 
 -- -- Data -- --
 
@@ -263,8 +264,8 @@ data Job =
 
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,
-    mongo_config :: MongoCreds,
-    server_config :: ServerConfig,
+    db_config :: IORef MongoCreds,
+    tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
     tasks_queue :: Chan Job,

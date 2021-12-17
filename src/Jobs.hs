@@ -1,6 +1,6 @@
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, server_config, subs_state, tasks_queue, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert), ServerConfig (bot_token, alert_chat), SubChat (sub_chatid, sub_last_notification), runApp)
+import AppTypes (App, AppConfig (last_worker_run, tg_config, subs_state, tasks_queue, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert), ServerConfig (bot_token, alert_chat), SubChat (sub_chatid, sub_last_notification), runApp, db_config)
 import Backend (evalFeedsAct)
 import Control.Concurrent
 import Control.Concurrent.Async (async, mapConcurrently)
@@ -12,6 +12,9 @@ import qualified Data.Text as T
 import Data.Time (getCurrentTime)
 import Replies
 import Control.Monad.Reader (ask)
+import Data.IORef (atomicModifyIORef', readIORef)
+import Database.MongoDB.Query (Failure(ConnectionFailure))
+import Database (getValidCreds)
 
 {- Background tasks -}
 
@@ -22,10 +25,14 @@ runForever_ action handler = void . async . forever $ go
 runRefresh :: MonadIO m => App m ()
 runRefresh = do
     env <- ask
-    let tok = bot_token . server_config $ env
+    let tok = bot_token . tg_config $ env
         interval = worker_interval env
-        handler (SomeException e) = do
-            let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ e)
+        handler (ConnectionFailure _) = do
+            creds <- readIORef $ db_config env
+            refreshed <- getValidCreds creds
+            atomicModifyIORef' (db_config env) $ const (refreshed, ())
+        handler err = do
+            let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ err)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runRefresh bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling runRefresh now."
         action = do
@@ -52,7 +59,7 @@ runJobs = ask >>= \env ->
             IncReadsJob links -> void . runApp env $ evalFeedsAct (IncReadsF links)
             TgAlert contents ->
                 let msg = PlainReply $ "feedfarer2 is sending an alert: " `T.append` contents
-                in  reply (bot_token . server_config $ env) (alert_chat . server_config $ env) msg
+                in  reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg
         handler (SomeException e) = do
             let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (tasks_queue env) . TgAlert $ report

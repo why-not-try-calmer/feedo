@@ -96,7 +96,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
     -- fails if 50 feeds subscribed to already
     if tooManySubs 50 chats cid
     then exitTooMany
-    else checkIfAdmin (bot_token . server_config $ env) uid cid >>= \verdict ->
+    else checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \verdict ->
         -- fails if caller not admin and chat is group chat
         if not verdict
         then exitNotAuth
@@ -132,7 +132,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
         exitNotAuth = pure . Left . NotAdmin . T.pack . show $ uid
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
-    checkIfAdmin (bot_token . server_config $ env) uid cid >>= \is_admin ->
+    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \is_admin ->
         if not is_admin then exitNotAuth
         else withChat (UnSub feeds) cid >>= \case
         Left err -> pure . Left $ err

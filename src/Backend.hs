@@ -21,6 +21,7 @@ import Parser (getFeedFromHref, rebuildFeed)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Utils (partitionEither)
+import Data.IORef (readIORef)
 
 {- Subscriptions -}
 
@@ -59,8 +60,8 @@ notificationBatches feeds_hmap subs current_time =
                 with_filters fs i = all ($ i) fs
                 blacklist i = not . any (`T.isInfixOf` i_desc i) $ filters_blacklist settings_filters
                 time_window i = case settings_batch_interval of
-                    Nothing -> last_time < i_pubdate i 
-                    Just d -> now < addUTCTime d (i_pubdate i) 
+                    Nothing -> last_time < i_pubdate i
+                    Just d -> now < addUTCTime d (i_pubdate i)
                 size = if settings_batch_size == 0 then length items else settings_batch_size
 
 defaultFeedSettings :: FeedSettings
@@ -94,13 +95,13 @@ mergeFeedSettings keyvals orig =
         }
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
-withChat action cid = ask >>= \env -> liftIO $ modifyMVar (subs_state env) (`afterDb` env) where
-    afterDb hmap env = case HMS.lookup cid hmap of
+withChat action cid = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> modifyMVar (subs_state env) (`afterDb` config) where
+    afterDb hmap config = case HMS.lookup cid hmap of
         Nothing -> case action of
             Sub links ->
                 let created_c = SubChat cid [] Nothing (S.fromList links) defaultFeedSettings False
                     inserted_m = HMS.insert cid created_c hmap
-                in  evalMongoAct (mongo_config env) (UpsertChat created_c) >>= \case
+                in  evalMongoAct config (UpsertChat created_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (inserted_m, Right ())
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
@@ -108,42 +109,41 @@ withChat action cid = ask >>= \env -> liftIO $ modifyMVar (subs_state env) (`aft
             Sub links ->
                 let updated_c = c { sub_feeds_links = S.fromList $ links ++ (S.toList . sub_feeds_links $ c)}
                     updated_m = HMS.insert cid updated_c hmap
-                in  evalMongoAct (mongo_config env) (UpsertChat updated_c) >>= \case
+                in  evalMongoAct config (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (updated_m, Right ())
             UnSub links ->
                 let updated_c = c { sub_feeds_links = S.filter (`notElem` unFeedRefs links) $ sub_feeds_links c }
                     updated_m = HMS.insert cid updated_c hmap
-                in  evalMongoAct (mongo_config env) (UpsertChat updated_c) >>= \case
+                in  evalMongoAct config (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (updated_m, Right ())
-            Purge -> evalMongoAct (mongo_config env) (DeleteChat cid) >>= \case
+            Purge -> evalMongoAct config (DeleteChat cid) >>= \case
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetSubFeedSettings unparsed ->
                 let updated_settings = mergeFeedSettings unparsed $ sub_settings c
                     updated_c = c { sub_settings = updated_settings }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                in  evalMongoAct (mongo_config env) (UpsertChat updated_c) >>= \case
+                in  evalMongoAct config (UpsertChat updated_c) >>= \case
                     DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
                     _ -> pure (updated_cs, Right ())
             Pause pause_or_resume ->
                 let updated_c = c { sub_is_paused = pause_or_resume }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                in  evalMongoAct (mongo_config env) (UpsertChat updated_c) >>= \case
+                in  evalMongoAct config (UpsertChat updated_c) >>= \case
                     DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
                     _ -> pure (updated_cs, Right ())
             _ -> pure (hmap, Right ())
 
 loadChats :: MonadIO m => App m ()
-loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $ \chats_hmap ->
-    evalMongoAct (mongo_config env) GetAllChats >>= \case
+loadChats = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> modifyMVar_ (subs_state env) $ \chats_hmap ->
+    evalMongoAct config GetAllChats >>= \case
         DbChats chats -> pure . HMS.fromList . map (\c -> (sub_chatid c, c)) $ chats
         _ -> pure chats_hmap
 
 evalFeedsAct :: MonadIO m => FeedsAction -> App m (FeedsRes a)
-evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ do
-    let config = mongo_config env
+evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> do
     res <- mapConcurrently getFeedFromHref start_urls
     case sequence res of
         Left err -> print err >> pure FeedsOk
@@ -152,16 +152,16 @@ evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ do
                 DbErr err -> print $ renderDbError err
                 _ -> pure ()
             pure FeedsOk
-evalFeedsAct LoadF = ask >>= \env -> liftIO $
-    evalMongoAct (mongo_config env) Get100Feeds >>= \case
+evalFeedsAct LoadF = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config ->
+    evalMongoAct config Get100Feeds >>= \case
         DbFeeds feeds -> do
             modifyMVar_ (feeds_state env) $ \_ -> pure . HMS.fromList $ map (\f -> (f_link f, f)) feeds
             pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
-evalFeedsAct (AddF feeds) = ask >>= \env -> do
+evalFeedsAct (AddF feeds) = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> do
     res <- liftIO . modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
-        in  evalMongoAct (mongo_config env) (UpsertFeeds feeds) >>= \case
+        in  evalMongoAct config (UpsertFeeds feeds) >>= \case
                 DbOk -> pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
@@ -173,7 +173,7 @@ evalFeedsAct (RemoveF links) = ask >>= \env -> do
         in  pure deleted
     pure FeedsOk
 evalFeedsAct RefreshNotifyF = ask >>= \env -> do
-    chats <- liftIO $ readMVar (subs_state env)
+    (chats, config) <- (,) <$> liftIO (readMVar $ subs_state env) <*> liftIO (readIORef $ db_config env)
     res <- liftIO . modifyMVar (feeds_state env) $
     -- update chats MVar just in case we were able to produce an interesting result
         \feeds_hmap -> do
@@ -185,7 +185,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
                 subbed_to = HMS.keys feeds_to_subs
             -- rebuilding all feeds with any subscribers
             eitherUpdated <- mapConcurrently rebuildFeed subbed_to
-            now <- getCurrentTime 
+            now <- getCurrentTime
             let (failed, succeeded) = partitionEither eitherUpdated
                 updated_subscribed_to_feeds = HMS.fromList $
                     map (\f -> (f_link f, f)) succeeded
@@ -200,7 +200,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
                     (\f -> f_link f `elem` (subbed_to `intersect` is_within_top100_reads))
                     feeds_hmap
             unless (null failed) (print $ "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
-            evalMongoAct (mongo_config env) (UpsertFeeds succeeded) >>= \case
+            evalMongoAct config (UpsertFeeds succeeded) >>= \case
                 DbErr _ -> pure (feeds_hmap, Nothing)
                 _ -> pure (to_keep_in_memory, Just (notif, subbed_to))
     case res of
@@ -228,9 +228,9 @@ evalFeedsAct (GetAllXDays links days) = do
         collect now f acc =
             let fresh = freshLastXDays days now $ f_items f
             in  if null fresh then acc else (f_link f, fresh):acc
-evalFeedsAct (IncReadsF links) = ask >>= \env -> do
+evalFeedsAct (IncReadsF links) = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> do
     liftIO $ modifyMVar_ (feeds_state env) $ \hmap ->
-        evalMongoAct (mongo_config env) (IncReads links) >>= \case
+        evalMongoAct config (IncReads links) >>= \case
             DbOk -> pure $ HMS.map (\f -> f { f_reads = 1 + f_reads f }) hmap
             _ -> pure hmap
     pure FeedsOk

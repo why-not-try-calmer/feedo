@@ -22,6 +22,7 @@ import TgActions
 import TgramInJson (Message (chat, from, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
 import Jobs
+import Data.IORef (newIORef)
 
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
@@ -35,7 +36,7 @@ server = root :<|> handleWebhook    where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
-        let tok = bot_token . server_config $ env
+        let tok = bot_token . tg_config $ env
         in  if EQ == compare secret tok
             then handle update tok
             else liftIO $ putStrLn "Secrets do not match."
@@ -80,20 +81,21 @@ makeConfig env = do
     mvar2 <- newMVar HMS.empty
     chan <- newChan
     valid_creds <- getValidCreds creds 
+    creds_ref <- newIORef valid_creds
     pure (port, AppConfig {
-        server_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
+        tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
         tasks_queue = chan,
         worker_interval = interval,
-        mongo_config = valid_creds
+        db_config = creds_ref
         }, starting_feeds)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
-    let tok = bot_token . server_config $ config
-        webhook = webhook_url . server_config $ config
+    let tok = bot_token . tg_config $ config
+        webhook = webhook_url . tg_config $ config
     in  putStrLn "Trying to set webhook" >> setWebhook tok webhook >>
             print ("Webhook successfully set at " `T.append` webhook)
 
