@@ -18,9 +18,9 @@ import Replies
 
 {- Background tasks -}
 
-runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
-runForever_ action handler = void . async . forever $ go
-    where   go = action `catch` handler
+runForever_ :: Exception e => (IO (), IO ()) -> (e -> IO ()) -> IO ()
+runForever_ (action, retry) handler = void . async . forever $ go
+    where   go = catch action handler >> retry
 
 runRefresh :: MonadIO m => App m ()
 runRefresh = do
@@ -33,12 +33,13 @@ runRefresh = do
             creds <- readIORef conn
             refreshed <- getValidCreds creds
             atomicModifyIORef' conn $ const (refreshed, ())
+        -- sending alert over Telegram
         handler err = do
             let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ err)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runRefresh bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling runRefresh now."
-        action = do
-            threadDelay interval
+        action = threadDelay interval >> action
+        retry = do
             now <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
             runApp (env {last_worker_run = Just now}) $ do
@@ -52,7 +53,7 @@ runRefresh = do
                                 if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
                                 else c)
                     _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
-    liftIO $ runForever_ action handler
+    liftIO $ runForever_ (action, retry) handler
 
 runJobs :: MonadIO m => App m ()
 runJobs = ask >>= \env ->
@@ -66,4 +67,4 @@ runJobs = ask >>= \env ->
             let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runDbTasks bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling run_worker now."
-    in  liftIO $ runForever_ action handler
+    in  liftIO $ runForever_ (action, pure ()) handler
