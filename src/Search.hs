@@ -45,14 +45,13 @@ defaultSearchConfig =
         xtract doc _ = T.words $ title doc `T.append` contents doc
         xform t _ = T.toCaseFold t
 
-toSearchEngine :: [MockDoc] -> SearchEngine MockDoc Int Field NoFeatures
-toSearchEngine docs = insertDocs docs $
-    initSearchEngine defaultSearchConfig defaultSearchRankParameters
+type FeedsSearch = SearchEngine MockDoc Ref Field NoFeatures
 
-queryEngine :: T.Text -> [Ref]
-queryEngine keystr = 
-    let query_string = T.words keystr
-    in  query (toSearchEngine someDocs) query_string
+makeSearch :: [MockDoc] -> FeedsSearch
+makeSearch feeds = insertDocs feeds $ initSearchEngine defaultSearchConfig defaultSearchRankParameters
 
 test_search_engine :: IO ()
-test_search_engine = print $ queryEngine "2"
+test_search_engine = 
+    let !initial = makeSearch someDocs
+        res = query initial ["2"]
+    in  print res
