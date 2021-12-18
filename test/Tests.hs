@@ -64,7 +64,7 @@ test_run_forever = do
             print $ "run_worker bumped on exception " `T.append` (T.pack . show $ e)
             print "Rescheduling run_worker now."
         action = threadDelay (3 * 1000000 :: Int) >> modifyMVar_ mvar (\n -> pure $ n + 1) >> throwIO (userError "Lel")
-    runForever_ (action, pure ()) handler
+    runForever_ action handler
     print "Running now... (10 secs)"
     threadDelay (10 * 1000000 :: Int)
     readMVar mvar >>= \n -> do
