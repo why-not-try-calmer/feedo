@@ -3,21 +3,15 @@ module Search where
 import Data.SearchEngine
 import qualified Data.Text as T
 import Data.Ix (Ix)
+import AppTypes (Item(..))
+import Data.List (foldl')
 
-data MockDoc = MockDoc {
-    ref :: Int,
-    title :: T.Text,
-    contents :: T.Text
+data KeyedItem = KeyedItem {
+    key ::Int,
+    item :: Item
 }
 
-type Ref = Int
-
-data Field = Title | AsContents deriving (Eq, Ord, Enum, Bounded, Ix, Show)
-
-someDocs :: [MockDoc]
-someDocs =
-    let toTxt n = T.pack . show $ n
-    in  map (\n -> MockDoc n ("title for " `T.append` toTxt (n+1)) ("val for " `T.append` toTxt (n+1))) ([0..5] :: [Int])
+data Field = FieldTitle | FieldDescription deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
 defaultSearchRankParameters =
@@ -33,25 +27,24 @@ defaultSearchRankParameters =
         paramAutosuggestPostfilterLimit = 500
     }
 
-defaultSearchConfig :: SearchConfig MockDoc Int Field NoFeatures
+defaultSearchConfig :: SearchConfig KeyedItem Int Field NoFeatures
 defaultSearchConfig =
     SearchConfig    {
-        documentKey = ref,
+        documentKey = key,
         extractDocumentTerms = xtract,
         transformQueryTerm = xform,
         documentFeatureValue = const noFeatures
     }
     where
-        xtract doc _ = T.words $ title doc `T.append` contents doc
+        xtract (KeyedItem _ i) _ = T.words $ i_title i `T.append` i_desc i
         xform t _ = T.toCaseFold t
 
-type FeedsSearch = SearchEngine MockDoc Ref Field NoFeatures
+type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
 
-makeSearch :: [MockDoc] -> FeedsSearch
-makeSearch feeds = insertDocs feeds $ initSearchEngine defaultSearchConfig defaultSearchRankParameters
+makeSearch :: [Item] -> FeedsSearch
+makeSearch items = insertDocs keyed $ initSearchEngine defaultSearchConfig defaultSearchRankParameters
+    where
+        keyed = snd $ foldl' (\(!c, !is) i -> (c+1, is ++ [KeyedItem (c+1) i])) (-1,[]) items
 
-test_search_engine :: IO ()
-test_search_engine = 
-    let !initial = makeSearch someDocs
-        res = query initial ["2"]
-    in  print res
+fetchResults :: [Int] -> [Item] -> [Item]
+fetchResults indices items = map (items !!) indices
