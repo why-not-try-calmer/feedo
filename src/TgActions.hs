@@ -214,8 +214,7 @@ evalTgAct _ (Info ref) cid = do
 evalTgAct _ GetSubFeedSettings cid = ask >>= liftIO . readMVar . subs_state >>= \hmap ->
     case HMS.lookup cid hmap of
         Nothing -> pure . Left $ NotFoundChat
-        Just ch -> pure . Right . PlainReply .
-            render . sub_settings $ ch
+        Just ch -> pure . Right . PlainReply . render $ ch
 evalTgAct _ (SetSubFeedSettings settings) cid =
     withChat (SetSubFeedSettings settings) cid >>= \case
         Left _ -> pure . Right . PlainReply $ "Unable to udpate this chat settings"
