@@ -33,14 +33,14 @@ runRefresh = do
             creds <- readIORef conn
             refreshed <- getValidCreds creds
             atomicModifyIORef' conn $ const (refreshed, ())
-            retry
+            action
         -- sending alert over Telegram
         handler err = do
             let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ err)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runRefresh bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling runRefresh now."
-        action = threadDelay interval >> action
-        retry = do
+        wait_action = threadDelay interval >> action
+        action = do
             now <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
             runApp (env {last_worker_run = Just now}) $ do
@@ -54,7 +54,7 @@ runRefresh = do
                                 if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
                                 else c)
                     _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
-    liftIO $ runForever_ action handler
+    liftIO $ runForever_ wait_action handler
 
 runJobs :: MonadIO m => App m ()
 runJobs = ask >>= \env ->
