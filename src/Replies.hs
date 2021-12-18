@@ -15,6 +15,7 @@ import qualified Data.Text as T
 import Parser (renderAvgInterval)
 import Requests (reqSend_)
 import TgramOutJson (ChatId, Outbound (OutboundMessage))
+import qualified Data.Set as S
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -48,12 +49,16 @@ instance Renderable Feed where
                 ("Total reads", T.pack . show $ f_reads)
             ]
 
-instance Renderable FeedSettings where
-    render FeedSettings{..} = T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
-        [   ("Blacklist", T.pack . show . filters_blacklist $ settings_filters),
-            ("Batch", T.pack . show $ settings_batch_size),
-            ("Batch size", T.pack . show $ settings_batch_size),
-            ("Batch interval", T.pack . show $ settings_batch_interval)
+instance Renderable SubChat where
+    render SubChat{..} = T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
+        [   ("Chat_Id", T.pack . show $ sub_chatid),
+            ("Status", if sub_is_paused then "paused" else "active"),
+            ("Last notification", T.pack . show $ sub_last_notification),
+            ("Feeds subscribed to", T.intercalate "," $ S.toList sub_feeds_links),
+            ("Blacklist", T.pack . show . filters_blacklist . settings_filters $ sub_settings),
+            ("Batch", T.pack . show . settings_batch_size $ sub_settings),
+            ("Batch size", T.pack . show . settings_batch_size $ sub_settings),
+            ("Batch interval", T.pack . show . settings_batch_interval $ sub_settings)
         ]
 
 instance Renderable [Item] where

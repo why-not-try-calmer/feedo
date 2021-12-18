@@ -68,4 +68,5 @@ runJobs = ask >>= \env ->
             let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runDbTasks bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling run_worker now."
+            action
     in  liftIO $ runForever_ action handler
