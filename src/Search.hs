@@ -1,10 +1,10 @@
 module Search where
 
+import AppTypes (Feed (f_items, f_link, f_title), Item (..))
+import Data.Ix (Ix)
+import Data.List (foldl')
 import Data.SearchEngine
 import qualified Data.Text as T
-import Data.Ix (Ix)
-import AppTypes (Item(..), Feed (f_title, f_items, f_link))
-import Data.List (foldl')
 
 data KeyedItem = KeyedItem {
     key ::Int,
@@ -38,24 +38,35 @@ defaultSearchConfig =
         documentFeatureValue = const noFeatures
     }
     where
-        xtract (KeyedItem _ i _ _) _ = T.words $ i_title i `T.append` i_desc i
+        xtract (KeyedItem _ i _ _) _ = T.words $ i_title i `T.append` " " `T.append` i_desc i
         xform t _ = T.toCaseFold t
 
 type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
 
-prepareFeeds :: [Feed] -> [KeyedItem]
-prepareFeeds feeds = mapCount feeds 0 []
+initSearchWith :: [Feed] -> ([Item], FeedsSearch)
+initSearchWith feeds = 
+    let (items, kitems) = extractKItems feeds
+    in  (items, makeSearch kitems)
     where
-        mapCount [] _ kitems = kitems
-        mapCount (f:fs) !n !kitems =
-            let items = f_items f
+        extractKItems :: [Feed] -> ([Item], [KeyedItem])
+        extractKItems fs = mapCount fs 0 ([], [])
+        mapCount [] _ (items, kitems) = (items, kitems)
+        mapCount (f:fs) !n (!items, !kitems) =
+            let items' = f_items f
                 title = f_title f
                 link = f_link f
-                (new_counter, kitems') = foldl' (\(!c, !is) i -> (c+1, is ++ [KeyedItem (c+1) i title link])) (n, []) items
-            in  mapCount fs new_counter $ kitems ++ kitems'
+                (!new_counter, !kitems') = foldl' (\(!c, !is) i -> (c+1, is ++ [KeyedItem (c+1) i title link])) (n, []) items'
+            in  mapCount fs new_counter (items ++ items', kitems ++ kitems')
+        makeSearch :: [KeyedItem] -> FeedsSearch
+        makeSearch items = insertDocs items $ 
+            initSearchEngine
+            defaultSearchConfig
+            defaultSearchRankParameters
 
-makeSearch :: [KeyedItem] -> FeedsSearch
-makeSearch items = insertDocs items $ initSearchEngine defaultSearchConfig defaultSearchRankParameters
-
-fetchResults :: [Int] -> [KeyedItem] -> [(T.Text, T.Text)]
-fetchResults indices kitems = map ((\k -> (i_link . item $ k, i_title . item $ k)) . (kitems !!)) indices
+searchWith :: [Item] -> [T.Text] -> FeedsSearch -> [Item]
+searchWith items q engine = 
+    let res = query engine q
+    in  extractResults res items 
+    where
+    extractResults :: [Int] -> [Item] -> [Item]
+    extractResults indices is = map (is !!) indices
