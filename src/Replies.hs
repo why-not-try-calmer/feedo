@@ -57,7 +57,7 @@ instance Renderable SubChat where
             ("Last notification", T.pack . show $ sub_last_notification),
             ("Feeds subscribed to", T.intercalate "," $ S.toList sub_feeds_links),
             ("Blacklist", T.pack . show . filters_blacklist . settings_filters $ sub_settings),
-            ("Batch", T.pack . show . settings_batch_size $ sub_settings),
+            ("Batch", T.pack . show . settings_batch $ sub_settings),
             ("Batch size", T.pack . show . settings_batch_size $ sub_settings),
             ("Batch interval", T.pack . show . settings_batch_interval $ sub_settings)
         ]
@@ -131,6 +131,7 @@ renderCmds = T.intercalate "\n"
         "/list, /l: Get all the urls and #s of the feeds to which the chat is subscribed to, if any.\n",
         "/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.\n",
         "/purge (*chat admins only*): Make the bot and associated database forget entirely about this chat.\n",
+        "/search, /se `<space-separated keywords>`: Search all items of all feeds the current chat is subscribed to. Example:\n- `/se cheap cloud host`.\n", 
         "/settings, /set (*chat admins only*) `optional <line-separated key-value pairs>`: Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example:\n `/settings blacklist: Trump, bitcoin, crypto\nbatch: true\n,batch_size: 10\nbatch_interval: 9000`\n",
         "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`: Subscribe the chat to the feeds -- if they exist -- passed as argument. Examples:\n- `/s 1 2 3`\n- `/sub https://www.compositional.fm/rss https://www.blabla.org/rss`.\n",
         "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:\n- `/u 1 2 3`\n- `/unsub https://www.compositional.fm/rss https://www.blabla.org/`."

@@ -3,6 +3,11 @@
 module Parser where
 
 import AppTypes
+    ( renderUserError,
+      Feed(..),
+      FeedType(..),
+      Item(Item, i_pubdate),
+      UserError(BadInput, BadFeedUrl, ParseError) )
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
@@ -70,6 +75,7 @@ buildFeed ty url = do
                                 (T.concat $ child el >>= element "title" >>= child >>= content)
                                 (T.concat $ child el >>= element "description" >>= child >>= content)
                                 (T.concat $ child el >>= element "link" >>= child >>= content)
+                                (renderUrl url)
                                 (fromMaybe now . getTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content))
                             items = map get_item_data $ descendant root >>= element "item"
                             interval = averageInterval $ map i_pubdate items
@@ -97,6 +103,7 @@ buildFeed ty url = do
                                 (T.concat $ child el >>= laxElement "title" >>= child >>= content)
                                 (T.concat $ child el >>= laxElement "content" >>= child >>= content)
                                 (T.concat . attribute "href" . head $ child el >>= laxElement "link")
+                                (renderUrl url)
                                 (fromMaybe now . getTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content))
                             items = map get_item_data $ descendant root >>= laxElement "entry"
                             interval = averageInterval $ map i_pubdate items

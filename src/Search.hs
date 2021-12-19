@@ -1,19 +1,9 @@
 module Search where
 
-import AppTypes (Feed (f_items, f_link, f_title), Item (..))
-import Data.Ix (Ix)
+import AppTypes (Feed (f_items, f_link, f_title), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
 import Data.List (foldl')
 import Data.SearchEngine
 import qualified Data.Text as T
-
-data KeyedItem = KeyedItem {
-    key ::Int,
-    item :: Item,
-    feed_name :: T.Text,
-    feed_link :: T.Text
-} deriving (Eq, Show)
-
-data Field = FieldTitle | FieldDescription deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
 defaultSearchRankParameters =
@@ -40,8 +30,6 @@ defaultSearchConfig =
     where
         xtract (KeyedItem _ i _ _) _ = T.words $ i_title i `T.append` " " `T.append` i_desc i
         xform t _ = T.toCaseFold t
-
-type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
 
 initSearchWith :: [Feed] -> ([Item], FeedsSearch)
 initSearchWith feeds = 

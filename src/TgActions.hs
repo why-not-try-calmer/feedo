@@ -16,11 +16,19 @@ import qualified Data.Text as T
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parser (eitherUrlScheme, getFeedFromHref)
 import Replies (FromContents (..), toReply, render)
-import Requests (reqSend)
+import Requests (reqSend, setWebhook)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither)
+import Search (searchWith)
+
+registerWebhook :: AppConfig -> IO ()
+registerWebhook config =
+    let tok = bot_token . tg_config $ config
+        webhook = webhook_url . tg_config $ config
+    in  putStrLn "Trying to set webhook" >> setWebhook tok webhook >>
+            print ("Webhook successfully set at " `T.append` webhook)
 
 checkIfAdmin :: MonadIO m => BotToken -> UserId -> ChatId -> m Bool
 checkIfAdmin tok uid cid = do
@@ -71,6 +79,9 @@ interpretCmd contents
     | cmd == "/pause" || cmd == "/p" = Right . Pause $ True
     | cmd == "/purge" = if not . null $ args then Left . BadInput $ "/purge takes no argument." else Right Purge
     | cmd == "/resume" = Right . Pause $ False
+    | cmd == "/search" || cmd == "/se" = 
+        if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
+        else Right . Search $ args
     | cmd == "/settings" || cmd == "/set" =
         if null args then Right GetSubFeedSettings else
         let body = tail . T.lines . T.toLower . T.strip $ contents
@@ -191,6 +202,17 @@ evalTgAct _ ListSubs cid = do
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right . toReply . FromChatFeeds c $ feeds
 evalTgAct _ RenderCmds _ = pure . Right . toReply $ FromStart
+evalTgAct _ (Search keywords) cid = do
+    env <- ask
+    chats_hmap <- liftIO . readMVar $ subs_state env
+    case HMS.lookup cid chats_hmap of
+        Nothing -> pure . Right . PlainReply $ "This chat is not subscribed to any feed yet!"
+        Just c ->
+            let subs = sort . S.toList . sub_feeds_links $ c
+            in  if null subs then pure . Right . PlainReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
+                else liftIO $ readMVar (search_engine env) >>= \(!indexed, !engine) ->
+                    let res = searchWith indexed keywords engine
+                    in  pure . Right . MarkdownReply . render $ res
 evalTgAct _ Purge cid = withChat Purge cid >>= \case
     Left _ -> pure . Right . PlainReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
     Right _ -> pure . Right . PlainReply $ "Successfully purged the chat from the database."

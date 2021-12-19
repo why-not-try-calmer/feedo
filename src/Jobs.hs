@@ -1,6 +1,6 @@
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, subs_state, tasks_queue, tg_config, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert), ServerConfig (alert_chat, bot_token), SubChat (sub_chatid, sub_last_notification), db_config, runApp)
+import AppTypes (App, AppConfig (last_worker_run, subs_state, tasks_queue, tg_config, worker_interval), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, TgAlert, Log), ServerConfig (alert_chat, bot_token), SubChat (sub_chatid, sub_last_notification), db_config, runApp)
 import Backend (evalFeedsAct)
 import Control.Concurrent
 import Control.Concurrent.Async (async, mapConcurrently)
@@ -12,7 +12,7 @@ import qualified Data.HashMap.Strict as HMS
 import Data.IORef (atomicModifyIORef', readIORef)
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
-import Database (getValidCreds)
+import Database (getValidCreds, saveToLog)
 import Database.MongoDB.Query (Failure (ConnectionFailure))
 import Replies
 
@@ -44,8 +44,10 @@ runRefresh = do
             runApp (env {last_worker_run = Just now}) $ evalFeedsAct RefreshNotifyF >>= \case
                 FeedBatches p -> liftIO $ do
                     let listed = HMS.toList p
+                    -- sending notifications
                     notified_chats <- mapConcurrently (\(cid, feed_items) ->
                         reply tok cid (toReply . FromFeedsItems $ feed_items) >> pure cid) listed
+                    -- updating feeds
                     modifyMVar_ (subs_state env) $
                         pure . HMS.map (\c ->
                             if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
@@ -63,6 +65,7 @@ runJobs = ask >>= \env ->
             TgAlert contents ->
                 let msg = PlainReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 in  reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg
+            Log item -> readIORef (db_config env) >>= \config -> saveToLog config item
         handler (SomeException e) = do
             let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (tasks_queue env) . TgAlert $ report

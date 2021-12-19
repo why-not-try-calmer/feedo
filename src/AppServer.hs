@@ -5,7 +5,7 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Control.Concurrent (newChan, newMVar)
+import Control.Concurrent (newChan, newMVar, newEmptyMVar, putMVar)
 import Control.Concurrent.Async (concurrently_)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
@@ -17,13 +17,14 @@ import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Replies (reply)
-import Requests (setWebhook)
 import Responses
 import Servant
 import System.Environment
 import TgActions
 import TgramInJson (Message (chat, from, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
+import Search (initSearchWith)
+
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] ()
@@ -75,10 +76,11 @@ makeConfig env = do
         (first_shard:_) = T.splitOn ";" creds_line
         creds = initMongoCredsFrom first_shard creds_line
         port = maybe 80 read $ lookup "PORT" env
-        interval = maybe 900000000 read $ lookup "WORKER_INTERVAL" env
+        interval = maybe 1200000000 read $ lookup "WORKER_INTERVAL" env
         starting_feeds = (Just . T.splitOn "," . T.pack) =<< lookup "STARTING_FEEDS" env
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
+    mvar3 <- newEmptyMVar
     chan <- newChan
     valid_creds <- getValidCreds creds 
     creds_ref <- newIORef valid_creds
@@ -89,20 +91,24 @@ makeConfig env = do
         subs_state = mvar2,
         tasks_queue = chan,
         worker_interval = interval,
-        db_config = creds_ref
+        db_config = creds_ref,
+        search_engine = mvar3
         }, starting_feeds)
-
-registerWebhook :: AppConfig -> IO ()
-registerWebhook config =
-    let tok = bot_token . tg_config $ config
-        webhook = webhook_url . tg_config $ config
-    in  putStrLn "Trying to set webhook" >> setWebhook tok webhook >>
-            print ("Webhook successfully set at " `T.append` webhook)
 
 initStart :: AppConfig -> Maybe [T.Text] -> IO ()
 initStart config mb_urls = case mb_urls of
     Nothing -> runApp config startup
-    Just urls -> runApp config $ evalFeedsAct (InitF urls) >> startup
+    Just urls -> do
+        putStrLn "Found urls. Trying to build feeds..."
+        runApp config $ evalFeedsAct (InitF urls) >>= \case
+            Feeds fs ->  
+                let init_search_engine = liftIO $ do
+                        putMVar (search_engine config) (initSearchWith fs)
+                        putStrLn "Search engine initialized."
+                in  liftIO (putStrLn "Feeds build. Initializing search engine.") >> 
+                        init_search_engine >> startup
+            _ -> liftIO (putStrLn "Feeds could not be built. Proceeding to startup nonetheless.") 
+                    >> startup
     where startup = evalFeedsAct LoadF >> loadChats >> runRefresh >> runJobs
 
 startApp :: IO ()

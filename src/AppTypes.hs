@@ -15,6 +15,8 @@ import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
+import Data.SearchEngine (SearchEngine, NoFeatures)
+import Data.Ix (Ix)
 
 -- -- Data -- --
 
@@ -36,6 +38,7 @@ data Item = Item
   { i_title :: T.Text,
     i_desc :: T.Text,
     i_link :: T.Text,
+    i_feed_link :: T.Text,
     i_pubdate :: UTCTime
   }
   deriving (Eq, Show)
@@ -124,6 +127,7 @@ data UserAction
   | GetLastXDaysItems Int
   | GetSubFeedSettings
   | Pause Bool
+  | Search [T.Text]
   | SetSubFeedSettings UnParsedFeedSettings
   | RenderCmds
   | Purge
@@ -207,7 +211,6 @@ renderDbError FailedToStoreAll = "Unable to store all these items."
 renderDbError FailedToLog = "Failed to log"
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 
-
 {- Feeds -}
 
 data FeedsAction
@@ -227,6 +230,7 @@ data FeedsRes a where
   FeedsError :: DbError -> FeedsRes a
   FeedBatches :: HMS.HashMap ChatId FeedItems -> FeedsRes a
   FeedLinkBatch :: [(FeedLink, [Item])] -> FeedsRes a
+  Feeds :: [Feed] -> FeedsRes a
 
 {- Logs -}
 
@@ -237,6 +241,21 @@ data LogItem = LogItem
     log_type :: T.Text
   }
   deriving (Eq, Show)
+
+{- Search engine -}
+
+type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
+
+type IndexedItems = [Item]
+
+data KeyedItem = KeyedItem {
+    key ::Int,
+    item :: Item,
+    feed_name :: T.Text,
+    feed_link :: T.Text
+} deriving (Eq, Show)
+
+data Field = FieldTitle | FieldDescription deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 {- Application, settings -}
 
@@ -260,7 +279,9 @@ type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
     IncReadsJob [FeedLink] |
-    TgAlert T.Text deriving (Eq, Show)
+    TgAlert T.Text |
+    Log LogItem
+    deriving (Eq, Show)
 
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,
@@ -268,6 +289,7 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
+    search_engine :: MVar (IndexedItems, FeedsSearch),
     tasks_queue :: Chan Job,
     worker_interval :: Int
   }

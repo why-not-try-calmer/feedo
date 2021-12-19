@@ -15,13 +15,14 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
+import Data.Time (NominalDiffTime, UTCTime, addUTCTime, diffUTCTime)
 import Data.Time.Clock.POSIX
 import Database (evalMongoAct)
 import Parser (getFeedFromHref, rebuildFeed)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Utils (partitionEither)
+import Search (initSearchWith)
 
 {- Subscriptions -}
 
@@ -152,7 +153,7 @@ evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ readIORef (db_config 
             evalMongoAct config (UpsertFeeds refreshed_feeds) >>= \case
                 DbErr err -> print $ renderDbError err
                 _ -> pure ()
-            pure FeedsOk
+            pure . Feeds $ refreshed_feeds
 evalFeedsAct LoadF = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config ->
     evalMongoAct config Get100Feeds >>= \case
         DbFeeds feeds -> do
@@ -204,7 +205,18 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
             -- saving to memory & db
             evalMongoAct config (UpsertFeeds succeeded) >>= \case
                 DbErr _ -> pure (feeds_hmap, Nothing)
-                _ -> pure (to_keep_in_memory, Just (notif, subbed_to))
+                _ ->
+                    -- updating search engine on successful save to database.
+                    let is_search = initSearchWith $ HMS.elems to_keep_in_memory
+                        se = search_engine env
+                        upto l = T.pack . show $ (floor $ diffUTCTime l now :: Integer)
+                    in  tryTakeMVar se >> 
+                        putMVar se is_search >> 
+                        getCurrentTime >>= 
+                            \later -> writeChan (tasks_queue env) 
+                                (Log $ LogItem later "evalMongoAct.UpserFeeds" 
+                                ("Ran worker job in " `T.append` upto later) "info") >> 
+                        pure (to_keep_in_memory, Just (notif, subbed_to))
     case res of
         Nothing -> pure . FeedsError . FailedToUpdateFeeds $ " at evalFeedsAct.RefreshNotifyF"
         Just (notif, subbed_to) -> do

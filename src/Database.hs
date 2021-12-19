@@ -4,7 +4,7 @@
 
 module Database where
 
-import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist), FeedLink)
+import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError)
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
@@ -132,7 +132,7 @@ feedToBson Feed {..} =
 bsonToFeed :: Document -> Feed
 bsonToFeed doc =
     let raw_items = fromJust $ M.lookup "f_items" doc
-        items = map (\i -> Item (fromJust $ M.lookup "i_title" i) (fromJust $ M.lookup "i_desc" i) (fromJust $ M.lookup "i_link" i) (fromJust $ M.lookup "i_pubdate" i)) raw_items
+        items = map (\i -> Item (fromJust $ M.lookup "i_title" i) (fromJust $ M.lookup "i_desc" i) (fromJust $ M.lookup "i_link" i) (fromMaybe (fromJust $ M.lookup "f_link" doc) $ M.lookup "i_feed_link" i) (fromJust $ M.lookup "i_pubdate" i)) raw_items
     in  Feed {
             f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom,
             f_desc = fromJust $ M.lookup "f_desc" doc,
@@ -150,7 +150,7 @@ bsonToFeed doc =
 bsonToChat :: Document -> SubChat
 bsonToChat doc =
     let raw_items = fromJust $ M.lookup "sub_last_notified" doc
-        items = map (\i -> Item (fromJust $ M.lookup "i_title" i) (fromJust $ M.lookup "i_desc" i) (fromJust $ M.lookup "i_link" i) (fromJust $ M.lookup "i_pubdate" i)) raw_items
+        items = map (\i -> Item (fromJust $ M.lookup "i_title" i) (fromJust $ M.lookup "i_desc" i) (fromJust $ M.lookup "i_link" i) (fromJust $ M.lookup "i_feed_link" i) (fromJust $ M.lookup "i_pubdate" i)) raw_items
         feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
         feeds_settings_docs = FeedSettings {
@@ -191,15 +191,13 @@ chatToBson SubChat{..} =
 toBsonBatch :: UTCTime -> (ChatId, FeedLink, [Item]) -> Document
 toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: map itemToBson i, "chat_id" =: cid]
 
-{-
 {- Logs -}
 
-saveToLog :: MonadIO m => MongoCreds -> LogItem -> App m ()
+saveToLog :: MonadIO m => MongoCreds -> LogItem -> m ()
 saveToLog creds item = liftIO (try . withMongo creds $ insert "logs" doc :: IO (Either SomeException Value)) >>= \case
     Left _ -> liftIO $ print . renderDbError $ FailedToLog
     Right _ -> pure ()
     where   doc = ["log_type" =: log_type item, "log_when" =: log_when item, "log_who" =: log_who item, "log_what" =: log_what item]
--}
 
 {- Cleanup -}
 
