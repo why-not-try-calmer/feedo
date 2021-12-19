@@ -28,32 +28,31 @@ runRefresh = do
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
         -- regenerating connection handler upon failed connection
-        handler (ConnectionFailure _) = do
+        onError (ConnectionFailure _) = do
             let conn = db_config env
             creds <- readIORef conn
             refreshed <- getValidCreds creds
             atomicModifyIORef' conn $ const (refreshed, ())
-            action
         -- sending alert over Telegram
-        handler err = do
+        onError err = do
             let report = "runRefresh: Exception met : " `T.append` (T.pack . show $ err)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runRefresh bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling runRefresh now."
-        wait_action = threadDelay interval >> action
         action = do
             now <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
-            runApp (env {last_worker_run = Just now}) $ do
-                evalFeedsAct RefreshNotifyF >>= \case
-                    FeedBatches p -> liftIO $ do
-                        let listed = HMS.toList p
-                        notified_chats <- mapConcurrently (\(cid, feed_items) ->
-                            reply tok cid (toReply . FromFeedsItems $ feed_items) >> pure cid) listed
-                        modifyMVar_ (subs_state env) $
-                            pure . HMS.map (\c ->
-                                if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
-                                else c)
-                    _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
+            runApp (env {last_worker_run = Just now}) $ evalFeedsAct RefreshNotifyF >>= \case
+                FeedBatches p -> liftIO $ do
+                    let listed = HMS.toList p
+                    notified_chats <- mapConcurrently (\(cid, feed_items) ->
+                        reply tok cid (toReply . FromFeedsItems $ feed_items) >> pure cid) listed
+                    modifyMVar_ (subs_state env) $
+                        pure . HMS.map (\c ->
+                            if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
+                            else c)
+                _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
+        wait_action = threadDelay interval >> action
+        handler e = onError e >> action
     liftIO $ runForever_ wait_action handler
 
 runJobs :: MonadIO m => App m ()
@@ -68,5 +67,4 @@ runJobs = ask >>= \env ->
             let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (tasks_queue env) . TgAlert $ report
             print $ "runDbTasks bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling run_worker now."
-            action
     in  liftIO $ runForever_ action handler

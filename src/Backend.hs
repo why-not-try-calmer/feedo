@@ -8,7 +8,8 @@ import Control.Concurrent
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.List (intersect, sortBy)
+import Data.IORef (readIORef)
+import Data.List (sortBy)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
@@ -21,7 +22,6 @@ import Parser (getFeedFromHref, rebuildFeed)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Utils (partitionEither)
-import Data.IORef (readIORef)
 
 {- Subscriptions -}
 
@@ -192,15 +192,16 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
                     map (\f -> (f_link f, f)) succeeded
                 -- building HMap of chat_ids with the relevant feed & items
                 notif = notificationBatches updated_subscribed_to_feeds (HMS.filter (not . sub_is_paused) chats) now
-                is_within_top100_reads =
+                -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
+                within_top100_reads =
                     take 100 .
                     map f_link .
-                    sortBy (comparing $ Down . f_reads) $ HMS.elems feeds_hmap
-                -- keeping only top 100 most read with feeds in memory provided they have any subscribers
+                    sortBy (comparing $ Down . f_reads) $ succeeded
                 to_keep_in_memory = HMS.filter
-                    (\f -> f_link f `elem` (subbed_to `intersect` is_within_top100_reads))
-                    feeds_hmap
+                    (\f -> f_link f `elem` within_top100_reads)
+                    updated_subscribed_to_feeds
             unless (null failed) (print $ "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
+            -- saving to memory & db
             evalMongoAct config (UpsertFeeds succeeded) >>= \case
                 DbErr _ -> pure (feeds_hmap, Nothing)
                 _ -> pure (to_keep_in_memory, Just (notif, subbed_to))
