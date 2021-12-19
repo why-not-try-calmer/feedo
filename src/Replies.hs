@@ -16,6 +16,7 @@ import Parser (renderAvgInterval)
 import Requests (reqSend_)
 import TgramOutJson (ChatId, Outbound (OutboundMessage))
 import qualified Data.Set as S
+import Data.Time (toGregorian, UTCTime (utctDay), formatTime, defaultTimeLocale)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -62,8 +63,17 @@ instance Renderable SubChat where
         ]
 
 instance Renderable [Item] where
-    render items = T.intercalate "\n" .
-        map (\i -> T.append "- " $ toHrefEntities  Nothing (i_title i) (i_link i)) $ items
+    render = fst . foldl' step (mempty, 0)
+        where
+            step (!str, !d) i =
+                let day = utctDay $ i_pubdate i
+                    (_, _, d') = toGregorian day
+                    date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
+                in  if d == d'
+                    then (str `T.append` finish (i_title i) (i_link i), d)
+                    else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
+                        finish (i_title i) (i_link i), d')
+            finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities Nothing tag link =
@@ -72,7 +82,7 @@ toHrefEntities Nothing tag link =
     in  tag' `T.append` link'
 toHrefEntities (Just counter) tag link =
     let counter' = T.pack . show $ counter
-        tag' = " [" `T.append` tag `T.append` "]" 
+        tag' = " [" `T.append` tag `T.append` "]"
         link' = "(" `T.append` link `T.append` ")"
     in  counter' `T.append` tag' `T.append` link'
 
@@ -88,7 +98,7 @@ toReply :: FromContents a -> Reply
 toReply FromStart = MarkdownReply renderCmds
 toReply (FromChatFeeds _ feeds) =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
-        step = (\(txt, counter) f ->
+        step = (\(!txt, !counter) f ->
             let link = f_link f
                 title = f_title f
                 rendered = toHrefEntities (Just counter) title link
@@ -102,13 +112,13 @@ toReply (FromFeedItems f) =
             f_items $ f
     in  MarkdownReply rendered_items
 toReply (FromFeedsItems items) =
-    let step = (\acc (f, i) -> acc `T.append` "Last item(s) for " `T.append`
+    let step = (\acc (!f, !i) -> acc `T.append` "Last item(s) for " `T.append`
             escapeWhere (f_title f) mkdSingles `T.append` ":\n"
             `T.append` render i
             `T.append` "\n\n")
     in  MarkdownReply $ foldl' step mempty items
 toReply (FromFeedLinkItems flinkitems) =
-    let step = ( \acc (f, items) -> acc `T.append` "New item(s) for " `T.append` f `T.append` ":\n" `T.append` render items)
+    let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` f `T.append` ":\n" `T.append` render items)
     in  MarkdownReply $ foldl' step mempty flinkitems
 
 renderCmds :: T.Text
