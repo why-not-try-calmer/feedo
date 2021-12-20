@@ -7,6 +7,12 @@ The bot relies upon the Haskell `warp` server. By default it provides an endpoin
 
 This application is written from scratch, using exclusively HTTP requests-responses as specified by the [Telegram Bot API](https://core.telegram.org/bots/api). It relies on no Telegram SDK or third-party library.
 
+## Status
+This application has been deployed but only for live testing. Public release coming up soon.
+
+## Demo
+Ask for an invite with https://t.me/+zMdPlkeEu7w2NjM0.
+
 ## How to (Telegram)
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). _The bot needs only the permission to send text messages including links_; it listens only to messages that use of a command defined for the bot.
 2. Subscribe the chat and have fun with the other commands. Posts will arrive in due time.
@@ -59,20 +65,14 @@ Explanation of the supported key-value pairs:
 
 Check out our channel for more info: https://t.me/feedfarer.
 
-## Demo
-Ask for an invite with https://t.me/+zMdPlkeEu7w2NjM0.
-
-## Status
-This application has been deployed but only for live testing. Public release coming up soon.
-
 ## Roadmap & todo
 - [x] Architecture, business logic
 - [x] Implementation
 - [x] Tests
 - [x] Test deployment
-- [] Deployment
-- [] Tests in deployment
-- [] Factoring out database details to avoid depending on mongoDB
+- [x] Deployment
+- [x] Tests in deployment
+- [...] Factoring out database details to avoid depending on mongoDB
 
 ## Test build and run (stack)
 
