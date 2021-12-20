@@ -209,7 +209,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
                     -- updating search engine on successful save to database.
                     let is_search = initSearchWith $ HMS.elems to_keep_in_memory
                         se = search_engine env
-                        upto l = T.pack . show $ (floor $ diffUTCTime l now :: Integer)
+                        upto l = T.pack . show $ diffUTCTime l now
                     in  tryTakeMVar se >> 
                         putMVar se is_search >> 
                         getCurrentTime >>= 
