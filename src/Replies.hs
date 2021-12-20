@@ -118,7 +118,7 @@ toReply (FromFeedsItems items) =
             `T.append` "\n\n")
     in  MarkdownReply $ foldl' step mempty items
 toReply (FromFeedLinkItems flinkitems) =
-    let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` f `T.append` ":\n" `T.append` render items)
+    let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` (escapeWhere f mkdSingles) `T.append` ":\n" `T.append` render items)
     in  MarkdownReply $ foldl' step mempty flinkitems
 
 renderCmds :: T.Text
