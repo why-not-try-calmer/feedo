@@ -209,7 +209,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
                 let results = searchWith kitems keywords engine
                 in  pure $ foldl' (\acc kitem -> 
                         let i = item kitem
-                        in  if i_link i `elem` subs then acc ++ [i]
+                        in  if i_feed_link i `elem` subs then acc ++ [i]
                             else acc) [] results
         prepare_reply res = pure . Right . MarkdownReply . render $ res
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
