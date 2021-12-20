@@ -9,7 +9,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import Data.Char (isSpace)
 import qualified Data.HashMap.Strict as HMS
-import Data.List (sort)
+import Data.List (sort, foldl')
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -205,9 +205,12 @@ evalTgAct _ RenderCmds _ = pure . Right . toReply $ FromStart
 evalTgAct _ (Search keywords) cid = ask >>= \env ->
     let get_chats = liftIO . readMVar $ subs_state env
         search_from_subs subs = 
-            liftIO (readMVar $ search_engine env) >>= \(indexed, engine) -> 
-                pure . filter (\i -> i_feed_link i `elem` subs) $ 
-                    searchWith indexed keywords engine
+            liftIO (readMVar $ search_engine env) >>= \(kitems, engine) -> 
+                let results = searchWith kitems keywords engine
+                in  pure $ foldl' (\acc kitem -> 
+                        let i = item kitem
+                        in  if i_link i `elem` subs then acc ++ [i]
+                            else acc) [] results
         prepare_reply res = pure . Right . MarkdownReply . render $ res
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
         Nothing -> pure . Right . PlainReply $ "This chat is not subscribed to any feed yet!"

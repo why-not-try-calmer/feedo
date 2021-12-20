@@ -247,13 +247,9 @@ data LogItem = LogItem
 
 type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
 
-type IndexedItems = [Item]
-
 data KeyedItem = KeyedItem {
     key ::Int,
-    item :: Item,
-    feed_name :: T.Text,
-    feed_link :: T.Text
+    item :: Item
 } deriving (Eq, Show)
 
 data Field = FieldTitle | FieldDescription deriving (Eq, Ord, Enum, Bounded, Ix, Show)
@@ -290,7 +286,7 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
-    search_engine :: MVar (IndexedItems, FeedsSearch),
+    search_engine :: MVar ([KeyedItem], FeedsSearch),
     tasks_queue :: Chan Job,
     worker_interval :: Int
   }

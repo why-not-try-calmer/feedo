@@ -8,8 +8,8 @@ import qualified Data.Text as T
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
 defaultSearchRankParameters =
     SearchRankParameters {
-        paramK1 = 1.5,
-        paramB = const 0.9,
+        paramK1 = 1.2,
+        paramB = const 0.75,
         paramFieldWeights = const 20,
         paramFeatureWeights = noFeatures,
         paramFeatureFunctions = noFeatures,
@@ -28,33 +28,35 @@ defaultSearchConfig =
         documentFeatureValue = const noFeatures
     }
     where
-        xtract (KeyedItem _ i _ _) _ = T.words $ i_title i `T.append` " " `T.append` i_desc i
+        xtract (KeyedItem _ i) _ = T.words $ i_title i `T.append` " " `T.append` i_desc i
         xform t _ = T.toCaseFold t
 
-initSearchWith :: [Feed] -> ([Item], FeedsSearch)
-initSearchWith feeds = 
-    let (items, kitems) = extractKItems feeds
-    in  (items, makeSearch kitems)
+initSearchWith :: [Feed] -> ([KeyedItem], FeedsSearch)
+initSearchWith feeds =
+    let kitems = extractKItems feeds
+    in (kitems, makeSearch kitems)
     where
-        extractKItems :: [Feed] -> ([Item], [KeyedItem])
-        extractKItems fs = mapCount fs 0 ([], [])
-        mapCount [] _ (items, kitems) = (items, kitems)
-        mapCount (f:fs) !n (!items, !kitems) =
+        extractKItems :: [Feed] -> [KeyedItem]
+        extractKItems fs = mapCount fs 0 []
+        mapCount [] _ kitems = kitems
+        mapCount (f:fs) !n !kitems =
             let items' = f_items f
-                title = f_title f
-                link = f_link f
-                (!new_counter, !kitems') = foldl' (\(!c, !is) i -> (c+1, is ++ [KeyedItem (c+1) i title link])) (n, []) items'
-            in  mapCount fs new_counter (items ++ items', kitems ++ kitems')
+                (!new_counter, !kitems') = foldl' (\(!c, !is) i -> (c+1, is ++ [KeyedItem (c+1) i])) (n, []) items'
+            in  mapCount fs new_counter $ kitems ++ kitems'
         makeSearch :: [KeyedItem] -> FeedsSearch
-        makeSearch items = insertDocs items $ 
+        makeSearch items = insertDocs items $
             initSearchEngine
             defaultSearchConfig
             defaultSearchRankParameters
 
-searchWith :: [Item] -> [T.Text] -> FeedsSearch -> [Item]
-searchWith items q engine = 
+searchWith :: [KeyedItem] -> [T.Text] -> FeedsSearch -> [KeyedItem]
+searchWith items q engine =
     let res = query engine q
-    in  extractResults res items 
+    in  extractResults res items
     where
-    extractResults :: [Int] -> [Item] -> [Item]
-    extractResults indices is = map (is !!) indices
+        extractResults _ [] = []
+        extractResults indices is = map (sanitize is) indices
+        sanitize is idx
+            | idx == 1 = head is
+            | idx == length is = last is
+            | otherwise = let idx' = idx-1 in is !! idx'
