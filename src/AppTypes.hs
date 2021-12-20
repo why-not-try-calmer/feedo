@@ -231,7 +231,6 @@ data FeedsRes a where
   FeedsError :: DbError -> FeedsRes a
   FeedBatches :: HMS.HashMap ChatId FeedItems -> FeedsRes a
   FeedLinkBatch :: [(FeedLink, [Item])] -> FeedsRes a
-  Feeds :: [Feed] -> FeedsRes a
 
 {- Logs -}
 

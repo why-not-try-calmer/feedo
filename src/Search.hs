@@ -1,6 +1,6 @@
 module Search where
 
-import AppTypes (Feed (f_items, f_link, f_title), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
+import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
 import Data.List (foldl')
 import Data.SearchEngine
 import qualified Data.Text as T

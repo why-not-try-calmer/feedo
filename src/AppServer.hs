@@ -5,7 +5,7 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Control.Concurrent (newChan, newMVar, newEmptyMVar, putMVar)
+import Control.Concurrent (newChan, newMVar, newEmptyMVar, putMVar, readMVar)
 import Control.Concurrent.Async (concurrently_)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
@@ -100,17 +100,14 @@ initStart config mb_urls = case mb_urls of
     Nothing -> runApp config startup
     Just urls -> do
         putStrLn "Found urls. Trying to build feeds..."
-        runApp config $ evalFeedsAct (InitF urls) >>= \case
-            Feeds fs ->  
-                let init_search_engine = liftIO $ do
-                        putMVar (search_engine config) (initSearchWith fs)
-                        putStrLn "Search engine initialized."
-                in  liftIO (putStrLn "Feeds build. Initializing search engine.") >> 
-                        init_search_engine >> startup
-            _ -> liftIO (putStrLn "Feeds could not be built. Proceeding to startup nonetheless.") 
-                    >> startup
-    where startup = evalFeedsAct LoadF >> loadChats >> runRefresh >> runJobs
-
+        runApp config $ evalFeedsAct (InitF urls) >> startup
+    where 
+        startup = evalFeedsAct LoadF >> initSearchEngine >> loadChats >> runRefresh >> runJobs
+        initSearchEngine = 
+            liftIO $ readMVar (feeds_state config) >>= \fs ->
+            putMVar (search_engine config) (initSearchWith $ HMS.elems fs) >>
+            putStrLn "Search engine initialized."
+        
 startApp :: IO ()
 startApp = do
     env <- getEnvironment

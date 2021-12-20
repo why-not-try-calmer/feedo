@@ -21,7 +21,7 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither)
-import Search (searchWith)
+import Search (searchWith, initSearchWith)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =

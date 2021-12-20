@@ -154,7 +154,7 @@ evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ readIORef (db_config 
             evalMongoAct config (UpsertFeeds refreshed_feeds) >>= \case
                 DbErr err -> print $ renderDbError err
                 _ -> pure ()
-            pure . Feeds $ refreshed_feeds
+            pure FeedsOk
 evalFeedsAct LoadF = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config ->
     evalMongoAct config Get100Feeds >>= \case
         DbFeeds feeds -> do
