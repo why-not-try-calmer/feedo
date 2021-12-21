@@ -21,7 +21,7 @@ import Database (evalMongoAct)
 import Parser (getFeedFromHref, rebuildFeed)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import Utils (partitionEither, removeByIdx)
+import Utils (partitionEither, removeByUserIdx)
 import Search (initSearchWith)
 
 {- Subscriptions -}
@@ -121,7 +121,7 @@ withChat action cid = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \co
                         _ -> pure (HMS.insert cid c' hmap, Right ())
                 if not (null byurls) && not (null byids) then pure (hmap, Left . BadInput $ "You cannot mix references by urls and by ids in the same command.")
                 else
-                    if null byurls then case removeByIdx (S.toList . sub_feeds_links $ c) byids of
+                    if null byurls then case removeByUserIdx (S.toList . sub_feeds_links $ c) byids of
                     Nothing -> pure (hmap, Left . BadInput $ "Invalid references. Make sure to use /list to get a list of valid references.")
                     Just removed -> 
                         let updated_c = c { sub_feeds_links = S.fromList removed }
