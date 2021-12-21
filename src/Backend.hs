@@ -9,7 +9,7 @@ import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
-import Data.List (sortBy)
+import Data.List (sortBy, foldl')
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
@@ -21,7 +21,7 @@ import Database (evalMongoAct)
 import Parser (getFeedFromHref, rebuildFeed)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import Utils (partitionEither)
+import Utils (partitionEither, removeByIdx)
 import Search (initSearchWith)
 
 {- Subscriptions -}
@@ -114,12 +114,21 @@ withChat action cid = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \co
                 in  evalMongoAct config (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (updated_m, Right ())
-            UnSub links ->
-                let updated_c = c { sub_feeds_links = S.filter (`notElem` unFeedRefs links) $ sub_feeds_links c }
-                    updated_m = HMS.insert cid updated_c hmap
-                in  evalMongoAct config (UpsertChat updated_c) >>= \case
+            UnSub refs -> do
+                let (byurls, byids) = foldl' (\(!us, !is) v -> case v of ByUrl u -> (u:us, is); ById i -> (us, i:is)) ([],[]) refs
+                    update_db c' = evalMongoAct config (UpsertChat c') >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                        _ -> pure (updated_m, Right ())
+                        _ -> pure (HMS.insert cid c' hmap, Right ())
+                if not (null byurls) && not (null byids) then pure (hmap, Left . BadInput $ "You cannot mix references by urls and by ids in the same command.")
+                else
+                    if null byurls then case removeByIdx (S.toList . sub_feeds_links $ c) byids of
+                    Nothing -> pure (hmap, Left . BadInput $ "Invalid references. Make sure to use /list to get a list of valid references.")
+                    Just removed -> 
+                        let updated_c = c { sub_feeds_links = S.fromList removed }
+                        in  update_db updated_c
+                    else 
+                        let updated_c = c { sub_feeds_links = S.filter (`notElem` byurls) $ sub_feeds_links c}
+                        in  update_db updated_c
             Purge -> evalMongoAct config (DeleteChat cid) >>= \case
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ())
@@ -139,7 +148,7 @@ withChat action cid = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \co
             _ -> pure (hmap, Right ())
 
 loadChats :: MonadIO m => App m ()
-loadChats = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> 
+loadChats = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config ->
     modifyMVar_ (subs_state env) $ \chats_hmap ->
     evalMongoAct config GetAllChats >>= \case
         DbChats chats -> pure . HMS.fromList . map (\c -> (sub_chatid c, c)) $ chats
@@ -202,7 +211,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
                 to_keep_in_memory = HMS.filter
                     (\f -> f_link f `elem` within_top100_reads)
                     updated_subscribed_to_feeds
-            unless (null failed) (writeChan (tasks_queue env) $ TgAlert $ 
+            unless (null failed) (writeChan (tasks_queue env) $ TgAlert $
                 "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
             -- saving to memory & db
             evalMongoAct config (UpsertFeeds succeeded) >>= \case
@@ -212,12 +221,12 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
                     let is_search = initSearchWith $ HMS.elems to_keep_in_memory
                         se = search_engine env
                         upto l = T.pack . show $ diffUTCTime l now
-                    in  tryTakeMVar se >> 
-                        putMVar se is_search >> 
-                        getCurrentTime >>= \later -> 
-                        writeChan (tasks_queue env) 
-                            (Log $ LogItem later "evalMongoAct.UpserFeeds" 
-                            ("Ran worker job (refreshing all feeds + search engine) in " `T.append` upto later) "info") >> 
+                    in  tryTakeMVar se >>
+                        putMVar se is_search >>
+                        getCurrentTime >>= \later ->
+                        writeChan (tasks_queue env)
+                            (Log $ LogItem later "evalMongoAct.UpserFeeds"
+                            ("Ran worker job (refreshing all feeds + search engine) in " `T.append` upto later) "info") >>
                         pure (to_keep_in_memory, Just (notif, subbed_to))
     case res of
         Nothing -> pure . FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF"

@@ -3,6 +3,13 @@ module Search where
 import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
 import Data.List (foldl')
 import Data.SearchEngine
+    ( NoFeatures,
+      query,
+      initSearchEngine,
+      noFeatures,
+      insertDocs,
+      SearchConfig(..),
+      SearchRankParameters(..) )
 import qualified Data.Text as T
 
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
