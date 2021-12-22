@@ -4,7 +4,7 @@
 
 module Database where
 
-import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError)
+import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist, filters_whitelist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError)
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
@@ -163,7 +163,9 @@ bsonToChat doc =
             settings_batch = fromJust $ M.lookup "settings_batch" settings_doc :: Bool,
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
             settings_batch_interval = M.lookup "settings_batch_interval" settings_doc :: Maybe NominalDiffTime,
-            settings_filters = Filters $ fromJust $ M.lookup "settings_blacklist" settings_doc
+            settings_filters = Filters 
+                (fromJust $ M.lookup "settings_blacklist" settings_doc)
+                (fromJust $ M.lookup "settings_whitelist" settings_doc)
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -179,6 +181,7 @@ chatToBson SubChat{..} =
     let last_notif_items = map (\i -> ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]) sub_last_notified
         settings = [
             "settings_blacklist" =: (filters_blacklist . settings_filters $ sub_settings),
+            "settings_whitelist" =: (filters_whitelist . settings_filters $ sub_settings),
             "settings_batch" =: settings_batch sub_settings,
             "settings_batch_size" =: settings_batch_size sub_settings,
             "settings_batch_interval" =: (realToFrac <$> settings_batch_interval sub_settings :: Maybe Double)

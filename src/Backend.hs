@@ -59,7 +59,7 @@ notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
                     filter (with_filters [blacklist, time_window]) $ items
             where
                 with_filters fs i = all ($ i) fs
-                blacklist i = not . any (`T.isInfixOf` i_desc i) $ filters_blacklist settings_filters
+                blacklist i = not . any (\l -> T.toCaseFold l `T.isInfixOf` i_desc i) $ filters_blacklist settings_filters
                 fresh i = last_time < i_pubdate i
                 time_window i = case settings_batch_interval of
                     Nothing -> fresh i
@@ -68,7 +68,7 @@ notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
 
 defaultFeedSettings :: FeedSettings
 defaultFeedSettings = FeedSettings {
-        settings_filters = Filters [],
+        settings_filters = Filters [] [],
         settings_batch = False,
         settings_batch_size = 15,
         settings_batch_interval = Just 9000
@@ -78,7 +78,10 @@ mergeFeedSettings :: UnParsedFeedSettings -> FeedSettings -> FeedSettings
 mergeFeedSettings keyvals orig =
     let keys = Map.keys keyvals
         updater = FeedSettings {
-            settings_filters = Filters $ maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals,
+            settings_filters = 
+                let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
+                    whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
+                in  Filters blacklist whitelist,
             settings_batch = maybe False (\t -> "true" `T.isInfixOf` t) $
                 Map.lookup "batch" keyvals,
             settings_batch_size =

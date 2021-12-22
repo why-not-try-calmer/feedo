@@ -63,11 +63,12 @@ type BlackList = [T.Text]
 
 type WhiteList = [T.Text]
 
-type FilteredWords = (BlackList, WhiteList)
-
 type FeedLink = T.Text
 
-newtype Filters = Filters { filters_blacklist :: BlackList } deriving (Show, Eq)
+data Filters = Filters { 
+    filters_blacklist :: [T.Text],
+    filters_whitelist :: [T.Text] 
+} deriving (Show, Eq)
 
 data FeedSettings = FeedSettings {
     settings_batch :: Bool,
