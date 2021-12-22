@@ -86,9 +86,8 @@ buildFeed ty url = do
                                     f_title = title,
                                     f_link = renderUrl url,
                                     f_items = items,
-                                    f_avgInterval = interval,
-                                    f_created = now,
-                                    f_lastRefresh = Just now,
+                                    f_avg_interval = interval,
+                                    f_last_refresh = Just now,
                                     f_reads = 0
                                 }
                         in  do
@@ -114,9 +113,8 @@ buildFeed ty url = do
                                     f_title = title,
                                     f_link = renderUrl url,
                                     f_items = items,
-                                    f_avgInterval = interval,
-                                    f_created = now,
-                                    f_lastRefresh = Just now,
+                                    f_avg_interval = interval,
+                                    f_last_refresh = Just now,
                                     f_reads = 0
                                 }
                         in  faultyOrValid url res
@@ -169,4 +167,4 @@ rebuildFeed key = case eitherUrlScheme key of
                 in pure $ Left faulty_key
             Right feed -> done feed
         Right feed -> done feed
-  where done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed {f_lastRefresh = Just now}
+  where done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed {f_last_refresh = Just now}

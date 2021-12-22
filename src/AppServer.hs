@@ -5,7 +5,7 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Control.Concurrent (newChan, newMVar, newEmptyMVar, putMVar, readMVar)
+import Control.Concurrent (newChan, newMVar, newEmptyMVar)
 import Control.Concurrent.Async (concurrently_)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
@@ -19,11 +19,10 @@ import Network.Wai.Handler.Warp
 import Replies (reply)
 import Responses
 import Servant
-import System.Environment
+import System.Environment ( getEnvironment )
 import TgActions
 import TgramInJson (Message (chat, from, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
-import Search (initSearchWith)
 
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
@@ -102,11 +101,7 @@ initStart config mb_urls = case mb_urls of
         putStrLn "Found urls. Trying to build feeds..."
         runApp config $ evalFeedsAct (InitF urls) >> startup
     where 
-        startup = evalFeedsAct LoadF >> initSearchEngine >> loadChats >> runRefresh >> runJobs
-        initSearchEngine = 
-            liftIO $ readMVar (feeds_state config) >>= \fs ->
-            putMVar (search_engine config) (initSearchWith $ HMS.elems fs) >>
-            putStrLn "Search engine initialized."
+        startup = evalFeedsAct LoadF >> loadChats >> runRefresh >> runJobs
         
 startApp :: IO ()
 startApp = do

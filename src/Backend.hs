@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Backend where
 
@@ -9,7 +10,7 @@ import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
-import Data.List (sortBy, foldl')
+import Data.List (foldl', sortBy)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
@@ -19,10 +20,10 @@ import Data.Time (NominalDiffTime, UTCTime, addUTCTime, diffUTCTime)
 import Data.Time.Clock.POSIX
 import Database (evalMongoAct)
 import Parser (getFeedFromHref, rebuildFeed)
+import Search (initSearchWith)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Utils (partitionEither, removeByUserIdx)
-import Search (initSearchWith)
 
 {- Subscriptions -}
 
@@ -40,17 +41,16 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
         in  diff < 0
 
 notificationBatches :: KnownFeeds -> SubChats -> UTCTime -> HMS.HashMap ChatId FeedItems
-notificationBatches feeds_hmap subs current_time =
-    HMS.foldl' (\notif chat ->
-        let subscribed_to = sub_feeds_links chat
-            relevant_chat_feeds = HMS.filter (\f -> f_link f `elem` subscribed_to) feeds_hmap
-            relevant_chat_items = HMS.foldl' (\acc f ->
-                let fresh_filtered = filterItemsWith (sub_settings chat) current_time (sub_last_notification chat) $ f_items f
-                in  if null fresh_filtered then acc else (f, fresh_filtered):acc) [] relevant_chat_feeds
-        in  if null relevant_chat_items then notif else HMS.insert (sub_chatid chat) relevant_chat_items notif
-    ) HMS.empty subs
+notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
+    let layer = HMS.foldl' (\hmapping c -> 
+            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping 
+            else
+                let v = (f, fresh_filtered c f)
+                in  HMS.alter (\case Nothing -> Just [v]; Just vs -> Just (v:vs))
+                        (sub_chatid c) hmapping) acc subs_hmap
+    in  HMS.union layer acc) HMS.empty feeds_hmap
     where
-        filterItemsWith :: FeedSettings -> UTCTime -> Maybe UTCTime -> [Item] -> [Item]
+        fresh_filtered c f = filterItemsWith (sub_settings c) t (sub_last_notification c) $ f_items f
         filterItemsWith _ _ Nothing items = items
         filterItemsWith FeedSettings{..} now (Just last_time) items =
             if      not settings_batch
@@ -78,7 +78,7 @@ mergeFeedSettings :: UnParsedFeedSettings -> FeedSettings -> FeedSettings
 mergeFeedSettings keyvals orig =
     let keys = Map.keys keyvals
         updater = FeedSettings {
-            settings_filters = Filters $ maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals,
+            settings_filters = Filters $ maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals,
             settings_batch = maybe False (\t -> "true" `T.isInfixOf` t) $
                 Map.lookup "batch" keyvals,
             settings_batch_size =
@@ -154,6 +154,11 @@ loadChats = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config ->
         DbChats chats -> pure . HMS.fromList . map (\c -> (sub_chatid c, c)) $ chats
         _ -> pure chats_hmap
 
+updateEngine :: MVar ([KeyedItem], FeedsSearch)-> [Feed] -> IO ()
+updateEngine mvar items =
+    let is_search = initSearchWith items
+    in  tryTakeMVar mvar >> putMVar mvar is_search
+
 evalFeedsAct :: MonadIO m => FeedsAction -> App m (FeedsRes a)
 evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> do
     res <- mapConcurrently getFeedFromHref start_urls
@@ -167,14 +172,18 @@ evalFeedsAct (InitF start_urls) = ask >>= \env -> liftIO $ readIORef (db_config 
 evalFeedsAct LoadF = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config ->
     evalMongoAct config Get100Feeds >>= \case
         DbFeeds feeds -> do
-            modifyMVar_ (feeds_state env) $ \_ -> pure . HMS.fromList $ map (\f -> (f_link f, f)) feeds
+            modifyMVar_ (feeds_state env) $ \_ ->
+                let feeds_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds 
+                in  updateEngine (search_engine env) feeds >> pure feeds_hmap
             pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
 evalFeedsAct (AddF feeds) = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \config -> do
     res <- liftIO . modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
         in  evalMongoAct config (UpsertFeeds feeds) >>= \case
-                DbOk -> pure (HMS.union user_hmap app_hmap, Just ())
+                DbOk -> 
+                    updateEngine (search_engine env) feeds >> 
+                    pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
         Nothing -> pure $ FeedsError FailedToStoreAll
@@ -189,7 +198,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
     res <- liftIO . modifyMVar (feeds_state env) $
     -- update chats MVar just in case we were able to produce an interesting result
         \feeds_hmap -> do
-            -- collecting HMap of feeds with any subscribers
+            -- collecting hmap of feeds with any subscribers
             let feeds_to_subs = HMS.foldl' (\hmap sub ->
                     let links = S.toList $ sub_feeds_links sub
                         cid = sub_chatid sub
@@ -201,7 +210,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
             let (failed, succeeded) = partitionEither eitherUpdated
                 updated_subscribed_to_feeds = HMS.fromList $
                     map (\f -> (f_link f, f)) succeeded
-                -- building HMap of chat_ids with the relevant feed & items
+                -- building hmap of chat_ids with the relevant feed & items
                 notif = notificationBatches updated_subscribed_to_feeds (HMS.filter (not . sub_is_paused) chats) now
                 -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
                 within_top100_reads =
@@ -216,18 +225,15 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
             -- saving to memory & db
             evalMongoAct config (UpsertFeeds succeeded) >>= \case
                 DbErr _ -> pure (feeds_hmap, Nothing)
-                _ ->
+                _ -> do
                     -- updating search engine on successful save to database.
-                    let is_search = initSearchWith $ HMS.elems to_keep_in_memory
-                        se = search_engine env
-                        upto l = T.pack . show $ diffUTCTime l now
-                    in  tryTakeMVar se >>
-                        putMVar se is_search >>
-                        getCurrentTime >>= \later ->
-                        writeChan (tasks_queue env)
-                            (Log $ LogItem later "evalMongoAct.UpserFeeds"
-                            ("Ran worker job (refreshing all feeds + search engine) in " `T.append` upto later) "info") >>
-                        pure (to_keep_in_memory, Just (notif, subbed_to))
+                    let upto l = T.pack . show $ diffUTCTime l now
+                    updateEngine (search_engine env) (HMS.elems to_keep_in_memory)
+                    later <- getCurrentTime
+                    writeChan (tasks_queue env)
+                        (Log $ LogItem later "evalMongoAct.UpserFeeds"
+                        ("Ran worker job (refreshing all feeds + search engine) in " `T.append` upto later) "info")
+                    pure (to_keep_in_memory, Just (notif, subbed_to))
     case res of
         Nothing -> pure . FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF"
         Just (notif, subbed_to) -> do

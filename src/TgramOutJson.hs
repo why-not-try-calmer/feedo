@@ -31,7 +31,8 @@ data Outbound
   = OutboundMessage
       { out_chat_id :: ChatId,
         out_text :: T.Text,
-        out_parse_mode :: Maybe T.Text
+        out_parse_mode :: Maybe T.Text,
+        out_disable_web_page_preview :: Bool
       }
   | SetWebHook
       { out_url :: T.Text,

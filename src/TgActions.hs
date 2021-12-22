@@ -1,7 +1,7 @@
 module TgActions where
 
 import AppTypes
-import Backend (tooManySubs, withChat, evalFeedsAct)
+import Backend (evalFeedsAct, tooManySubs, withChat)
 import Control.Concurrent (readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, void)
@@ -9,19 +9,19 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import Data.Char (isSpace)
 import qualified Data.HashMap.Strict as HMS
-import Data.List (sort, foldl')
+import Data.List (foldl', sort)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parser (eitherUrlScheme, getFeedFromHref)
-import Replies (FromContents (..), toReply, render)
+import Replies (FromContents (..), render, toReply)
 import Requests (reqSend, setWebhook)
+import Search (searchWith)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither)
-import Search (searchWith, initSearchWith)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -45,6 +45,9 @@ checkIfAdmin tok uid cid = do
                 | otherwise = False
             if_admin = foldr is_admin False chat_members
         pure if_admin
+
+exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
+exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
 parseUpdateLines :: [T.Text] -> Maybe UnParsedFeedSettings
 parseUpdateLines [] = Nothing
@@ -79,14 +82,14 @@ interpretCmd contents
     | cmd == "/pause" || cmd == "/p" = Right . Pause $ True
     | cmd == "/purge" = if not . null $ args then Left . BadInput $ "/purge takes no argument." else Right Purge
     | cmd == "/resume" = Right . Pause $ False
-    | cmd == "/search" || cmd == "/se" = 
+    | cmd == "/search" || cmd == "/se" =
         if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
         else Right . Search $ args
     | cmd == "/settings" || cmd == "/set" =
         if null args then Right GetSubFeedSettings else
         let body = tail . T.lines . T.toLower . T.strip $ contents
         in  case parseUpdateLines body of
-            Nothing -> Left . BadInput $ "Unable to parse settings update."
+            Nothing -> Left . BadInput $ "Unable to parse settings update. Did you forget to use linebreaks after /settings? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
             Just settings -> Right $ SetSubFeedSettings settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
     | cmd == "/sub" || cmd == "/s" =
@@ -110,7 +113,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
     else checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \verdict ->
         -- fails if caller not admin and chat is group chat
         if not verdict
-        then exitNotAuth
+        then exitNotAuth uid
         else liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->
             -- check url scheme
             case traverse eitherUrlScheme feeds_urls of
@@ -140,15 +143,13 @@ evalTgAct uid (Sub feeds_urls) cid = do
                                     in  pure . Right . PlainReply $ (if null failed then ok_text else T.append ok_text failed_text)
                             _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
     where
-        exitNotAuth = pure . Left . NotAdmin . T.pack . show $ uid
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \is_admin ->
-        if not is_admin then exitNotAuth
+        if not is_admin then exitNotAuth uid
         else withChat (UnSub feeds) cid >>= \case
         Left err -> pure . Left $ err
         Right _ -> pure . Right . PlainReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
-    where   exitNotAuth = pure . Left . NotAdmin . T.pack . show $ uid
 evalTgAct _ (GetItems ref) cid = do
     env <- ask
     let feeds_mvar = feeds_state env
@@ -198,23 +199,23 @@ evalTgAct _ ListSubs cid = do
                 else do
                 feeds_hmap <- liftIO (readMVar $ feeds_state env)
                 case traverse (`HMS.lookup` feeds_hmap) subs of
-                    Nothing -> pure . Left . NotFoundFeed $ 
+                    Nothing -> pure . Left . NotFoundFeed $
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right . toReply . FromChatFeeds c $ feeds
 evalTgAct _ RenderCmds _ = pure . Right . toReply $ FromStart
 evalTgAct _ (Search keywords) cid = ask >>= \env ->
     let get_chats = liftIO . readMVar $ subs_state env
-        search_from_subs subs = 
-            liftIO (readMVar $ search_engine env) >>= \(kitems, engine) -> 
+        search_from_subs subs =
+            liftIO (readMVar $ search_engine env) >>= \(kitems, engine) ->
                 let results = searchWith kitems keywords engine
-                in  pure $ foldl' (\acc kitem -> 
+                in  pure $ foldl' (\acc kitem ->
                         let i = item kitem
                         in  if i_feed_link i `elem` subs then acc ++ [i]
                             else acc) [] results
         prepare_reply res = pure . Right . MarkdownReply . render $ res
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
         Nothing -> pure . Right . PlainReply $ "This chat is not subscribed to any feed yet!"
-        Just c -> 
+        Just c ->
             let subs = S.toList . sub_feeds_links $ c
             in  if null subs
                 then pure . Right . PlainReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
@@ -243,15 +244,18 @@ evalTgAct _ GetSubFeedSettings cid = ask >>= liftIO . readMVar . subs_state >>= 
     case HMS.lookup cid hmap of
         Nothing -> pure . Left $ NotFoundChat
         Just ch -> pure . Right . PlainReply . render $ ch
-evalTgAct _ (SetSubFeedSettings settings) cid =
-    withChat (SetSubFeedSettings settings) cid >>= \case
-        Left _ -> pure . Right . PlainReply $ "Unable to udpate this chat settings"
-        Right _ -> pure . Right . PlainReply $ "Settings applied successfully."
+evalTgAct uid (SetSubFeedSettings settings) cid =
+    ask >>= \env ->
+    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \verdict ->
+    if not verdict then exitNotAuth uid
+    else withChat (SetSubFeedSettings settings) cid >>= \case
+    Left _ -> pure . Right . PlainReply $ "Unable to udpate this chat settings"
+    Right _ -> pure . Right . PlainReply $ "Settings applied successfully."
 evalTgAct _ (Pause pause_or_resume) cid =
     withChat (Pause pause_or_resume) cid >>= \case
         Left err -> pure . Right . PlainReply . renderUserError $ err
         Right _ -> pure . Right . PlainReply $ succeeded
     where
-        succeeded = 
+        succeeded =
             if pause_or_resume then "All notifications to this chat are now suspended. Use /resume to resume."
             else "Resuming notifications. This chat is receiving messages again."

@@ -44,9 +44,8 @@ instance Renderable Feed where
                 ("Type", T.pack $ show f_type),
                 ("Title", f_desc),
                 ("Current items", T.pack . show $ length f_items),
-                ("Avg. interval between items", renderAvgInterval f_avgInterval),
-                ("Created on", T.pack . show $ f_created),
-                ("Last refresh", maybe "None" (T.pack . show) f_lastRefresh),
+                ("Avg. interval between items", renderAvgInterval f_avg_interval),
+                ("Last refresh", maybe "None" (T.pack . show) f_last_refresh),
                 ("Total reads", T.pack . show $ f_reads)
             ]
 
@@ -132,7 +131,7 @@ renderCmds = T.intercalate "\n"
         "/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.\n",
         "/purge (*chat admins only*): Make the bot and associated database forget entirely about this chat.\n",
         "/search, /se `<space-separated keywords>`: Search all items of all feeds the current chat is subscribed to. Example:\n- `/se cheap cloud host`.\n",
-        "/settings, /set (*chat admins only*) `optional <line-separated key-value pairs>`: Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example:\n `/settings blacklist: Trump, bitcoin, crypto\nbatch: true\n,batch_size: 10\nbatch_interval: 9000`\n",
+        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example:\n `/settings\nblacklist: Trump, bitcoin, crypto\nbatch: true\n,batch_size: 10\nbatch_interval: 9000`\n",
         "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`: Subscribe the chat to the feeds -- if they exist -- passed as argument. Examples:\n- `/s 1 2 3`\n- `/sub https://www.compositional.fm/rss https://www.blabla.org/rss`.\n",
         "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:\n- `/u 1 2 3`\n- `/unsub https://www.compositional.fm/rss https://www.blabla.org/`."
     ] `T.append` "\n\nCheck out our channel for more info: https://t.me/feedfarer"
@@ -142,6 +141,6 @@ reply tok cid rep = liftIO $ send `catch` handler
     where
         non_empty txt = if T.null txt then "No result for this command." else txt
         send = case rep of
-            MarkdownReply txt -> void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) (Just "Markdown")
-            PlainReply txt -> void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) Nothing
+            MarkdownReply txt -> void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) (Just "Markdown") True
+            PlainReply txt -> void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) Nothing False
         handler (SomeException e) = putStrLn $ "Found exception in trying to reply: " ++ show e

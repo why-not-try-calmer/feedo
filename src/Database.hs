@@ -131,9 +131,8 @@ feedToBson Feed {..} =
         "f_title" =: f_title,
         "f_link" =: f_link,
         "f_items" =: map itemToBson f_items,
-        "f_avgInterval" =: (realToFrac <$> f_avgInterval :: Maybe Double),
-        "f_created" =: f_created,
-        "f_lastRefresh" =: f_lastRefresh,
+        "f_avg_interval" =: (realToFrac <$> f_avg_interval :: Maybe Double),
+        "f_last_refresh" =: f_last_refresh,
         "f_reads" =: f_reads
     ]
 
@@ -147,9 +146,8 @@ bsonToFeed doc =
             f_title = fromJust $ M.lookup "f_title" doc,
             f_link = fromJust $ M.lookup "f_link" doc,
             f_items = items,
-            f_avgInterval = M.lookup "f_avgInterval" doc,
-            f_created = fromJust $ M.lookup "f_created" doc,
-            f_lastRefresh = M.lookup "f_desc" doc,
+            f_avg_interval = M.lookup "f_avgInterval" doc,
+            f_last_refresh = M.lookup "f_desc" doc,
             f_reads = fromJust $ M.lookup "f_reads" doc
         }
 

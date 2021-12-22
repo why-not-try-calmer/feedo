@@ -3,11 +3,12 @@ module Utils where
 import Data.List (foldl', sort)
 
 partitionEither :: [Either a b] -> ([a], [b])
-partitionEither = foldl' partition ([],[])
+partitionEither = foldl' step ([],[])
     where
-        partition (ls, rs) val = case val of
-            Left l -> (l:ls, rs)
-            Right r -> (ls, r:rs)
+        step (!ls, !rs) val = 
+            case val of
+            Left l -> (ls++[l], rs)
+            Right r -> (ls, rs++[r])
 
 maybeUserIdx :: [a] -> Int -> Maybe a
 maybeUserIdx [] _ = Nothing
@@ -22,12 +23,13 @@ removeByUserIdx :: [a] -> [Int] -> Maybe [a]
 removeByUserIdx [] _ = Nothing
 removeByUserIdx _ [] = Nothing
 removeByUserIdx ls is =
-    let adjusted = sort . map (\i -> i-1) $ is
-    in  if any (\i -> i >= length ls || i < 0) adjusted then Nothing
-        else go [] 0 ls adjusted
-        where
-            go acc _ rest [] = Just (acc++rest)
-            go acc _ [] _ = Just acc
-            go !acc !n (l:ls') (i:is') =
-                if n == i then go acc (n+1) ls' is'
-                else go (acc++[l]) (n+1) ls' (i:is')
+    if any (\i -> i >= length ls || i < 0) adjusted
+    then Nothing
+    else rm [] 0 ls adjusted
+    where
+        adjusted = sort . map (\i -> i-1) $ is
+        rm acc _ [] _ = Just acc
+        rm acc _ rest [] = Just (acc++rest)
+        rm !acc !n (l:ls') (i:is') =
+            if n == i then rm acc (n+1) ls' is'
+            else rm (acc++[l]) (n+1) ls' (i:is')

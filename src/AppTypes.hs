@@ -49,9 +49,8 @@ data Feed = Feed
     f_title :: T.Text,
     f_link :: T.Text,
     f_items :: [Item],
-    f_avgInterval :: Maybe NominalDiffTime,
-    f_created :: UTCTime,
-    f_lastRefresh :: Maybe UTCTime,
+    f_avg_interval :: Maybe NominalDiffTime,
+    f_last_refresh :: Maybe UTCTime,
     f_reads :: Int
   }
   deriving (Eq, Show)
