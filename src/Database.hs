@@ -164,8 +164,8 @@ bsonToChat doc =
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
             settings_batch_interval = M.lookup "settings_batch_interval" settings_doc :: Maybe NominalDiffTime,
             settings_filters = Filters 
-                (fromJust $ M.lookup "settings_blacklist" settings_doc)
-                (fromJust $ M.lookup "settings_whitelist" settings_doc)
+                (fromMaybe [] $ M.lookup "settings_blacklist" settings_doc)
+                (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc)
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
