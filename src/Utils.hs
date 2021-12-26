@@ -15,7 +15,7 @@ import TgramOutJson (ChatId)
 partitionEither :: [Either a b] -> ([a], [b])
 partitionEither = foldl' step ([],[])
     where
-        step (!ls, !rs) val = 
+        step (!ls, !rs) val =
             case val of
             Left l -> (ls++[l], rs)
             Right r -> (ls, rs++[r])
@@ -54,11 +54,13 @@ freshLastXDays days now items =
 
 findNextInterval :: [(Int, Int)] -> UTCTime -> Maybe NominalDiffTime
 findNextInterval [] _ = Nothing
-findNextInterval ts now = 
+findNextInterval ts now =
     let from_midnight = realToFrac $ utctDayTime now
-        (h, m) = head $ sortOn fst ts
-        next = realToFrac $ h * 3600 + m * 60
-    in  if from_midnight < next then Just (next - from_midnight) else Just 0
+        times = map (\(h, m) ->
+            let t = realToFrac $ h * 3600 + m * 60
+            in  if from_midnight < t then t - from_midnight else 0
+            ) ts
+    in  Just . minimum $ times
 
 tooManySubs :: Int -> SubChats -> ChatId -> Bool
 tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
