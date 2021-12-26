@@ -1,16 +1,14 @@
 module TgActions where
 
 import AppTypes
-import Backend (evalFeedsAct, tooManySubs, withChat)
+import Backend (evalFeedsAct, withChat)
 import Control.Concurrent (readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
-import Data.Char (isSpace)
 import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl', sort)
-import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Network.HTTP.Req (renderUrl, responseBody)
@@ -21,7 +19,7 @@ import Search (searchWith)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
-import Utils (maybeUserIdx, partitionEither)
+import Utils (maybeUserIdx, partitionEither, parseUpdateSettings, tooManySubs)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -48,16 +46,6 @@ checkIfAdmin tok uid cid = do
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
-
-parseUpdateLines :: [T.Text] -> Maybe UnParsedFeedSettings
-parseUpdateLines [] = Nothing
-parseUpdateLines lns = Map.fromList <$> foldr step Nothing lns where
-    step l acc =
-        let (k:ss) = T.splitOn ":" $ clean_ln l
-        in  if null ss then Nothing else case acc of
-            Nothing -> Just [(k, last ss)]
-            Just p -> Just $ (k, last ss):p
-    clean_ln l = T.filter (not . isSpace) . T.strip $ l
 
 interpretCmd :: T.Text -> Either UserError UserAction
 interpretCmd contents
@@ -88,7 +76,7 @@ interpretCmd contents
     | cmd == "/settings" || cmd == "/set" =
         if null args then Right GetSubFeedSettings else
         let body = tail . T.lines . T.toLower . T.strip $ contents
-        in  case parseUpdateLines body of
+        in  case parseUpdateSettings body of
             Nothing -> Left . BadInput $ "Unable to parse settings update. Did you forget to use linebreaks after /settings? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
             Just settings -> Right $ SetSubFeedSettings settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds

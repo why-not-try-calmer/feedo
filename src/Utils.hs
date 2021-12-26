@@ -1,6 +1,16 @@
 module Utils where
 
-import Data.List (foldl', sort)
+import AppTypes
+import Data.Char (isSpace)
+import qualified Data.HashMap.Strict as HMS
+import Data.List (foldl', sort, sortOn)
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+import Data.Time (NominalDiffTime, UTCTime (utctDayTime))
+import Data.Time.Clock.POSIX
+import TgramOutJson (ChatId)
+
+{- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
 partitionEither = foldl' step ([],[])
@@ -33,3 +43,39 @@ removeByUserIdx ls is =
         rm !acc !n (l:ls') (i:is') =
             if n == i then rm acc (n+1) ls' is'
             else rm (acc++[l]) (n+1) ls' (i:is')
+
+{- Time -}
+
+freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]
+freshLastXDays days now items =
+    let x = fromIntegral $ days * 86400
+        x_days_ago = posixSecondsToUTCTime $ utcTimeToPOSIXSeconds now - x
+    in  filter (\i -> i_pubdate i > x_days_ago) items
+
+findNextInterval :: [(Int, Int)] -> UTCTime -> Maybe NominalDiffTime
+findNextInterval [] _ = Nothing
+findNextInterval ts now = 
+    let from_midnight = realToFrac $ utctDayTime now
+        (h, m) = head $ sortOn fst ts
+        next = realToFrac $ h * 3600 + m * 60
+    in  if from_midnight < next then Just (next - from_midnight) else Just 0
+
+tooManySubs :: Int -> SubChats -> ChatId -> Bool
+tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
+    Nothing -> False
+    Just chat ->
+        let diff = upper_bound - length (sub_feeds_links chat)
+        in  diff < 0
+
+{- Update settings -}
+
+parseUpdateSettings :: [T.Text] -> Maybe ParsedChatSettings
+parseUpdateSettings [] = Nothing
+parseUpdateSettings lns = Map.fromList <$> foldr step Nothing lns
+    where
+    step l acc =
+        let (k:ss) = T.splitOn ":" $ clean_ln l
+        in  if null ss then Nothing else case acc of
+            Nothing -> Just [(k, last ss)]
+            Just p -> Just $ (k, last ss):p
+    clean_ln l = T.filter (not . isSpace) . T.strip $ l

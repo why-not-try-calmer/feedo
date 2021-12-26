@@ -70,10 +70,12 @@ data Filters = Filters {
     filters_whitelist :: [T.Text] 
 } deriving (Show, Eq)
 
-data FeedSettings = FeedSettings {
+data BatchInterval = Secs NominalDiffTime | HM [(Int, Int)] deriving (Eq, Show)
+
+data ChatSettings = ChatSettings {
     settings_batch :: Bool,
     settings_batch_size :: Int,
-    settings_batch_interval :: Maybe NominalDiffTime,
+    settings_batch_interval :: BatchInterval,
     settings_filters :: Filters
 } deriving (Show, Eq)
 
@@ -82,7 +84,7 @@ data SubChat = SubChat
     sub_last_notified :: [Item],
     sub_last_notification :: Maybe UTCTime,
     sub_feeds_links :: S.Set FeedLink,
-    sub_settings :: FeedSettings,
+    sub_settings :: ChatSettings,
     sub_is_paused :: Bool
 } deriving (Show, Eq)
 
@@ -116,7 +118,7 @@ toFeedRef ss
 
 {- User actions, errors -}
 
-type UnParsedFeedSettings = Map.Map T.Text T.Text
+type ParsedChatSettings = Map.Map T.Text T.Text
 
 data UserAction
   = Sub [T.Text]
@@ -128,7 +130,7 @@ data UserAction
   | GetSubFeedSettings
   | Pause Bool
   | Search [T.Text]
-  | SetSubFeedSettings UnParsedFeedSettings
+  | SetSubFeedSettings ParsedChatSettings
   | RenderCmds
   | Purge
   deriving (Eq, Show)

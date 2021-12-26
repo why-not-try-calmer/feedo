@@ -23,22 +23,7 @@ import Parser (getFeedFromHref, rebuildFeed)
 import Search (initSearchWith)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import Utils (partitionEither, removeByUserIdx)
-
-{- Subscriptions -}
-
-freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]
-freshLastXDays days now items =
-    let x = fromIntegral $ days * 86400
-        x_days_ago = posixSecondsToUTCTime $ utcTimeToPOSIXSeconds now - x
-    in  filter (\i -> i_pubdate i > x_days_ago) items
-
-tooManySubs :: Int -> SubChats -> ChatId -> Bool
-tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
-    Nothing -> False
-    Just chat ->
-        let diff = upper_bound - length (sub_feeds_links chat)
-        in  diff < 0
+import Utils (partitionEither, removeByUserIdx, freshLastXDays, findNextInterval)
 
 notificationBatches :: KnownFeeds -> SubChats -> UTCTime -> HMS.HashMap ChatId FeedItems
 notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
@@ -52,32 +37,34 @@ notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
     where
         fresh_filtered c f = filterItemsWith (sub_settings c) t (sub_last_notification c) $ f_items f
         filterItemsWith _ _ Nothing items = items
-        filterItemsWith FeedSettings{..} now (Just last_time) items =
+        filterItemsWith ChatSettings{..} now (Just last_time) items =
             if      not settings_batch
             then    filter (with_filters [blacklist, fresh]) items
             else    take size .
                     filter (with_filters [blacklist, time_window]) $ items
             where
                 with_filters fs i = all ($ i) fs
-                blacklist i = not . any (\l -> T.toCaseFold l `T.isInfixOf` i_desc i) $ filters_blacklist settings_filters
+                blacklist i = not . any (\l -> T.toCaseFold l `T.isInfixOf` (i_desc i `T.append` i_link i)) $ filters_blacklist settings_filters
                 fresh i = last_time < i_pubdate i
                 time_window i = case settings_batch_interval of
-                    Nothing -> fresh i
-                    Just d -> now < addUTCTime d (i_pubdate i)
+                    Secs d -> now < addUTCTime d (i_pubdate i)
+                    HM hms -> case findNextInterval hms now of
+                        Nothing -> fresh i
+                        Just n -> now < addUTCTime n (i_pubdate i)
                 size = if settings_batch_size == 0 then length items else settings_batch_size
 
-defaultFeedSettings :: FeedSettings
-defaultFeedSettings = FeedSettings {
+defaultFeedSettings :: ChatSettings
+defaultFeedSettings = ChatSettings {
         settings_filters = Filters [] [],
         settings_batch = False,
         settings_batch_size = 15,
-        settings_batch_interval = Just 9000
+        settings_batch_interval = Secs 9000
     }
 
-mergeFeedSettings :: UnParsedFeedSettings -> FeedSettings -> FeedSettings
-mergeFeedSettings keyvals orig =
+mergeSettings :: ParsedChatSettings -> ChatSettings -> ChatSettings
+mergeSettings keyvals orig =
     let keys = Map.keys keyvals
-        updater = FeedSettings {
+        updater = ChatSettings {
             settings_filters = 
                 let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
                     whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
@@ -88,9 +75,22 @@ mergeFeedSettings keyvals orig =
                 let mbread = readMaybe . T.unpack =<<
                         Map.lookup "batch_size" keyvals
                 in  fromMaybe 10 mbread,
-            settings_batch_interval = maybe (Just 9000) (\t ->
-                let res = realToFrac <$> (readMaybe . T.unpack $ t :: Maybe Integer) :: Maybe NominalDiffTime
-                in  res) $ Map.lookup "batch_interval" keyvals
+            settings_batch_interval = 
+                let dflt = Secs 9000
+                    delim = "."
+                in  case Map.lookup "batch_interval" keyvals of
+                    Nothing -> Secs 9000
+                    Just txt ->
+                        if delim `T.isInfixOf` txt then
+                            let datetimes = T.splitOn "," txt
+                                collected = foldr (\str acc -> 
+                                    case traverse (readMaybe . T.unpack) $ T.splitOn delim str of
+                                    Just hm -> if length hm /= 2 then [] else acc ++ [(head hm, last hm)]
+                                    Nothing -> []) [] datetimes
+                            in if null collected then dflt else HM collected
+                        else 
+                            let s = realToFrac <$> (readMaybe . T.unpack $ txt :: Maybe NominalDiffTime)
+                            in  maybe dflt Secs s
         }
     in  orig {
             settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
@@ -136,7 +136,7 @@ withChat action cid = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \co
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetSubFeedSettings unparsed ->
-                let updated_settings = mergeFeedSettings unparsed $ sub_settings c
+                let updated_settings = mergeSettings unparsed $ sub_settings c
                     updated_c = c { sub_settings = updated_settings }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                 in  evalMongoAct config (UpsertChat updated_c) >>= \case

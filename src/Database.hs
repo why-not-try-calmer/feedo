@@ -1,10 +1,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds #-}
 
 module Database where
 
-import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), FeedSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist, filters_whitelist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError)
+import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), ChatSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist, filters_whitelist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError, BatchInterval (HM, Secs))
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
@@ -159,10 +162,26 @@ bsonToChat doc =
         items = map (\i -> Item (fromJust $ M.lookup "i_title" i) (fromJust $ M.lookup "i_desc" i) (fromJust $ M.lookup "i_link" i) (fromJust $ M.lookup "i_feed_link" i) (fromJust $ M.lookup "i_pubdate" i)) raw_items
         feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
-        feeds_settings_docs = FeedSettings {
+        feeds_settings_docs = ChatSettings {
             settings_batch = fromJust $ M.lookup "settings_batch" settings_doc :: Bool,
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
-            settings_batch_interval = M.lookup "settings_batch_interval" settings_doc :: Maybe NominalDiffTime,
+            settings_batch_interval = 
+                let raw_value = M.lookup "settings_batch_interval_secs" settings_doc :: Maybe NominalDiffTime
+                    hm_docs = M.lookup "settings_batch_interval_hm" settings_doc :: Maybe [Document]
+                    dflt = Secs 9000
+                in  case raw_value of 
+                    Nothing -> case hm_docs of
+                        Nothing -> Secs 9000
+                        Just docs -> 
+                            let collected = foldr (\d acc -> 
+                                    let h = M.lookup "hour" d :: Maybe Int
+                                        m = M.lookup "minute" d :: Maybe Int
+                                    in  case sequence [h, m] of 
+                                        Nothing -> []
+                                        Just hm -> acc ++ [(head hm, last hm)]) [] docs
+                            in  if null collected then dflt 
+                                else HM collected
+                    Just xs -> Secs xs,
             settings_filters = Filters 
                 (fromMaybe [] $ M.lookup "settings_blacklist" settings_doc)
                 (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc)
@@ -179,13 +198,15 @@ bsonToChat doc =
 chatToBson :: SubChat -> Document
 chatToBson SubChat{..} =
     let last_notif_items = map (\i -> ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]) sub_last_notified
-        settings = [
+        settings' = [
             "settings_blacklist" =: (filters_blacklist . settings_filters $ sub_settings),
             "settings_whitelist" =: (filters_whitelist . settings_filters $ sub_settings),
             "settings_batch" =: settings_batch sub_settings,
-            "settings_batch_size" =: settings_batch_size sub_settings,
-            "settings_batch_interval" =: (realToFrac <$> settings_batch_interval sub_settings :: Maybe Double)
+            "settings_batch_size" =: settings_batch_size sub_settings
             ]
+        settings = case settings_batch_interval sub_settings of
+            Secs xs -> settings' ++ ["settings_batch_interval_secs" =: xs]
+            HM hm -> settings' ++ ["settings_batch_interval_hm" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm]
     in  [
             "sub_chatid" =: sub_chatid,
             "sub_last_notified" =: last_notif_items,
