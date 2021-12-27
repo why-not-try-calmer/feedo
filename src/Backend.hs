@@ -27,8 +27,8 @@ import Utils (partitionEither, removeByUserIdx, freshLastXDays, findNextInterval
 
 notificationBatches :: KnownFeeds -> SubChats -> UTCTime -> HMS.HashMap ChatId FeedItems
 notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
-    let layer = HMS.foldl' (\hmapping c -> 
-            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping 
+    let layer = HMS.foldl' (\hmapping c ->
+            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping
             else
                 let v = (f, fresh_filtered c f)
                 in  HMS.alter (\case Nothing -> Just [v]; Just vs -> Just (v:vs))
@@ -65,7 +65,7 @@ mergeSettings :: ParsedChatSettings -> ChatSettings -> ChatSettings
 mergeSettings keyvals orig =
     let keys = Map.keys keyvals
         updater = ChatSettings {
-            settings_filters = 
+            settings_filters =
                 let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
                     whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
                 in  Filters blacklist whitelist,
@@ -75,22 +75,24 @@ mergeSettings keyvals orig =
                 let mbread = readMaybe . T.unpack =<<
                         Map.lookup "batch_size" keyvals
                 in  fromMaybe 10 mbread,
-            settings_batch_interval = 
+            settings_batch_interval =
                 let dflt = Secs 9000
                     delim = "."
-                in  case Map.lookup "batch_interval" keyvals of
-                    Nothing -> Secs 9000
-                    Just txt ->
-                        if delim `T.isInfixOf` txt then
-                            let datetimes = T.splitOn "," txt
-                                collected = foldr (\str acc -> 
-                                    case traverse (readMaybe . T.unpack) $ T.splitOn delim str of
-                                    Just hm -> if length hm /= 2 then [] else acc ++ [(head hm, last hm)]
-                                    Nothing -> []) [] datetimes
-                            in if null collected then dflt else HM collected
-                        else 
-                            let s = realToFrac <$> (readMaybe . T.unpack $ txt :: Maybe NominalDiffTime)
-                            in  maybe dflt Secs s
+                in  case Map.lookup "batch_every" keyvals of
+                    Nothing -> case Map.lookup "batch_at" keyvals of
+                        Nothing -> dflt
+                        Just txt ->
+                            if delim `T.isInfixOf` txt then
+                                let datetimes = T.splitOn "," txt
+                                    collected = foldr (\str acc ->
+                                        case traverse (readMaybe . T.unpack) $ T.splitOn delim str of
+                                        Just hm -> if length hm /= 2 then [] else acc ++ [(head hm, last hm)]
+                                        Nothing -> []) [] datetimes
+                                in if null collected then dflt else HM collected
+                            else
+                                let s = realToFrac <$> (readMaybe . T.unpack $ txt :: Maybe NominalDiffTime)
+                                in  maybe dflt Secs s
+                    Just mbint -> maybe dflt Secs (readMaybe . T.unpack $ mbint)
         }
     in  orig {
             settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
@@ -126,10 +128,10 @@ withChat action cid = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \co
                 else
                     if null byurls then case removeByUserIdx (S.toList . sub_feeds_links $ c) byids of
                     Nothing -> pure (hmap, Left . BadInput $ "Invalid references. Make sure to use /list to get a list of valid references.")
-                    Just removed -> 
+                    Just removed ->
                         let updated_c = c { sub_feeds_links = S.fromList removed }
                         in  update_db updated_c
-                    else 
+                    else
                         let updated_c = c { sub_feeds_links = S.filter (`notElem` byurls) $ sub_feeds_links c}
                         in  update_db updated_c
             Purge -> evalMongoAct config (DeleteChat cid) >>= \case
@@ -176,7 +178,7 @@ evalFeedsAct LoadF = ask >>= \env -> liftIO $ readIORef (db_config env) >>= \con
     evalMongoAct config Get100Feeds >>= \case
         DbFeeds feeds -> do
             modifyMVar_ (feeds_state env) $ \_ ->
-                let feeds_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds 
+                let feeds_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
                 in  updateEngine (search_engine env) feeds >> pure feeds_hmap
             pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
@@ -184,8 +186,8 @@ evalFeedsAct (AddF feeds) = ask >>= \env -> liftIO $ readIORef (db_config env) >
     res <- liftIO . modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
         in  evalMongoAct config (UpsertFeeds feeds) >>= \case
-                DbOk -> 
-                    updateEngine (search_engine env) feeds >> 
+                DbOk ->
+                    updateEngine (search_engine env) feeds >>
                     pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of

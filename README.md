@@ -28,7 +28,6 @@ __Getting started__:
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). The bot listens only to messages using commands defined for it.
 2. Subscribe the chat and have fun with the other commands. By default updates are checked and posted every 20 minutes.
 
-
 ## Deployment 
 The bot relies upon the Haskell `warp` server. By default it provides an endpoint at `https://<your.nice.domain>/webhook/bot<your token>` handling inbound and outbound HTTP requests from / to Telegram services via webhooks (only webhooks are supported as they provide a more resource-efficient communication method). 
 
