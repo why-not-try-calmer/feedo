@@ -11,6 +11,7 @@ import Data.SearchEngine
       SearchConfig(..),
       SearchRankParameters(..) )
 import qualified Data.Text as T
+import NLP.Tokenize.Text
 
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
 defaultSearchRankParameters =
@@ -35,7 +36,7 @@ defaultSearchConfig =
         documentFeatureValue = const noFeatures
     }
     where
-        xtract (KeyedItem _ i) _ = T.words $ i_title i `T.append` " " `T.append` i_desc i
+        xtract (KeyedItem _ i) _ = tokenize (i_title i) ++ tokenize (i_desc i)
         xform t _ = T.toCaseFold t
 
 initSearchWith :: [Feed] -> ([KeyedItem], FeedsSearch)

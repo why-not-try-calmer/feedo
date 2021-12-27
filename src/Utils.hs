@@ -3,7 +3,7 @@ module Utils where
 import AppTypes
 import Data.Char (isSpace)
 import qualified Data.HashMap.Strict as HMS
-import Data.List (foldl', sort, sortOn)
+import Data.List (foldl', sort)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime (utctDayTime))

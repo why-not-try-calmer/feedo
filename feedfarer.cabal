@@ -62,6 +62,7 @@ library
     , servant-server
     , text
     , time
+    , tokenize
     , unordered-containers
     , wai
     , warp
@@ -94,6 +95,7 @@ executable feedfarer-exe
     , servant-server
     , text
     , time
+    , tokenize
     , unordered-containers
     , wai
     , warp
@@ -127,6 +129,7 @@ test-suite feedfarer-test
     , servant-server
     , text
     , time
+    , tokenize
     , unordered-containers
     , wai
     , warp
