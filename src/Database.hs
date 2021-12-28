@@ -21,6 +21,28 @@ import Data.Time (NominalDiffTime, UTCTime)
 import TgramOutJson (ChatId)
 import qualified Data.HashMap.Strict as HMS
 
+{- Interface -}
+
+class Monad m => DbM m where
+    evalDbAct :: DbCreds -> DbAction -> m (DbRes a)
+    -- this needs an abstract notion of a connector/handle
+        -- runDb
+    -- this needs an abstraction notion of a database monadic action
+        -- withDb :: DbCreds -> Action m a -> m a
+
+{- Terms -}
+
+instance MonadIO m => DbM (App m) where
+    evalDbAct = evalMongoAct
+
+runMongo :: MonadIO m => Pipe -> Action m a -> m a
+runMongo pipe = access pipe master "feedfarer"
+
+withMongo :: MonadIO m => DbCreds -> Action m a -> m a
+withMongo config action = createPipe config >>= \case
+    Left _ -> liftIO $ throwIO . userError $ "No Pipe!"
+    Right pipe -> runMongo pipe action
+
 {- Connection -}
 
 initMongoCredsFrom :: T.Text -> T.Text -> DbCreds
@@ -41,25 +63,9 @@ createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNum
         then pure . Right $ pipe
         else pure . Left $ DbLoginFailed
 
-runMongo :: MonadIO m => Pipe -> Action m a -> m a
-runMongo pipe = access pipe master "feedfarer"
+{- Actions -}
 
-withMongo :: MonadIO m => DbCreds -> Action m a -> m a
-withMongo config action = createPipe config >>= \case
-    Left _ -> liftIO $ throwIO . userError $ "No Pipe!"
-    Right pipe -> runMongo pipe action
-
-class Db m where
-    evalDbAct :: DbCreds -> DbAction -> m (DbRes a)
-    {- this needs an abstract notion of a connector/handle -}
-    -- runDb
-    {- this needs an abstraction notion of a database monadic action -}
-    -- withDb :: DbCreds -> Action m a -> m a
-
-instance MonadIO m => Db (App m) where
-    evalDbAct = evalMongoAct
-
-evalMongoAct :: (MonadIO m, Db m) => DbCreds -> DbAction -> m (DbRes a)
+evalMongoAct :: MonadIO m => DbCreds -> DbAction -> App m (DbRes a)
 evalMongoAct creds (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
     in  withMongo creds $ updateAll "feeds" selector >>= \res ->
