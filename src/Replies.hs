@@ -141,11 +141,13 @@ reply tok cid rep = liftIO $ send `catch` handler
     where
         non_empty txt = if T.null txt then "No result for this command." else txt
         send = case rep of
-            MarkdownReply txt -> 
-                if T.length txt < 4096
+            MarkdownReply txt -> void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) (Just "Markdown") True
+                {-
+                if T.length txt > 4096
                 then void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) (Just "Markdown") True
                 else 
                     let (f, s) = T.splitAt (T.length txt `div` 2) txt
                     in  forM_ [f, s] $ \t -> reqSend_ tok "sendMessage" $ OutboundMessage cid t (Just "Markdown") True
+                -}
             PlainReply txt -> void . reqSend_ tok "sendMessage" $ OutboundMessage cid (non_empty txt) Nothing False
         handler (SomeException e) = putStrLn $ "Found exception in trying to reply: " ++ show e

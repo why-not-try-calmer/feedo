@@ -51,9 +51,10 @@ withMongo config action = createPipe config >>= \case
 
 class Db m where
     evalDbAct :: DbCreds -> DbAction -> m (DbRes a)
-    -- To complete when I have more time
+    {- this needs an abstract notion of a connector/handle -}
     -- runDb
-    -- withDb
+    {- this needs an abstraction notion of a database monadic action -}
+    -- withDb :: DbCreds -> Action m a -> m a
 
 instance MonadIO m => Db (App m) where
     evalDbAct = evalMongoAct
