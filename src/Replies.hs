@@ -50,7 +50,14 @@ instance Renderable Feed where
             ]
 
 instance Renderable SubChat where
-    render SubChat{..} = T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
+    render SubChat{..} = 
+        let interval = 
+                case settings_batch_interval sub_settings of
+                    HM vals -> "every day at " `T.append` foldl' (\s (!h, !m) ->
+                        let body = (T.pack . show $ h) `T.append` ":" `T.append` (T.pack . show $ m)
+                        in  s `T.append` body) mempty vals
+                    Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` "seconds."
+        in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
         [   ("Chat_Id", T.pack . show $ sub_chatid),
             ("Status", if sub_is_paused then "paused" else "active"),
             ("Last notification", T.pack . show $ sub_last_notification),
@@ -58,7 +65,7 @@ instance Renderable SubChat where
             ("Blacklist", T.pack . show . filters_blacklist . settings_filters $ sub_settings),
             ("Batch", T.pack . show . settings_batch $ sub_settings),
             ("Batch size", T.pack . show . settings_batch_size $ sub_settings),
-            ("Batch interval", T.pack . show . settings_batch_interval $ sub_settings)
+            ("Batch interval", interval)
         ]
 
 instance Renderable [Item] where
