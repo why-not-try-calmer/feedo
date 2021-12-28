@@ -6,7 +6,7 @@ module Replies (render, Reply(..), reply, toReply, FromContents(..)) where
 
 import AppTypes
 import Control.Exception
-import Control.Monad (void, forM_)
+import Control.Monad (void)
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
 import Data.List (sortBy)
