@@ -5,7 +5,7 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Control.Concurrent (newChan, newMVar, newEmptyMVar)
+import Control.Concurrent (newChan, newEmptyMVar, newMVar)
 import Control.Concurrent.Async (concurrently_)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
@@ -19,7 +19,7 @@ import Network.Wai.Handler.Warp
 import Replies (reply)
 import Responses
 import Servant
-import System.Environment ( getEnvironment )
+import System.Environment (getEnvironment)
 import TgActions
 import TgramInJson (Message (chat, from, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)

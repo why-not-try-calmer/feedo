@@ -7,7 +7,7 @@
 
 module Database where
 
-import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), ChatSettings(..), FeedType (..), Item (..), MongoCreds (..), SubChat (..), Filters (Filters, filters_blacklist, filters_whitelist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError, BatchInterval (HM, Secs))
+import AppTypes (DbAction (..), DbError (..), DbRes (..), Feed (..), ChatSettings(..), FeedType (..), Item (..), DbCreds (..), SubChat (..), Filters (Filters, filters_blacklist, filters_whitelist), FeedLink, LogItem (log_type, log_when, log_who, log_what), renderDbError, BatchInterval (HM, Secs), App)
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
@@ -23,14 +23,14 @@ import qualified Data.HashMap.Strict as HMS
 
 {- Connection -}
 
-initMongoCredsFrom :: T.Text -> T.Text -> MongoCreds
+initMongoCredsFrom :: T.Text -> T.Text -> DbCreds
 -- FIX ME: MongoAtlas tends to shuffle around the role of 'primary' versus 'secondary' shard
 -- Make sure to call selectOK to avoid failing to authenticate
 initMongoCredsFrom h whole_line =
     let [host_name, db_name, password] = T.splitOn ":" h
     in MongoCreds host_name whole_line db_name password
 
-createPipe :: MonadIO m => MongoCreds -> m (Either DbError Pipe)
+createPipe :: MonadIO m => DbCreds -> m (Either DbError Pipe)
 createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNumber 27017)) >>= \case
     Left (SomeException e) -> do
         putStrLn ("Error while trying to connect: " ++ show e)
@@ -44,12 +44,21 @@ createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNum
 runMongo :: MonadIO m => Pipe -> Action m a -> m a
 runMongo pipe = access pipe master "feedfarer"
 
-withMongo :: MonadIO m => MongoCreds -> Action m a -> m a
+withMongo :: MonadIO m => DbCreds -> Action m a -> m a
 withMongo config action = createPipe config >>= \case
     Left _ -> liftIO $ throwIO . userError $ "No Pipe!"
     Right pipe -> runMongo pipe action
 
-evalMongoAct :: MonadIO m => MongoCreds -> DbAction -> m (DbRes a)
+class Db m where
+    evalDbAct :: DbCreds -> DbAction -> m (DbRes a)
+    -- To complete when I have more time
+    -- runDb
+    -- withDb
+
+instance MonadIO m => Db (App m) where
+    evalDbAct = evalMongoAct
+
+evalMongoAct :: (MonadIO m, Db m) => DbCreds -> DbAction -> m (DbRes a)
 evalMongoAct creds (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
     in  withMongo creds $ updateAll "feeds" selector >>= \res ->
@@ -95,7 +104,7 @@ evalMongoAct creds (IncReads links) =
 
 -- evalMongoAct creds _ = pure DbOk
 
-getValidCreds :: MongoCreds -> IO MongoCreds
+getValidCreds :: DbCreds -> IO DbCreds
 getValidCreds creds = folded >>= \(Just new_creds) -> pure new_creds
     where
         folded = foldr check (pure Nothing) (T.splitOn ";" $ all_shards creds)
@@ -223,7 +232,7 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 
 {- Logs -}
 
-saveToLog :: MonadIO m => MongoCreds -> LogItem -> m ()
+saveToLog :: MonadIO m => DbCreds -> LogItem -> m ()
 saveToLog creds item = liftIO (try . withMongo creds $ insert "logs" doc :: IO (Either SomeException Value)) >>= \case
     Left _ -> liftIO $ print . renderDbError $ FailedToLog
     Right _ -> pure ()
@@ -231,7 +240,7 @@ saveToLog creds item = liftIO (try . withMongo creds $ insert "logs" doc :: IO (
 
 {- Cleanup -}
 
-purgeCollections :: MonadIO m => MongoCreds -> m (Either String ())
+purgeCollections :: MonadIO m => DbCreds -> m (Either String ())
 purgeCollections creds = 
     let collections = ["feeds", "chats", "logs", "test"]
     in  withMongo creds $ traverse (`deleteAll` [([],[])]) collections >>= \res ->

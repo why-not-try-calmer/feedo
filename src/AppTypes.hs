@@ -266,7 +266,7 @@ data ServerConfig = ServerConfig
   }
   deriving (Show, Eq)
 
-data MongoCreds = MongoCreds
+data DbCreds = MongoCreds
   { shard :: T.Text,
     all_shards :: T.Text,
     user :: T.Text,
@@ -283,7 +283,7 @@ data Job =
 
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,
-    db_config :: IORef MongoCreds,
+    db_config :: IORef DbCreds,
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,

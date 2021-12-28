@@ -20,6 +20,7 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, parseUpdateSettings, tooManySubs)
+import Database (Db)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
