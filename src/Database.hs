@@ -176,8 +176,8 @@ bsonToChat doc =
             settings_batch = fromJust $ M.lookup "settings_batch" settings_doc :: Bool,
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
             settings_batch_interval = 
-                let raw_value = M.lookup "settings_batch_interval_secs" settings_doc :: Maybe NominalDiffTime
-                    hm_docs = M.lookup "settings_batch_interval_hm" settings_doc :: Maybe [Document]
+                let raw_value = M.lookup "settings_batch_every" settings_doc :: Maybe NominalDiffTime
+                    hm_docs = M.lookup "settings_batch_at" settings_doc :: Maybe [Document]
                     dflt = Secs 9000
                 in  case raw_value of 
                     Nothing -> case hm_docs of
@@ -215,8 +215,8 @@ chatToBson SubChat{..} =
             "settings_batch_size" =: settings_batch_size sub_settings
             ]
         settings = case settings_batch_interval sub_settings of
-            Secs xs -> settings' ++ ["settings_batch_interval_secs" =: xs]
-            HM hm -> settings' ++ ["settings_batch_interval_hm" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm]
+            Secs xs -> settings' ++ ["settings_batch_every" =: xs]
+            HM hm -> settings' ++ ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm]
     in  [
             "sub_chatid" =: sub_chatid,
             "sub_last_notified" =: last_notif_items,

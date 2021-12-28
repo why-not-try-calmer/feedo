@@ -98,7 +98,9 @@ mergeSettings keyvals orig =
             settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
             settings_batch = if "batch" `elem` keys then settings_batch updater else settings_batch orig,
             settings_batch_size = if "batch_size" `elem` keys then settings_batch_size updater else settings_batch_size orig,
-            settings_batch_interval = if "batch_interval" `elem` keys then settings_batch_interval updater else settings_batch_interval orig
+            settings_batch_interval = 
+                if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
+                else settings_batch_interval orig
         }
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
