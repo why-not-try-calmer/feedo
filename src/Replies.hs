@@ -56,7 +56,7 @@ instance Renderable SubChat where
                     HM vals -> "every day at " `T.append` foldl' (\s (!h, !m) ->
                         let body = (T.pack . show $ h) `T.append` ":" `T.append` (T.pack . show $ m)
                         in  s `T.append` body) mempty vals
-                    Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` "seconds."
+                    Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
         [   ("Chat_Id", T.pack . show $ sub_chatid),
             ("Status", if sub_is_paused then "paused" else "active"),
