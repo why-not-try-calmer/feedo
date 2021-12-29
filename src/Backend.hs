@@ -53,8 +53,8 @@ notificationBatches feeds_hmap subs_hmap t = HMS.foldl' (\acc f ->
                         Just n -> now < addUTCTime n (i_pubdate i)
                 size = if settings_batch_size == 0 then length items else settings_batch_size
 
-defaultFeedSettings :: ChatSettings
-defaultFeedSettings = ChatSettings {
+defaultChatSettings :: ChatSettings
+defaultChatSettings = ChatSettings {
         settings_filters = Filters [] [],
         settings_batch = False,
         settings_batch_size = 15,
@@ -107,20 +107,28 @@ mergeSettings keyvals orig =
         }
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
-withChat action cid = ask >>= \env -> liftIO $ do
-    config <- readIORef $ db_config env
-    modifyMVar (subs_state env) (`afterDb` config)
+withChat action cid = do
+    env <- ask
+    liftIO $ do
+        config <- readIORef $ db_config env
+        modifyMVar (subs_state env) (`afterDb` config)
     where
     afterDb hmap config = case HMS.lookup cid hmap of
         Nothing -> case action of
             Sub links ->
-                let created_c = SubChat cid [] Nothing (S.fromList links) defaultFeedSettings False
+                let created_c = SubChat cid [] Nothing (S.fromList links) defaultChatSettings False
                     inserted_m = HMS.insert cid created_c hmap
                 in  evalMongoAct config (UpsertChat created_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (inserted_m, Right ())
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
         Just c -> case action of
+            Reset ->
+                let updated_c = c { sub_settings = defaultChatSettings }
+                    update_m = HMS.update (\_ -> Just updated_c) cid hmap
+                in  evalMongoAct config (UpsertChat updated_c) >>= \case
+                        DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
+                        _ -> pure (update_m, Right ())
             Sub links ->
                 let updated_c = c { sub_feeds_links = S.fromList $ links ++ (S.toList . sub_feeds_links $ c)}
                     updated_m = HMS.insert cid updated_c hmap

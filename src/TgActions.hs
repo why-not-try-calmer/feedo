@@ -70,6 +70,7 @@ interpretCmd contents
     | cmd == "/pause" || cmd == "/p" = Right . Pause $ True
     | cmd == "/purge" = if not . null $ args then Left . BadInput $ "/purge takes no argument." else Right Purge
     | cmd == "/resume" = Right . Pause $ False
+    | cmd == "/reset" = Right Reset
     | cmd == "/search" || cmd == "/se" =
         if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
         else Right . Search $ args
@@ -191,6 +192,13 @@ evalTgAct _ ListSubs cid = do
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right . toReply . FromChatFeeds c $ feeds
 evalTgAct _ RenderCmds _ = pure . Right . toReply $ FromStart
+evalTgAct uid Reset cid = do
+    env <- ask
+    verdict <- checkIfAdmin (bot_token . tg_config $ env) uid cid
+    if not verdict then exitNotAuth uid
+    else withChat Reset cid >>= \case
+        Left err -> pure . Right . PlainReply $ renderUserError err
+        Right _ -> pure . Right . PlainReply $ "Chat settings set to defaults."
 evalTgAct _ (Search keywords) cid = ask >>= \env ->
     let get_chats = liftIO . readMVar $ subs_state env
         search_from_subs subs =

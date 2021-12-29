@@ -129,6 +129,7 @@ data UserAction
   | GetLastXDaysItems Int
   | GetSubFeedSettings
   | Pause Bool
+  | Reset
   | Search [T.Text]
   | SetSubFeedSettings ParsedChatSettings
   | RenderCmds
