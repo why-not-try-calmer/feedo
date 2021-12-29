@@ -16,6 +16,19 @@ import Data.Time (NominalDiffTime, UTCTime)
 import TgramOutJson (ChatId)
 import qualified Data.HashMap.Strict as HMS
 
+{- Interface -}
+
+class Monad m => Db m where
+    interpretDb :: DbCreds -> DbAction -> m (DbRes a)
+
+instance Db IO where
+    interpretDb = evalMongoAct
+
+instance MonadIO m => Db (App m) where
+    interpretDb = evalMongoAct
+
+{- Evaluation -}
+
 runMongo :: MonadIO m => Pipe -> Action m a -> m a
 runMongo pipe = access pipe master "feedfarer"
 
