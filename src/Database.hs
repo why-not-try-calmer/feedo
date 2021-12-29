@@ -25,10 +25,6 @@ import qualified Data.HashMap.Strict as HMS
 
 class Monad m => DbM m where
     evalDbAct :: DbCreds -> DbAction -> m (DbRes a)
-    -- this needs an abstract notion of a connector/handle
-        -- runDb
-    -- this needs an abstraction notion of a database monadic action
-        -- withDb :: DbCreds -> Action m a -> m a
 
 {- Terms -}
 
