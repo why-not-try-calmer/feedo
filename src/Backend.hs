@@ -266,10 +266,10 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> do
             pure $ FeedBatches notif
     where
         updateWith _ [] hmap = hmap
-        updateWith cid (f:fs) hmap = updateWith cid fs (updateOrInsert cid f hmap)
-        updateOrInsert cid f hmap = case HMS.lookup f hmap of
-            Nothing -> HMS.insert f (S.singleton cid) hmap
-            Just cids -> HMS.insert f (S.insert cid cids) hmap
+        updateWith !cid (f:fs) !hmap = updateWith cid fs $ 
+            HMS.alter (\case
+                Nothing -> Just $ S.singleton cid
+                Just cids -> Just $ S.insert cid cids) f hmap
 evalFeedsAct (GetAllXDays links days) = do
     env <- ask
     (feeds, now) <- liftIO $ (,) <$> (readMVar . feeds_state $ env) <*> getCurrentTime

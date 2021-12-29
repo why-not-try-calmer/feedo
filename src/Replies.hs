@@ -17,6 +17,7 @@ import Requests (reqSend_)
 import TgramOutJson (ChatId, Outbound (OutboundMessage))
 import qualified Data.Set as S
 import Data.Time (toGregorian, UTCTime (utctDay), formatTime, defaultTimeLocale)
+import Data.Maybe (fromMaybe)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -56,13 +57,13 @@ instance Renderable SubChat where
                     in  s' `T.append` body) mempty vals
                 Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
-        [   ("Chat_Id", T.pack . show $ sub_chatid),
+        [   ("Chat id", T.pack . show $ sub_chatid),
             ("Status", if sub_is_paused then "paused" else "active"),
-            ("Last notification", T.pack . show $ sub_last_notification),
+            ("Last notification", maybe "none" (T.pack . show) sub_last_notification),
             ("Feeds subscribed to", T.intercalate "," $ S.toList sub_feeds_links),
-            ("Blacklist", T.pack . show . filters_blacklist . settings_filters $ sub_settings),
-            ("Batch", T.pack . show . settings_batch $ sub_settings),
-            ("Batch size", T.pack . show . settings_batch_size $ sub_settings),
+            ("Blacklist", T.intercalate "," . filters_blacklist . settings_filters $ sub_settings),
+            ("Batch", if settings_batch sub_settings then "enabled" else "disabled (items displayed as they are published)"),
+            ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` "items"),
             ("Batch interval", interval)
         ]
 
