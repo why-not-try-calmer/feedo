@@ -55,12 +55,15 @@ instance Renderable SubChat where
                         s' = if s == mempty then s else s `T.append` ", "
                     in  s' `T.append` body) mempty vals
                 Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
+            blacklist = 
+                let bs = filters_blacklist . settings_filters $ sub_settings
+                in  if null bs then "none" else T.intercalate "," bs
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
         [   ("Chat id", T.pack . show $ sub_chatid),
             ("Status", if sub_is_paused then "paused" else "active"),
             ("Last notification", maybe "none" (T.pack . show) sub_last_notification),
             ("Feeds subscribed to", T.intercalate "," $ S.toList sub_feeds_links),
-            ("Blacklist", T.intercalate "," . filters_blacklist . settings_filters $ sub_settings),
+            ("Blacklist", blacklist),
             ("Batch", if settings_batch sub_settings then "enabled" else "disabled (items displayed as they are published)"),
             ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
             ("Batch interval", interval)
