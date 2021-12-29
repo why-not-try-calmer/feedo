@@ -92,8 +92,9 @@ interpretCmd contents
     | otherwise = Left . BadInput $ "Unable to parse your command. Please try again."
     where
         (cmd, args) = 
-            let (cmd': args') = T.words contents
-            in  (head $ T.splitOn "@" cmd', args')
+            let (h':t) = T.words contents
+                (h:_) = T.splitOn "@" h'
+            in  (h, t)
 
 evalTgAct :: MonadIO m => UserId -> UserAction -> ChatId -> App m (Either UserError Reply)
 evalTgAct uid (Sub feeds_urls) cid = do
