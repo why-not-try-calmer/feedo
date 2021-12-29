@@ -51,7 +51,7 @@ runRefresh = do
                     config <- readIORef $ db_config env    
                     modifyMVar_ (subs_state env) $ \subs -> 
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now } else c) subs
-                        in  runApp env $ evalMongoAct config (UpsertChats updated_chats) >> pure updated_chats
+                        in  evalMongoAct config (UpsertChats updated_chats) >> pure updated_chats
                 _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
         wait_action = threadDelay interval >> action
         handler e = onError e >> action

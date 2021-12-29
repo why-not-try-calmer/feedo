@@ -30,9 +30,6 @@ escapeWhere txt suspects =
 mkdSingles :: [T.Text]
 mkdSingles = ["_", "*", "`"]
 
--- mkdPairs :: [T.Text]
--- mkdPairs = ["[", "]"]
-
 class Renderable e where
     render :: e -> T.Text
 
@@ -51,12 +48,13 @@ instance Renderable Feed where
 
 instance Renderable SubChat where
     render SubChat{..} = 
-        let interval = 
-                case settings_batch_interval sub_settings of
-                    HM vals -> "every day at " `T.append` foldl' (\s (!h, !m) ->
-                        let body = (T.pack . show $ h) `T.append` ":" `T.append` (T.pack . show $ m)
-                        in  s `T.append` body) mempty vals
-                    Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
+        let adjust c = if c == "0" then "00" else c
+            interval = case settings_batch_interval sub_settings of
+                HM vals -> "every day at " `T.append` foldl' (\s (!h, !m) ->
+                    let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
+                        s' = if s == mempty then s else s `T.append` ", "
+                    in  s' `T.append` body) mempty vals
+                Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
         [   ("Chat_Id", T.pack . show $ sub_chatid),
             ("Status", if sub_is_paused then "paused" else "active"),
@@ -71,15 +69,15 @@ instance Renderable SubChat where
 instance Renderable [Item] where
     render = fst . foldl' step (mempty, 0)
         where
-            step (!str, !d) i =
-                let day = utctDay $ i_pubdate i
-                    (_, _, d') = toGregorian day
-                    date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
-                in  if d == d'
-                    then (str `T.append` finish (i_title i) (i_link i), d)
-                    else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
-                        finish (i_title i) (i_link i), d')
-            finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
+        step (!str, !d) i =
+            let day = utctDay $ i_pubdate i
+                (_, _, d') = toGregorian day
+                date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
+            in  if d == d'
+                then (str `T.append` finish (i_title i) (i_link i), d)
+                else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
+                    finish (i_title i) (i_link i), d')
+        finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities Nothing tag link =

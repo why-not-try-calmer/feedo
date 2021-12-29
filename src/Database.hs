@@ -1,9 +1,4 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
 
 module Database where
 
@@ -20,16 +15,6 @@ import qualified Database.MongoDB.Transport.Tls as DbTLS
 import Data.Time (NominalDiffTime, UTCTime)
 import TgramOutJson (ChatId)
 import qualified Data.HashMap.Strict as HMS
-
-{- Interface -}
-
-class Monad m => DbM m where
-    evalDbAct :: DbCreds -> DbAction -> m (DbRes a)
-
-{- Terms -}
-
-instance MonadIO m => DbM (App m) where
-    evalDbAct = evalMongoAct
 
 runMongo :: MonadIO m => Pipe -> Action m a -> m a
 runMongo pipe = access pipe master "feedfarer"
@@ -61,7 +46,7 @@ createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNum
 
 {- Actions -}
 
-evalMongoAct :: MonadIO m => DbCreds -> DbAction -> App m (DbRes a)
+evalMongoAct :: MonadIO m => DbCreds -> DbAction -> m (DbRes a)
 evalMongoAct creds (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
     in  withMongo creds $ updateAll "feeds" selector >>= \res ->
@@ -181,6 +166,9 @@ bsonToChat doc =
                 let raw_value = M.lookup "settings_batch_every" settings_doc :: Maybe NominalDiffTime
                     hm_docs = M.lookup "settings_batch_at" settings_doc :: Maybe [Document]
                     dflt = Secs 9000
+                    adjust n
+                        |   n < 6 && n > 0 = n * 10
+                        |   otherwise = n
                 in  case raw_value of 
                     Nothing -> case hm_docs of
                         Nothing -> Secs 9000
@@ -190,7 +178,7 @@ bsonToChat doc =
                                         m = M.lookup "minute" d :: Maybe Int
                                     in  case sequence [h, m] of 
                                         Nothing -> []
-                                        Just hm -> acc ++ [(head hm, last hm)]) [] docs
+                                        Just hm -> acc ++ [(head hm, adjust $ last hm)]) [] docs
                             in  if null collected then dflt 
                                 else HM collected
                     Just xs -> Secs xs,
