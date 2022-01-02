@@ -1,0 +1,66 @@
+name:                feedfarer
+version:             0.1.0.0
+github:              "githubuser/feedfarer"
+license:             BSD3
+author:              "Adrien Glauser"
+maintainer:          "mrnycticorax@gmail.com"
+copyright:           "2021 Adrien Glauser"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+description:         Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
+
+default-extensions:
+- LambdaCase
+- OverloadedStrings
+- StrictData
+- BangPatterns
+
+dependencies:
+- base >= 4.7 && < 5
+- xml-conduit
+- req
+- text
+- bytestring
+- unordered-containers
+- containers
+- mtl
+- time
+- async
+- aeson
+- servant-server
+- wai
+- warp
+- mongoDB
+- tokenize
+- full-text-search
+
+library:
+  source-dirs: src
+  ghc-options:
+  - -Wall
+
+executables:
+  feedfarer-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    dependencies:
+    - feedfarer
+
+tests:
+  feedfarer-test:
+    main:                Tests.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - feedfarer
