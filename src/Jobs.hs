@@ -50,7 +50,7 @@ runRefresh = do
                         (\(cid, feed_items) ->
                         reply tok cid (toReply . FromFeedsItems $ feed_items) >> pure cid) $ HMS.toList payload
                     -- updating chats
-                    modifyMVar_ (subs_state env) $ \subs -> 
+                    modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now } else c) subs
                         in  interpretDb config (UpsertChats updated_chats) >> pure updated_chats
                     writeChan (tasks_queue env) $ UpdateNotificationTimes notified_chats
@@ -70,14 +70,14 @@ runJobs = ask >>= \env ->
             UpdateNotificationTimes chat_ids -> 
                 getCurrentTime >>= \now -> 
                 modifyMVar_ (subs_state env) $ \chats_hmap -> 
-                let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
-                    updated_chats = HMS.map (\c -> c { 
-                        sub_last_notification = Just now,
-                        sub_next_notification = findNextTime (settings_batch_interval . sub_settings $ c) now}
-                        ) relevant
-                in  readIORef (db_config env) >>= \config -> interpretDb config (UpsertChats updated_chats) >>= \case
-                    DbOk -> pure updated_chats
-                    _ -> pure chats_hmap
+                    let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
+                        updated_chats = HMS.map (\c -> c { 
+                            sub_last_notification = Just now,
+                            sub_next_notification = findNextTime (settings_batch_interval . sub_settings $ c) now}
+                            ) relevant
+                    in  readIORef (db_config env) >>= \config -> interpretDb config (UpsertChats updated_chats) >>= \case
+                        DbOk -> pure $ HMS.union updated_chats chats_hmap
+                        _ -> pure chats_hmap
         handler (SomeException e) = do
             let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (tasks_queue env) . TgAlert $ report
