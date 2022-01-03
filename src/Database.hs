@@ -8,7 +8,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader.Class
 import Data.Foldable (traverse_)
 import qualified Data.HashMap.Strict as HMS
-import Data.IORef (atomicModifyIORef', readIORef)
+import Data.IORef (readIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -16,6 +16,7 @@ import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as DbTLS
+import GHC.IORef (atomicSwapIORef)
 import TgramOutJson (ChatId)
 
 {- Interface -}
@@ -32,17 +33,17 @@ runMongo :: MonadIO m => Pipe -> Action IO a -> m a
 runMongo pipe action = access pipe master "feedfarer" $ liftDB action
 
 withMongo :: MonadIO m => Action IO a -> App m a
-withMongo action =
-    ask >>= \env -> liftIO $ getPipe env >>= \pipe ->
-    try (runMongo pipe action) >>= \case
-        Left (SomeException _) -> retry env
+withMongo action = do
+    env <- ask
+    pipe <- getPipe env
+    liftIO (try $ runMongo pipe action) >>= \case
+        Left (SomeException _) -> fixPipe env >> runMongo pipe action
         Right res -> pure res
     where
-        getPipe = readIORef . db_connector
-        retry env = do
-            pipe' <- getFreshPipe $ db_config env
-            atomicModifyIORef' (db_connector env) (const (pipe', ()))
-            runApp env $ withMongo action
+        getPipe = liftIO . readIORef . db_connector
+        fixPipe env = liftIO $ do
+            pipe <- getFreshPipe $ db_config env
+            atomicSwapIORef (db_connector env) pipe
 
 {- Connection -}
 
