@@ -2,12 +2,13 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Database where
-
 import AppTypes
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Reader.Class
 import Data.Foldable (traverse_)
 import qualified Data.HashMap.Strict as HMS
+import Data.IORef (atomicModifyIORef', readIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -19,29 +20,30 @@ import TgramOutJson (ChatId)
 
 {- Interface -}
 
-class Monad m => Db m where
-    interpretDb :: DbCreds -> DbAction -> m (DbRes a)
-
-instance Db IO where
-    interpretDb = evalMongoAct
+class Db m where
+    evalDb :: DbAction -> m (DbRes a)
 
 instance MonadIO m => Db (App m) where
-    interpretDb = evalMongoAct
+    evalDb = evalMongo
 
 {- Evaluation -}
 
 runMongo :: MonadIO m => Pipe -> Action IO a -> m a
 runMongo pipe action = access pipe master "feedfarer" $ liftDB action
-        
-withMongo :: MonadIO m => DbCreds -> Action IO a -> m a
-withMongo cfg action = 
-    let go config = createPipe config >>= \case
-            Left _ -> liftIO . throwIO . userError $ "Failed to acquire Pipe! Double-check your mongo connection configuration."
-            Right pipe -> runMongo pipe action
-    in  liftIO (try $ go cfg) >>= \case
-            Left (SomeException _) -> getValidCreds cfg >>= go
-            Right res -> pure res
-        
+
+withMongo :: MonadIO m => Action IO a -> App m a
+withMongo action =
+    ask >>= \env -> liftIO $ getPipe env >>= \pipe ->
+    try (runMongo pipe action) >>= \case
+        Left (SomeException _) -> retry env
+        Right res -> pure res
+    where
+        getPipe = readIORef . db_connector
+        retry env = do
+            pipe' <- getFreshPipe $ db_config env
+            atomicModifyIORef' (db_connector env) (const (pipe', ()))
+            runApp env $ withMongo action
+
 {- Connection -}
 
 initMongoCredsFrom :: T.Text -> T.Text -> DbCreds
@@ -60,69 +62,17 @@ createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNum
         then pure . Right $ pipe
         else pure . Left $ DbLoginFailed
 
-{- Actions -}
-
-evalMongoAct :: MonadIO m => DbCreds -> DbAction -> m (DbRes a)
-evalMongoAct creds (UpsertFeeds feeds) =
-    let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
-    in  withMongo creds $ updateAll "feeds" selector >>= \res ->
-        let titles = T.intercalate ", " $ map f_link feeds
-        in  if failed res then pure . DbErr . FailedToUpdate $ titles
-            else pure DbOk
-evalMongoAct creds (GetFeed link) =
-    withMongo creds $ findOne (select ["f_link" =: link] "feeds") >>= \case
-        Just doc -> pure $ DbFeeds [bsonToFeed doc]
-        Nothing -> pure DbNoFeed
-evalMongoAct creds Get100Feeds =
-    withMongo creds $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
-        >>= rest >>= \docs ->
-            if null docs then pure DbNoFeed
-            else pure . DbFeeds $ map bsonToFeed docs
-evalMongoAct creds (RemoveFeeds links) = do
-    _ <- withMongo creds $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
-    pure DbOk
-evalMongoAct creds (GetChat cid) =
-    withMongo creds $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
-        Just doc -> pure $ DbChats [bsonToChat doc]
-        Nothing -> pure DbNoChat
-evalMongoAct creds GetAllChats =
-    withMongo creds $ find (select [] "chats") >>= rest >>= \docs ->
-        if null docs then pure DbNoChat
-        else pure $ DbChats . map bsonToChat $ docs
-evalMongoAct creds (UpsertChat chat) = do
-    withMongo creds $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
-    pure DbOk
-evalMongoAct creds (UpsertChats chatshmap) =
-    let chats = HMS.elems chatshmap
-        selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
-    in  withMongo creds $ updateAll "chats" selector >>= \res ->
-        let chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
-        in  if failed res then pure . DbErr . FailedToUpdate $ chatids
-            else pure DbOk
-evalMongoAct creds (DeleteChat cid) = do
-    withMongo creds $ deleteOne (select ["sub_chatid" =: cid] "chats")
-    pure DbOk
-evalMongoAct creds (IncReads links) =
-    let action l = withMongo creds $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
-    in  traverse_ action links >> pure DbOk
-
--- evalMongoAct creds _ = pure DbOk
-
-getValidCreds :: MonadIO m => DbCreds -> m DbCreds
-getValidCreds creds = liftIO $ folded >>= \(Just new_creds) -> pure new_creds
+getFreshPipe :: MonadIO m => DbCreds -> m Pipe
+getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p
     where
         folded = foldr check (pure Nothing) (T.splitOn ";" $ all_shards creds)
         check v acc =
             let new_creds = initMongoCredsFrom v $ all_shards creds
             in  createPipe new_creds >>= \case
-            Left _ -> acc
-            Right pipe -> checkDbHealth pipe >>= \case
-                Left _ -> close pipe >> acc
-                Right _ -> do
-                    close pipe
-                    print $ "This one worked: " `T.append` v
-                    pure $ Just new_creds
-        checkDbHealth :: MonadIO m => Pipe -> m (Either DbError ())
+                Left _ -> acc
+                Right pipe -> checkDbHealth pipe >>= \case
+                    Left _ -> close pipe >> acc
+                    Right _ -> pure $ Just pipe
         checkDbHealth pipe =
             let ref = "123" :: T.Text
                 sample = ["ref" =: ref]
@@ -134,6 +84,52 @@ getValidCreds creds = liftIO $ folded >>= \(Just new_creds) -> pure new_creds
                             _ <- deleteAll "test" [(sample, [])]
                             pure . Right $ ()
             in liftIO $ go `catch` \(SomeException _) -> pure . Left $ DbChangedMaster
+
+{- Actions -}
+
+evalMongo :: MonadIO m => DbAction -> App m (DbRes a)
+evalMongo (UpsertFeeds feeds) =
+    let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
+    in  withMongo $ updateAll "feeds" selector >>= \res ->
+        let titles = T.intercalate ", " $ map f_link feeds
+        in  if failed res then pure . DbErr . FailedToUpdate $ titles
+            else pure DbOk
+evalMongo (GetFeed link) =
+    withMongo $ findOne (select ["f_link" =: link] "feeds") >>= \case
+        Just doc -> pure $ DbFeeds [bsonToFeed doc]
+        Nothing -> pure DbNoFeed
+evalMongo Get100Feeds =
+    withMongo $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
+        >>= rest >>= \docs ->
+            if null docs then pure DbNoFeed
+            else pure . DbFeeds $ map bsonToFeed docs
+evalMongo (RemoveFeeds links) = do
+    _ <- withMongo $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
+    pure DbOk
+evalMongo (GetChat cid) =
+    withMongo $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
+        Just doc -> pure $ DbChats [bsonToChat doc]
+        Nothing -> pure DbNoChat
+evalMongo GetAllChats =
+    withMongo $ find (select [] "chats") >>= rest >>= \docs ->
+        if null docs then pure DbNoChat
+        else pure $ DbChats . map bsonToChat $ docs
+evalMongo (UpsertChat chat) = do
+    withMongo $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
+    pure DbOk
+evalMongo (UpsertChats chatshmap) =
+    let chats = HMS.elems chatshmap
+        selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
+    in  withMongo $ updateAll "chats" selector >>= \res ->
+            let chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
+            in  if failed res then pure . DbErr . FailedToUpdate $ chatids
+                else pure DbOk
+evalMongo (DeleteChat cid) = do
+    withMongo $ deleteOne (select ["sub_chatid" =: cid] "chats")
+    pure DbOk
+evalMongo (IncReads links) =
+    let action l = withMongo $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
+    in  traverse_ action links >> pure DbOk
 
 {- Feeds -}
 
@@ -234,16 +230,16 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 
 {- Logs -}
 
-saveToLog :: MonadIO m => DbCreds -> LogItem -> m ()
-saveToLog creds item = withMongo creds $ insert "logs" doc >> pure ()
+saveToLog :: MonadIO m => LogItem -> App m ()
+saveToLog item = withMongo $ insert "logs" doc >> pure ()
     where
         doc = ["log_type" =: log_type item, "log_when" =: log_when item, "log_who" =: log_who item, "log_what" =: log_what item]
 
 {- Cleanup -}
 
-purgeCollections :: MonadIO m => DbCreds -> m (Either String ())
-purgeCollections creds =
+purgeCollections :: MonadIO m => App m (Either String ())
+purgeCollections =
     let collections = ["feeds", "chats", "logs", "test"]
-    in  withMongo creds $ traverse (`deleteAll` [([],[])]) collections >>= \res ->
+    in  withMongo $ traverse (`deleteAll` [([],[])]) collections >>= \res ->
         if any failed res then pure . Left $ "Failed to purge collections " ++ show collections
         else pure $ Right ()

@@ -17,6 +17,7 @@ import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Data.SearchEngine (SearchEngine, NoFeatures)
 import Data.Ix (Ix)
+import Database.MongoDB (Pipe)
 
 {- Replies -}
 
@@ -285,7 +286,8 @@ data Job =
 
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,
-    db_config :: IORef DbCreds,
+    db_config :: DbCreds,
+    db_connector :: IORef Pipe,
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,

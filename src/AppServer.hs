@@ -10,7 +10,7 @@ import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Database (getValidCreds, initMongoCredsFrom)
+import Database (getFreshPipe, initMongoCredsFrom)
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -79,8 +79,7 @@ makeConfig env = do
     mvar2 <- newMVar HMS.empty
     mvar3 <- newEmptyMVar
     chan <- newChan
-    valid_creds <- getValidCreds creds 
-    creds_ref <- newIORef valid_creds
+    pipe_ref <- newIORef =<< getFreshPipe creds 
     pure (port, AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         last_worker_run = Nothing,
@@ -88,7 +87,8 @@ makeConfig env = do
         subs_state = mvar2,
         tasks_queue = chan,
         worker_interval = interval,
-        db_config = creds_ref,
+        db_config = creds,
+        db_connector = pipe_ref,
         search_engine = mvar3
         }, starting_feeds)
 
