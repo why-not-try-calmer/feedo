@@ -1,5 +1,4 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Backend where
@@ -11,110 +10,15 @@ import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
 import Data.List (foldl', sortBy)
-import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (diffUTCTime)
 import Data.Time.Clock.POSIX
-import Database (interpretDb, Db (interpretDb))
+import Database (Db (interpretDb), interpretDb)
 import Parser (getFeedFromHref, rebuildFeed)
 import Search (initSearchWith)
-import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import Utils (freshLastXDays, partitionEither, removeByUserIdx)
-
-notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId FeedItems
-notifFor feeds_hmap subs_hmap = HMS.foldl' (\acc f ->
-    let layer = HMS.foldl' (\hmapping c ->
-            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping
-            else
-                let v = (f, fresh_filtered c f)
-                in  HMS.alter (\case 
-                    Nothing -> Just [v]
-                    Just vs -> Just (v:vs)) (sub_chatid c) hmapping) acc subs_hmap
-    in  HMS.union layer acc) HMS.empty feeds_hmap
-    where
-        fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
-        filterItemsWith _ Nothing items = items
-        filterItemsWith ChatSettings{..} (Just last_time) items =
-            take settings_batch_size .
-            filter (with_filters [blacklist, fresh]) $ items
-            where
-                with_filters fs i = all ($ i) fs
-                blacklist i = not . any
-                    (\l -> T.toCaseFold l `T.isInfixOf` (i_desc i `T.append` i_link i)) $
-                        filters_blacklist settings_filters
-                fresh i = last_time < i_pubdate i
-
-defaultChatSettings :: ChatSettings
-defaultChatSettings = ChatSettings {
-        settings_filters = Filters [] [],
-        settings_batch_size = 15,
-        settings_batch_interval = Secs 9000,
-        settings_is_paused = False
-    }
-
-mergeSettings :: ParsedChatSettings -> ChatSettings -> ChatSettings
-{-
-Expected fields:
-- blacklist: term, term, term...
-- whitelist: term, term, term...
-- batch_at: hhmm, hhmm...
-- batch_every: n
-- paused: true | false
--}
-mergeSettings keyvals orig =
-    let updater = ChatSettings {
-            settings_filters =
-                let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
-                    whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
-                in  Filters blacklist whitelist,
-            settings_batch_size =
-                let mbread = readMaybe . T.unpack =<<
-                        Map.lookup "batch_size" keyvals
-                in  fromMaybe 10 mbread,
-            settings_batch_interval =
-                case Map.lookup "batch_every" keyvals of
-                    Nothing -> case Map.lookup "batch_at" keyvals of
-                        Nothing -> dflt
-                        Just txt ->
-                            let datetimes = T.splitOn "," txt
-                                collected = foldl' step [] datetimes
-                            in if null collected then dflt else HM collected
-                    Just mbint -> maybe dflt Secs (readMaybe . T.unpack $ mbint),
-            settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "paused" keyvals
-        }
-    in  orig {
-            settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
-            settings_batch_size = if "batch_size" `elem` keys then settings_batch_size updater else settings_batch_size orig,
-            settings_batch_interval =
-                if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
-                else settings_batch_interval orig,
-            settings_is_paused = if "paused" `elem` keys then settings_is_paused updater else settings_is_paused orig
-        }
-    where
-        keys = Map.keys keyvals
-        dflt = Secs 9000
-        step acc val =
-            let (hh, mm) = T.splitAt 2 val
-                (m1, m2) = T.splitAt 1 mm
-                mm' =
-                    if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
-                    else readMaybe . T.unpack $ mm :: Maybe Int
-                hh' = readMaybe . T.unpack $ hh :: Maybe Int
-            in  case sequence [hh', mm'] of
-                Nothing -> []
-                Just parsed ->
-                    if length parsed /= 2 then [] else
-                        let (h, m) = (head parsed, last parsed)
-                        in  toAcc h m acc
-        toAcc h m acc
-            |   h < 0 || h > 24 = []
-            |   m < 0 || m > 60 = []
-            |   otherwise = acc ++ [(h, m)]
+import Utils (defaultChatSettings, freshLastXDays, mergeSettings, notifFor, partitionEither, removeByUserIdx)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid =
@@ -239,12 +143,12 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         -- update chats MVar just in case we were able to produce an interesting result
         now <- getCurrentTime
         -- collecting hmap of feeds with relevantly related chats
-        let relevant_feedlinks = collect_relevant_feedlinks chats
+        let relevant_feedlinks = collect_subscribed_to_feeds chats
         -- rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed relevant_feedlinks
         let (failed, succeeded) = partitionEither eitherUpdated
             updated_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-            -- building hmap of chat_ids with the relevant feed & items
+            -- notifying only non paused && due for notification
             relevant_chats = HMS.filter (\c -> 
                 (not . settings_is_paused . sub_settings $ c) && 
                 maybe True (< now) (sub_next_notification c)) chats
@@ -257,15 +161,9 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         interpretDb config (UpsertFeeds succeeded) >>= \case
             DbOk -> do
                 -- updating search engine on successful save to database.
-                let upto l = T.pack . show $ diffUTCTime l now
                 updateEngine (search_engine env) (HMS.elems to_keep_in_memory)
                 -- increasing reads count
                 writeChan (tasks_queue env) . IncReadsJob $ relevant_feedlinks
-                later <- getCurrentTime
-                -- logging
-                writeChan (tasks_queue env)
-                    (Log $ LogItem later "interpretDb.UpserFeeds"
-                    ("Ran worker job (refreshing all feeds + search engine) in " `T.append` upto later) "info")
                 pure (to_keep_in_memory, FeedBatches notif)
             _ -> pure (feeds_hmap, FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF")
     where
@@ -273,7 +171,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
             take 100 .
             map f_link .
             sortBy (comparing $ Down . f_reads) $ succeeded
-        collect_relevant_feedlinks chats =
+        collect_subscribed_to_feeds chats =
             HMS.keys $
             HMS.foldl' (\hmap sub ->
                 let links = S.toList $ sub_feeds_links sub
