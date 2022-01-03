@@ -32,7 +32,7 @@ instance MonadIO m => Db (App m) where
 runMongo :: MonadIO m => Pipe -> Action IO a -> m a
 runMongo pipe action = access pipe master "feedfarer" $ liftDB action
 
-withMongo :: MonadIO m => Action IO a -> App m a
+withMongo :: (Db m, MonadIO m, MonadReader AppConfig m) => Action IO a -> m a
 withMongo action = do
     env <- ask
     pipe <- getPipe env
@@ -88,7 +88,7 @@ getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p
 
 {- Actions -}
 
-evalMongo :: MonadIO m => DbAction -> App m (DbRes a)
+evalMongo :: (Db m, MonadIO m, MonadReader AppConfig m) => DbAction -> m (DbRes a)
 evalMongo (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
     in  withMongo $ updateAll "feeds" selector >>= \res ->
@@ -231,14 +231,14 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 
 {- Logs -}
 
-saveToLog :: MonadIO m => LogItem -> App m ()
+saveToLog :: (Db m, MonadIO m, MonadReader AppConfig m) => LogItem -> m ()
 saveToLog item = withMongo $ insert "logs" doc >> pure ()
     where
         doc = ["log_type" =: log_type item, "log_when" =: log_when item, "log_who" =: log_who item, "log_what" =: log_what item]
 
 {- Cleanup -}
 
-purgeCollections :: MonadIO m => App m (Either String ())
+purgeCollections :: (Db m, MonadIO m, MonadReader AppConfig m) => m (Either String ())
 purgeCollections =
     let collections = ["feeds", "chats", "logs", "test"]
     in  withMongo $ traverse (`deleteAll` [([],[])]) collections >>= \res ->
