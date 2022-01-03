@@ -16,7 +16,7 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (diffUTCTime, UTCTime)
+import Data.Time (diffUTCTime)
 import Data.Time.Clock.POSIX
 import Database (interpretDb, Db (interpretDb))
 import Parser (getFeedFromHref, rebuildFeed)
