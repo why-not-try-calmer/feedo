@@ -16,7 +16,7 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down), comparing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (diffUTCTime)
+import Data.Time (diffUTCTime, UTCTime)
 import Data.Time.Clock.POSIX
 import Database (interpretDb, Db (interpretDb))
 import Parser (getFeedFromHref, rebuildFeed)
@@ -31,8 +31,9 @@ notifFor feeds_hmap subs_hmap = HMS.foldl' (\acc f ->
             if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping
             else
                 let v = (f, fresh_filtered c f)
-                in  HMS.alter (\case Nothing -> Just [v]; Just vs -> Just (v:vs))
-                        (sub_chatid c) hmapping) acc subs_hmap
+                in  HMS.alter (\case 
+                    Nothing -> Just [v]
+                    Just vs -> Just (v:vs)) (sub_chatid c) hmapping) acc subs_hmap
     in  HMS.union layer acc) HMS.empty feeds_hmap
     where
         fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
@@ -238,13 +239,16 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         -- update chats MVar just in case we were able to produce an interesting result
         now <- getCurrentTime
         -- collecting hmap of feeds with relevantly related chats
-        let relevant_feedlinks = collect_relevant_feedlinks chats now
+        let relevant_feedlinks = collect_relevant_feedlinks chats
         -- rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed relevant_feedlinks
         let (failed, succeeded) = partitionEither eitherUpdated
             updated_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
             -- building hmap of chat_ids with the relevant feed & items
-            notif = notifFor updated_feeds chats
+            relevant_chats = HMS.filter (\c -> 
+                (not . settings_is_paused . sub_settings $ c) && 
+                maybe True (< now) (sub_next_notification c)) chats
+            notif = notifFor updated_feeds relevant_chats
             -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
             to_keep_in_memory = HMS.filter (\f -> f_link f `elem` within_top100_reads succeeded) updated_feeds
         unless (null failed) (writeChan (tasks_queue env) $ TgAlert $
@@ -269,15 +273,14 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
             take 100 .
             map f_link .
             sortBy (comparing $ Down . f_reads) $ succeeded
-        collect_relevant_feedlinks chats now = 
-            HMS.keys $ 
+        collect_relevant_feedlinks chats =
+            HMS.keys $
             HMS.foldl' (\hmap sub ->
                 let links = S.toList $ sub_feeds_links sub
                     cid = sub_chatid sub
-                in  if null links || (settings_is_paused . sub_settings $ sub) || case sub_next_notification sub of
-                        Nothing -> False
-                        Just t -> now < t
-                    then hmap else updateWith cid links hmap) HMS.empty chats
+                in  if null links
+                    then hmap
+                    else updateWith cid links hmap) HMS.empty chats
         updateWith _ [] hmap = hmap
         updateWith !cid (f:fs) !hmap = updateWith cid fs $
             HMS.alter (\case
