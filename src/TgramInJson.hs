@@ -64,7 +64,8 @@ data Message = Message
   { message_id :: Int,
     from :: Maybe User,
     chat :: Chat,
-    text :: Maybe Text
+    text :: Maybe Text,
+    reply_to_message :: Maybe Message
   } deriving (Show)
 
 $(deriveJSON defaultOptions ''Message)

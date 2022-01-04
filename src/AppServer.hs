@@ -19,7 +19,7 @@ import Responses
 import Servant
 import System.Environment (getEnvironment)
 import TgActions
-import TgramInJson (Message (chat, from, text), Update (message), User (user_id), chat_id)
+import TgramInJson (Message (chat, from, text, reply_to_message), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
 
 type BotAPI =
@@ -45,13 +45,15 @@ server = root :<|> handleWebhook    where
                 Just msg ->
                     let cid = chat_id . chat $ msg :: ChatId
                         uid = user_id . fromJust . from $ msg :: UserId
-                    in  case text msg of
-                        Nothing -> liftIO . putStrLn $ "Suppressed message:" ++ show msg
-                        Just contents -> case interpretCmd contents of
-                            Left err -> finishWith err tok cid
-                            Right action -> evalTgAct uid action cid >>= \case
+                    in  case reply_to_message msg of
+                        Just _ -> reply tok cid $ PlainReply "I don't do replies, only commands, sorry. Send /start or /help for the list of commands I reply to."
+                        Nothing -> case text msg of
+                            Nothing -> liftIO . putStrLn $ "Suppressed message:" ++ show msg
+                            Just contents -> case interpretCmd contents of
                                 Left err -> finishWith err tok cid
-                                Right r -> reply tok cid r
+                                Right action -> evalTgAct uid action cid >>= \case
+                                    Left err -> finishWith err tok cid
+                                    Right r -> reply tok cid r
 
     root :: MonadIO m => App m ServerResponse
     root = pure $ RespOk "ok" "testing"
