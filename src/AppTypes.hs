@@ -119,36 +119,36 @@ toFeedRef ss
 type ParsedChatSettings = Map.Map T.Text T.Text
 
 data UserAction
-  = Sub [T.Text]
-  | UnSub [FeedRef]
-  | Info FeedRef
+  = About FeedRef
   | ListSubs
   | GetItems FeedRef
   | GetLastXDaysItems Int
   | GetSubFeedSettings
   | Pause Bool
+  | Purge
+  | RenderCmds
   | Reset
   | Search [T.Text]
   | SetSubFeedSettings ParsedChatSettings
-  | RenderCmds
-  | Purge
+  | Sub [T.Text]
+  | UnSub [FeedRef]
   deriving (Eq, Show)
 
 data UserError
-  = BadInput T.Text
-  | BadFeedUrl T.Text
+  = BadFeedUrl T.Text
+  | BadFilter
+  | BadInput T.Text
+  | BadRef T.Text
   | FeedFailToBuild T.Text
-  | NotImplemented T.Text
+  | NoSettings
   | NotAdmin T.Text
+  | NotFoundChat
+  | NotFoundFeed T.Text
+  | NotImplemented T.Text
+  | NotSubscribed
   | MaxFeedsAlready T.Text
   | ParseError T.Text
-  | BadFilter
   | UpdateError T.Text
-  | NotFoundFeed T.Text
-  | NotFoundChat
-  | NotSubscribed
-  | NoSettings
-  | BadRef T.Text
   | TelegramErr
   deriving (Eq, Show)
 

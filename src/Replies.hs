@@ -129,16 +129,16 @@ toReply (FromFeedLinkItems flinkitems) =
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"
     [
+        "/about, /a `<url or #>`: Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:\n- `/info 2`, `/info https://www.compositional.fm/rss`.\n",
         "/fresh, /f `<n>`: Get all the most recent items (less than n-days old, where n is the argument) from all the feeds the chat is subscribed.\n",
         "/help, /start:  Get the list of commands this bot answers to.\n",
-        "/info `<url or #>`: Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:\n- `/info 2`, `/info https://www.compositional.fm/rss`.\n",
         "/items, /i `<url or #>`: Get the most recent items from the feed at the url or #s passed as argument, if any. Examples:\n- `/items 2`\n-`/i https://www.compositional.fm/rss`.\n",
         "/list, /l: Get all the urls and #s of the feeds to which the chat is subscribed to, if any.\n",
         "/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.\n",
         "/purge (*chat admins only*): Make the bot and associated database forget entirely about this chat.\n",
         "/reset (*chat admins only*): Set the chat's settings to the defaults.",
-        "/search, /se `<space-separated keywords>`: Search all items of all feeds the current chat is subscribed to. Example:\n- `/se cheap cloud host`.\n",
-        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Full example 1:\nblacklist: word1, word2\nbatch: true, batch_size: 10, batch_at: 12.00, 18.00\nFull example 2: \nblacklist: word1, word2\nbatch: true, batch_size: 10, batch_every: 3600\n",
+        "/search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. Example:\n- `/se cheap cloud host`.\n",
+        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Full example 1:\nblacklist: word1, word2\nbatch: true, batch_size: 10, batch_at: 1200, 1800\nFull example 2: \nblacklist: word1, word2\nbatch: true, batch_size: 10, batch_every: 3600\n",
         "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`: Subscribe the chat to the feeds -- if they exist -- passed as argument. Examples:\n- `/s 1 2 3`\n- `/sub https://www.compositional.fm/rss https://www.blabla.org/rss`.\n",
         "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:\n- `/u 1 2 3`\n- `/unsub https://www.compositional.fm/rss https://www.blabla.org/`."
     ] `T.append` "\n\nCheck out our channel for more info: https://t.me/feedfarer"

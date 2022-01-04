@@ -56,16 +56,16 @@ exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
 interpretCmd :: T.Text -> Either UserError UserAction
 interpretCmd contents
+    | cmd == "/about" || cmd == "/a" =
+        if length args /= 1 then Left . BadInput $ "/about takes exactly 1 argument, standing for the url or # of the feed to get information about."
+        else case toFeedRef args of
+            Left err -> Left err
+            Right ref -> Right . About $ head ref
     | cmd == "/fresh" || cmd == "/f" =
         if length args /= 1 then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
             Nothing -> Left . BadInput $ "/fresh's argument must be a valid integer."
             Just i -> Right $ GetLastXDaysItems i
-    | cmd == "/info" =
-        if length args /= 1 then Left . BadInput $ "/info takes exactly 1 argument, standing for the url or # of the feed to get information about."
-        else case toFeedRef args of
-            Left err -> Left err
-            Right ref -> Right . Info $ head ref
     | cmd == "/items" || cmd == "/i" =
         if length args /= 1 then Left . BadInput $ "/items needs exactly 1 argument, standing for the url or # of the feed to get items from."
         else case toFeedRef args of
@@ -234,7 +234,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
 evalTgAct _ Purge cid = withChat Purge cid >>= \case
     Left _ -> pure . Right . PlainReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
     Right _ -> pure . Right . PlainReply $ "Successfully purged the chat from the database."
-evalTgAct _ (Info ref) cid = do
+evalTgAct _ (About ref) cid = do
     env <- ask
     chats_hmap <- liftIO . readMVar $ subs_state env
     case HMS.lookup cid chats_hmap of
