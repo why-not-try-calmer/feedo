@@ -5,7 +5,6 @@ module Database where
 import AppTypes
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Reader.Class
 import Data.Foldable (traverse_)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
@@ -22,9 +21,12 @@ import TgramOutJson (ChatId)
 {- Interface -}
 
 class Db m where
-    evalDb :: DbAction -> m (DbRes a)
+    evalDb :: AppConfig -> DbAction -> m (DbRes a)
 
 instance MonadIO m => Db (App m) where
+    evalDb = evalMongo
+
+instance Db IO where
     evalDb = evalMongo
 
 {- Evaluation -}
@@ -32,18 +34,15 @@ instance MonadIO m => Db (App m) where
 runMongo :: MonadIO m => Pipe -> Action IO a -> m a
 runMongo pipe action = access pipe master "feedfarer" $ liftDB action
 
-withMongo :: (Db m, MonadIO m, MonadReader AppConfig m) => Action IO a -> m a
-withMongo action = do
-    env <- ask
-    pipe <- getPipe env
-    liftIO (try $ runMongo pipe action) >>= \case
-        Left (SomeException _) -> fixPipe env >> runMongo pipe action
+withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
+withMongo config action = liftIO $ do
+    pipe <- getPipe config
+    try (runMongo pipe action) >>= \case
+        Left (SomeException _) -> fixPipe config >> runMongo pipe action
         Right res -> pure res
     where
-        getPipe = liftIO . readIORef . db_connector
-        fixPipe env = liftIO $ do
-            pipe <- getFreshPipe $ db_config env
-            atomicSwapIORef (db_connector env) pipe
+        getPipe = readIORef . db_connector
+        fixPipe env = getFreshPipe (db_config env) >>= (atomicSwapIORef . db_connector $ env)
 
 {- Connection -}
 
@@ -59,8 +58,7 @@ createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNum
         pure . Left $ PipeNotAcquired
     Right pipe -> do
         authorized <- access pipe UnconfirmedWrites "admin" $ auth (user creds) (pwd creds)
-        if authorized
-        then pure . Right $ pipe
+        if authorized then pure . Right $ pipe
         else pure . Left $ DbLoginFailed
 
 getFreshPipe :: MonadIO m => DbCreds -> m Pipe
@@ -88,48 +86,48 @@ getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p
 
 {- Actions -}
 
-evalMongo :: (Db m, MonadIO m, MonadReader AppConfig m) => DbAction -> m (DbRes a)
-evalMongo (UpsertFeeds feeds) =
+evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m (DbRes a)
+evalMongo env (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
-    in  withMongo $ updateAll "feeds" selector >>= \res ->
+    in  withMongo env $ updateAll "feeds" selector >>= \res ->
         let titles = T.intercalate ", " $ map f_link feeds
         in  if failed res then pure . DbErr . FailedToUpdate $ titles
             else pure DbOk
-evalMongo (GetFeed link) =
-    withMongo $ findOne (select ["f_link" =: link] "feeds") >>= \case
+evalMongo env (GetFeed link) =
+    withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
         Just doc -> pure $ DbFeeds [bsonToFeed doc]
         Nothing -> pure DbNoFeed
-evalMongo Get100Feeds =
-    withMongo $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
+evalMongo env Get100Feeds =
+    withMongo env $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
         >>= rest >>= \docs ->
             if null docs then pure DbNoFeed
             else pure . DbFeeds $ map bsonToFeed docs
-evalMongo (RemoveFeeds links) = do
-    _ <- withMongo $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
+evalMongo env (RemoveFeeds links) = do
+    _ <- withMongo env $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
     pure DbOk
-evalMongo (GetChat cid) =
-    withMongo $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
+evalMongo env (GetChat cid) =
+    withMongo env $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
         Just doc -> pure $ DbChats [bsonToChat doc]
         Nothing -> pure DbNoChat
-evalMongo GetAllChats =
-    withMongo $ find (select [] "chats") >>= rest >>= \docs ->
+evalMongo env GetAllChats =
+    withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
         if null docs then pure DbNoChat
         else pure $ DbChats . map bsonToChat $ docs
-evalMongo (UpsertChat chat) = do
-    withMongo $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
+evalMongo env (UpsertChat chat) = do
+    withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     pure DbOk
-evalMongo (UpsertChats chatshmap) =
+evalMongo env (UpsertChats chatshmap) =
     let chats = HMS.elems chatshmap
         selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
-    in  withMongo $ updateAll "chats" selector >>= \res ->
+    in  withMongo env $ updateAll "chats" selector >>= \res ->
             let chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
             in  if failed res then pure . DbErr . FailedToUpdate $ chatids
                 else pure DbOk
-evalMongo (DeleteChat cid) = do
-    withMongo $ deleteOne (select ["sub_chatid" =: cid] "chats")
+evalMongo env (DeleteChat cid) = do
+    withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
     pure DbOk
-evalMongo (IncReads links) =
-    let action l = withMongo $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
+evalMongo env (IncReads links) =
+    let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
 
 {- Feeds -}
@@ -231,16 +229,16 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 
 {- Logs -}
 
-saveToLog :: (Db m, MonadIO m, MonadReader AppConfig m) => LogItem -> m ()
-saveToLog item = withMongo $ insert "logs" doc >> pure ()
+saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
+saveToLog env item = withMongo env $ insert "logs" doc >> pure ()
     where
         doc = ["log_type" =: log_type item, "log_when" =: log_when item, "log_who" =: log_who item, "log_what" =: log_what item]
 
 {- Cleanup -}
 
-purgeCollections :: (Db m, MonadIO m, MonadReader AppConfig m) => m (Either String ())
-purgeCollections =
+purgeCollections :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
+purgeCollections env =
     let collections = ["feeds", "chats", "logs", "test"]
-    in  withMongo $ traverse (`deleteAll` [([],[])]) collections >>= \res ->
+    in  withMongo env $ traverse (`deleteAll` [([],[])]) collections >>= \res ->
         if any failed res then pure . Left $ "Failed to purge collections " ++ show collections
         else pure $ Right ()

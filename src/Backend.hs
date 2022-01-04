@@ -28,7 +28,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
             Sub links ->
                 let created_c = SubChat cid Nothing Nothing (S.fromList links) defaultChatSettings
                     inserted_m = HMS.insert cid created_c hmap
-                in  runApp env $ evalDb (UpsertChat created_c) >>= \case
+                in  evalDb env (UpsertChat created_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (inserted_m, Right ())
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
@@ -36,18 +36,18 @@ withChat action cid = ask >>= \env -> liftIO $ do
             Reset ->
                 let updated_c = c { sub_settings = defaultChatSettings }
                     update_m = HMS.update (\_ -> Just updated_c) cid hmap
-                in  runApp env $ evalDb (UpsertChat updated_c) >>= \case
+                in  evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
                         _ -> pure (update_m, Right ())
             Sub links ->
                 let updated_c = c { sub_feeds_links = S.fromList $ links ++ (S.toList . sub_feeds_links $ c)}
                     updated_m = HMS.insert cid updated_c hmap
-                in  runApp env $ evalDb (UpsertChat updated_c) >>= \case
+                in  evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (updated_m, Right ())
             UnSub refs -> do
                 let (byurls, byids) = foldl' (\(!us, !is) v -> case v of ByUrl u -> (u:us, is); ById i -> (us, i:is)) ([],[]) refs
-                    update_db c' = runApp env $ evalDb (UpsertChat c') >>= \case
+                    update_db c' = evalDb env (UpsertChat c') >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                         _ -> pure (HMS.insert cid c' hmap, Right ())
                 if not (null byurls) && not (null byids) then pure (hmap, Left . BadInput $ "You cannot mix references by urls and by ids in the same command.")
@@ -60,21 +60,21 @@ withChat action cid = ask >>= \env -> liftIO $ do
                     else
                         let updated_c = c { sub_feeds_links = S.filter (`notElem` byurls) $ sub_feeds_links c}
                         in  update_db updated_c
-            Purge -> runApp env $ evalDb (DeleteChat cid) >>= \case
+            Purge -> evalDb env (DeleteChat cid) >>= \case
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetSubFeedSettings unparsed ->
                 let updated_settings = mergeSettings unparsed $ sub_settings c
                     updated_c = c { sub_settings = updated_settings }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                in  runApp env $ evalDb (UpsertChat updated_c) >>= \case
+                in  evalDb env (UpsertChat updated_c) >>= \case
                     DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
                     _ -> pure (updated_cs, Right ())
             Pause pause_or_resume ->
                 let updated_sets = (sub_settings c) { settings_is_paused = pause_or_resume }
                     updated_c = c { sub_settings = updated_sets }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                in  runApp env $ evalDb (UpsertChat updated_c) >>= \case
+                in  evalDb env (UpsertChat updated_c) >>= \case
                     DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
                     _ -> pure (updated_cs, Right ())
             _ -> pure (hmap, Right ())
@@ -82,7 +82,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
 loadChats :: MonadIO m => App m ()
 loadChats =
     ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $ \chats_hmap ->
-    runApp env $ evalDb GetAllChats >>= \case
+    evalDb env GetAllChats >>= \case
         DbChats chats -> pure . HMS.fromList . map (\c -> (sub_chatid c, c)) $ chats
         _ -> pure chats_hmap
 
@@ -93,18 +93,19 @@ updateEngine mvar items =
 
 evalFeedsAct :: MonadIO m => FeedsAction -> App m (FeedsRes a)
 evalFeedsAct (InitF start_urls) = do
+    env <- ask
     res <- liftIO $ mapConcurrently getFeedFromHref start_urls
     case sequence res of
         Left err -> liftIO $ print err >> pure FeedsOk
         Right refreshed_feeds -> do
-            dbres <- evalDb $ UpsertFeeds refreshed_feeds
+            dbres <- evalDb env $ UpsertFeeds refreshed_feeds
             case dbres of
                 DbErr err -> liftIO $ print $ renderDbError err
                 _ -> pure ()
             pure FeedsOk
 evalFeedsAct LoadF = do
     env <- ask
-    evalDb Get100Feeds >>= \case
+    evalDb env Get100Feeds >>= \case
         DbFeeds feeds -> do
             liftIO $ modifyMVar_ (feeds_state env) $ \_ ->
                 let feeds_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
@@ -115,7 +116,7 @@ evalFeedsAct (AddF feeds) = do
     env <- ask
     res <- liftIO $ modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
-        in  runApp env (evalDb (UpsertFeeds feeds)) >>= \case
+        in  evalDb env (UpsertFeeds feeds) >>= \case
                 DbOk ->
                     updateEngine (search_engine env) feeds >>
                     pure (HMS.union user_hmap app_hmap, Just ())
@@ -149,7 +150,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         unless (null failed) (writeChan (tasks_queue env) $ TgAlert $
             "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
         -- saving to memory & db
-        runApp env (evalDb (UpsertFeeds succeeded)) >>= \case
+        evalDb env (UpsertFeeds succeeded) >>= \case
             DbOk -> do
                 -- updating search engine on successful save to database.
                 updateEngine (search_engine env) (HMS.elems to_keep_in_memory)
@@ -186,7 +187,7 @@ evalFeedsAct (GetAllXDays links days) = do
             in  if null fresh then acc else (f_link f, fresh):acc
 evalFeedsAct (IncReadsF links) = ask >>= \env -> do
     liftIO $ modifyMVar_ (feeds_state env) $ \hmap ->
-        runApp env $ evalDb (IncReads links) >>= \case
+        evalDb env (IncReads links) >>= \case
             DbOk -> pure $ HMS.map (\f -> f { f_reads = 1 + f_reads f }) hmap
             _ -> pure hmap
     pure FeedsOk

@@ -109,7 +109,7 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
             where
                 with_filters fs i = all ($ i) fs
                 blacklist i = not . any
-                    (\l -> T.toCaseFold l `T.isInfixOf` (i_desc i `T.append` i_link i)) $
+                    (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $
                         filters_blacklist settings_filters
                 fresh i = last_time < i_pubdate i
 

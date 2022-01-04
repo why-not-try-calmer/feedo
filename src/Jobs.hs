@@ -47,7 +47,7 @@ runRefresh = do
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now } else c) subs
-                        in  runApp env $ evalDb (UpsertChats updated_chats) >> pure updated_chats
+                        in  evalDb env (UpsertChats updated_chats) >> pure updated_chats
                     writeChan (tasks_queue env) $ UpdateNotificationTimes notified_chats
                 _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
         wait_action = threadDelay interval >> action
@@ -61,7 +61,7 @@ runJobs = ask >>= \env ->
             TgAlert contents ->
                 let msg = PlainReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 in  reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg
-            Log item -> runApp env $ saveToLog item
+            Log item -> saveToLog env item
             UpdateNotificationTimes chat_ids -> 
                 getCurrentTime >>= \now -> 
                 modifyMVar_ (subs_state env) $ \chats_hmap -> 
@@ -70,7 +70,7 @@ runJobs = ask >>= \env ->
                             sub_last_notification = Just now,
                             sub_next_notification = findNextTime (settings_batch_interval . sub_settings $ c) now}
                             ) relevant
-                    in  runApp env $ evalDb (UpsertChats updated_chats) >>= \case
+                    in  evalDb env (UpsertChats updated_chats) >>= \case
                         DbOk -> pure $ HMS.union updated_chats chats_hmap
                         _ -> pure chats_hmap
         handler (SomeException e) = do
