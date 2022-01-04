@@ -102,15 +102,16 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
                     Nothing -> Just [v]
                     Just vs -> Just (v:vs)) (sub_chatid c) hmapping) acc subs
         fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
-        filterItemsWith _ Nothing items = items
+        with_filters fs i = all ($ i) fs
+        blacklist filters i = not . any
+            (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $ filters
+        filterItemsWith ChatSettings{..} Nothing items = 
+            take settings_batch_size . 
+            filter (with_filters [blacklist (filters_blacklist settings_filters)]) $ items
         filterItemsWith ChatSettings{..} (Just last_time) items =
             take settings_batch_size .
-            filter (with_filters [blacklist, fresh]) $ items
+            filter (with_filters [blacklist (filters_blacklist settings_filters), fresh]) $ items
             where
-                with_filters fs i = all ($ i) fs
-                blacklist i = not . any
-                    (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $
-                        filters_blacklist settings_filters
                 fresh i = last_time < i_pubdate i
 
 defaultChatSettings :: ChatSettings
