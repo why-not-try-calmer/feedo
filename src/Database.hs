@@ -4,6 +4,7 @@
 module Database where
 import AppTypes
 import Control.Exception
+import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
 import qualified Data.HashMap.Strict as HMS
@@ -21,12 +22,15 @@ import TgramOutJson (ChatId)
 {- Interface -}
 
 class Db m where
+    openDbHandle :: AppConfig -> m ()
     evalDb :: AppConfig -> DbAction -> m (DbRes a)
 
 instance MonadIO m => Db (App m) where
+    openDbHandle config = getFreshPipe (db_config config) >>= flip installPipe config
     evalDb = evalMongo
 
 instance Db IO where
+    openDbHandle config = getFreshPipe (db_config config) >>= flip installPipe config
     evalDb = evalMongo
 
 {- Evaluation -}
@@ -38,11 +42,9 @@ withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
 withMongo config action = liftIO $ do
     pipe <- getPipe config
     try (runMongo pipe action) >>= \case
-        Left (SomeException _) -> fixPipe config >> runMongo pipe action
+        Left (SomeException _) -> openDbHandle config >> runMongo pipe action
         Right res -> pure res
-    where
-        getPipe = readIORef . db_connector
-        fixPipe env = getFreshPipe (db_config env) >>= (atomicSwapIORef . db_connector $ env)
+    where   getPipe = readIORef . db_connector
 
 {- Connection -}
 
@@ -51,28 +53,26 @@ initMongoCredsFrom h whole_line =
     let [host_name, db_name, password] = T.splitOn ":" h
     in MongoCreds host_name whole_line db_name password
 
-createPipe :: MonadIO m => DbCreds -> m (Either DbError Pipe)
-createPipe creds = liftIO $ try (DbTLS.connect (T.unpack $ shard creds) (PortNumber 27017)) >>= \case
-    Left (SomeException e) -> do
-        putStrLn ("Error while trying to connect: " ++ show e)
-        pure . Left $ PipeNotAcquired
-    Right pipe -> do
-        authorized <- access pipe UnconfirmedWrites "admin" $ auth (user creds) (pwd creds)
-        if authorized then pure . Right $ pipe
-        else pure . Left $ DbLoginFailed
-
 getFreshPipe :: MonadIO m => DbCreds -> m Pipe
 getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p
     where
         folded = foldr check (pure Nothing) (T.splitOn ";" $ all_shards creds)
         check v acc =
             let new_creds = initMongoCredsFrom v $ all_shards creds
-            in  createPipe new_creds >>= \case
+            in  connectPipe new_creds >>= \case
                 Left _ -> acc
-                Right pipe -> checkDbHealth pipe >>= \case
+                Right pipe -> checkPipe pipe >>= \case
                     Left _ -> close pipe >> acc
                     Right _ -> pure $ Just pipe
-        checkDbHealth pipe =
+        connectPipe new_creds = liftIO $ try (DbTLS.connect (T.unpack $ shard new_creds) (PortNumber 27017)) >>= \case
+            Left (SomeException e) -> do
+                putStrLn ("Error while trying to connect: " ++ show e)
+                pure . Left $ PipeNotAcquired
+            Right pipe -> do
+                authorized <- access pipe UnconfirmedWrites "admin" $ auth (user new_creds) (pwd new_creds)
+                if authorized then pure . Right $ pipe
+                else pure . Left $ DbLoginFailed
+        checkPipe pipe =
             let ref = "123" :: T.Text
                 sample = ["ref" =: ref]
                 go = runMongo pipe $ do
@@ -83,6 +83,9 @@ getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p
                             _ <- deleteAll "test" [(sample, [])]
                             pure . Right $ ()
             in liftIO $ go `catch` \(SomeException _) -> pure . Left $ DbChangedMaster
+
+installPipe :: MonadIO m => Pipe -> AppConfig -> m ()
+installPipe pipe config = void . liftIO $ atomicSwapIORef (db_connector config) pipe
 
 {- Actions -}
 
