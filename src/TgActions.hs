@@ -31,25 +31,28 @@ registerWebhook config =
 
 checkIfAdmin :: MonadIO m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
 checkIfAdmin tok uid cid = do
-    resp_chat <- reqSend tok "getChat" $ GetChatAdministrators cid
-    case resp_chat of
+    resp_chat_admins <- getChatAdmins
+    case resp_chat_admins of
         Left _ -> pure Nothing
         Right res -> 
             let chat_resp = responseBody res :: TgGetChatResponse
                 c = resp_result chat_resp :: Chat
-            in  if chat_type c == Private then pure. Just $ True else do
-                resp_chat_admins <- reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
-                case resp_chat_admins of
+            in  if chat_type c == Private then pure. Just $ True else do 
+                resp_chat_type <- getChatType
+                case resp_chat_type of
                     Left _ -> pure Nothing
                     Right res_chat_admins ->
                         let res_cms = responseBody res_chat_admins :: TgGetChatMembersResponse
                             chat_members = resp_cm_result res_cms :: [ChatMember]
-                            is_admin member acc
-                                | uid /= (user_id . cm_user $ member) = acc
-                                | "administrator" == cm_status member || "creator" == cm_status member = True
-                                        | otherwise = False
-                            if_admin = foldr is_admin False chat_members
-                        in  pure . Just $ if_admin
+                        in  pure . Just . if_admin $ chat_members 
+    where
+        getChatType = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
+        getChatAdmins = reqSend tok "getChat" $ GetChatAdministrators cid
+        is_admin member acc
+            | uid /= (user_id . cm_user $ member) = acc
+            | "administrator" == cm_status member || "creator" == cm_status member = True
+            | otherwise = False
+        if_admin chat_members = foldr is_admin False chat_members
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
