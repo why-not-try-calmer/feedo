@@ -267,10 +267,15 @@ evalTgAct uid (SetSubFeedSettings settings) cid =
             else withChat (SetSubFeedSettings settings) cid >>= \case
                 Left _ -> pure . Right . PlainReply $ "Unable to udpate this chat settings"
                 Right _ -> pure . Right . PlainReply $ "Settings applied successfully."
-evalTgAct _ (Pause pause_or_resume) cid =
-    withChat (Pause pause_or_resume) cid >>= \case
-        Left err -> pure . Right . PlainReply . renderUserError $ err
-        Right _ -> pure . Right . PlainReply $ succeeded
+evalTgAct uid (Pause pause_or_resume) cid =
+    ask >>= \env ->
+    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+        Nothing -> pure . Left $ TelegramErr
+        Just verdict -> 
+            if not verdict then exitNotAuth uid
+            else withChat (Pause pause_or_resume) cid >>= \case
+                Left err -> pure . Right . PlainReply . renderUserError $ err
+                Right _ -> pure . Right . PlainReply $ succeeded
     where
         succeeded =
             if pause_or_resume then "All notifications to this chat are now suspended. Use /resume to resume."
