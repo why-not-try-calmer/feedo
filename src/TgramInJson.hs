@@ -34,7 +34,7 @@ data Chat = Chat
 
 $(deriveJSON defaultOptions {fieldLabelModifier = drop 5} ''Chat)
 
-data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: Chat}
+data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: Chat} deriving (Show)
 
 $(deriveJSON defaultOptions {fieldLabelModifier = drop 5} ''TgGetChatResponse)
 
@@ -73,6 +73,10 @@ $(deriveJSON defaultOptions ''Message)
 data Update = Update
   { update_id :: Int,
     message :: Maybe Message
-  }
+  } deriving (Show)
 
 $(deriveJSON defaultOptions ''Update)
+
+data TgGetMessageResponse = TgGetMessageResponse {resp_msg_ok :: Bool, resp_msg_result :: Message} deriving (Show)
+
+$(deriveJSON defaultOptions {fieldLabelModifier = drop 9} ''TgGetMessageResponse)
