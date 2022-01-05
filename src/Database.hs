@@ -16,9 +16,8 @@ import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as DbTLS
-import GHC.IORef (atomicSwapIORef, readIORef)
+import GHC.IORef (atomicSwapIORef)
 import TgramOutJson (ChatId)
-import Control.Monad (void)
 
 {- Interface -}
 
