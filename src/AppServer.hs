@@ -87,7 +87,7 @@ makeConfig env = do
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
-        tasks_queue = chan,
+        postjobs = chan,
         worker_interval = interval,
         db_config = creds,
         db_connector = pipe_ref,
@@ -101,7 +101,7 @@ initStart config mb_urls = case mb_urls of
         putStrLn "Found urls. Trying to build feeds..."
         runApp config $ evalFeedsAct (InitF urls) >> startup
     where 
-        startup = evalFeedsAct LoadF >> loadChats >> runRefresh >> runJobs
+        startup = evalFeedsAct LoadF >> loadChats >> refresher >> postProcJobs
         
 startApp :: IO ()
 startApp = do

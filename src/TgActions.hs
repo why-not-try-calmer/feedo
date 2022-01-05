@@ -176,7 +176,7 @@ evalTgAct _ (GetItems ref) cid = do
             Nothing -> pure . Left . NotFoundFeed $ url
             Just f ->
                 if hasSubToFeed (f_link f) c_hmap then do
-                liftIO $ writeChan (tasks_queue env) (IncReadsJob [f_link f])
+                liftIO $ writeChan (postjobs env) (IncReadsJob [f_link f])
                 pure . Right . toReply . FromFeedItems $ f
                 else pure . Right . PlainReply $ "It appears that you are not subscribed to this feed. Use /sub or talk to your chat administrator about it."
         hasSubToFeed flink chats_hmap = maybe False (\c -> flink `elem` sub_feeds_links c) (HMS.lookup cid chats_hmap)
@@ -190,7 +190,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
             in  if null subscribed then pure . Right . PlainReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else evalFeedsAct (GetAllXDays subscribed n) >>= \case
                 FeedLinkBatch feeds -> do
-                    liftIO $ writeChan (tasks_queue env) (IncReadsJob $ map fst feeds)
+                    liftIO $ writeChan (postjobs env) (IncReadsJob $ map fst feeds)
                     pure . Right . toReply . FromFeedLinkItems $ feeds
                 _ -> pure . Right . PlainReply $ "Unable to find any feed for this chat."
 evalTgAct _ ListSubs cid = do

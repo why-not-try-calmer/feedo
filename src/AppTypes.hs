@@ -241,8 +241,7 @@ data FeedsRes a where
 data LogItem = LogItem
   { log_when :: UTCTime,
     log_who :: T.Text,
-    log_what :: T.Text,
-    log_type :: T.Text
+    log_what :: T.Text
   }
   deriving (Eq, Show)
 
@@ -278,7 +277,7 @@ data DbCreds = MongoCreds
 type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
-    UpdateNotificationTimes [ChatId] |
+    UpdateSchedules [ChatId] |
     IncReadsJob [FeedLink] |
     TgAlert T.Text |
     Log LogItem
@@ -292,7 +291,7 @@ data AppConfig = AppConfig
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
     search_engine :: MVar ([KeyedItem], FeedsSearch),
-    tasks_queue :: Chan Job,
+    postjobs :: Chan Job,
     worker_interval :: Int
   }
 
