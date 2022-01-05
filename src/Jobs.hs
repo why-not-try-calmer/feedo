@@ -77,7 +77,7 @@ postProcJobs = ask >>= \env ->
                         DbOk -> pure $ HMS.union updated_chats chats_hmap
                         _ -> pure chats_hmap
         handler (SomeException e) = do
-            let report = "runDbTasks: Exception met : " `T.append` (T.pack . show $ e)
+            let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (postjobs env) . TgAlert $ report
-            print $ "runDbTasks bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling run_worker now."
+            print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
     in  liftIO $ runForever_ action handler

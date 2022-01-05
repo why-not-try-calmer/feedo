@@ -46,7 +46,7 @@ server = root :<|> handleWebhook    where
                     let cid = chat_id . chat $ msg :: ChatId
                         uid = user_id . fromJust . from $ msg :: UserId
                     in  case reply_to_message msg of
-                        Just _ -> reply tok cid $ PlainReply "I don't do replies, only commands, sorry. Send /start or /help for the list of commands I reply to."
+                        Just _ -> pure ()
                         Nothing -> case text msg of
                             Nothing -> liftIO . putStrLn $ "Suppressed message:" ++ show msg
                             Just contents -> case interpretCmd contents of

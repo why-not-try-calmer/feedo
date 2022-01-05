@@ -25,7 +25,7 @@ reqSend_ tok postMeth encodedMsg = liftIO (try action) >>= \case
 
 reqSend :: (MonadIO m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
 -- sends HTTP requests to Telegram service, capturing the response
-reqSend tok postMeth encodedMsg =  liftIO (try action) >>= \case
+reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
     Left (SomeException err) -> 
         let msg = "Tried to send a request, but failed for this reason: " ++ show err ++ " Please try again the very action you were doing"
         in  pure . Left . T.pack $ msg
@@ -37,8 +37,7 @@ reqSend tok postMeth encodedMsg =  liftIO (try action) >>= \case
             in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) jsonResponse mempty
 
 reply :: MonadIO m => BotToken -> ChatId -> Reply -> m ()
-reply tok cid rep = 
-    reqSend_ tok "sendMessage" (OutboundMessage cid (non_empty contents) message_type True) >>= \case
+reply tok cid rep = reqSend_ tok "sendMessage" (OutboundMessage cid (non_empty contents) message_type True) >>= \case
     Left err -> redirect err
     Right _ -> pure ()
     where
