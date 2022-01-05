@@ -58,16 +58,23 @@ freshLastXDays days now items =
         x_days_ago = posixSecondsToUTCTime $ utcTimeToPOSIXSeconds now - x
     in  filter (\i -> i_pubdate i > x_days_ago) items
 
-findNextTime :: BatchInterval -> UTCTime -> Maybe UTCTime 
-findNextTime (Secs xs) now = Just $ addUTCTime xs now
-findNextTime (HM ts) now =
+findNextTime :: UTCTime -> BatchInterval -> UTCTime
+findNextTime now (Secs xs) = addUTCTime xs now
+findNextTime now (HM ts) =
     let from_midnight = realToFrac $ utctDayTime now
         times = foldl' (\acc (!h, !m) ->
-            let t = realToFrac $ h * 3600 + m * 60
+            let t = toNominalDifftime h m
             in  if from_midnight < t then (t - from_midnight):acc else acc
             ) [] ts
-    in  if null times then Nothing
-        else Just $ addUTCTime (minimum times) now
+    in  if null times then
+            let (early_h, early_m) = foldl' (\(!h, !m) (!h', !m') ->
+                    if h' < h || (h == h' && m' < m) then (h', m') else (h, m)) (23, 59) ts
+                to_midnight = realToFrac $ 86401 - utctDayTime now
+                until_midnight = addUTCTime to_midnight now
+            in  addUTCTime (toNominalDifftime early_h early_m) until_midnight
+        else addUTCTime (minimum times) now
+    where
+        toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
 
 tooManySubs :: Int -> SubChats -> ChatId -> Bool
 tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
@@ -83,8 +90,8 @@ parseUpdateSettings [] = Nothing
 parseUpdateSettings lns = Map.fromList <$> foldr step Nothing lns
     where
     step l acc =
-        let (k:ss) = 
-                T.splitOn ":" . 
+        let (k:ss) =
+                T.splitOn ":" .
                 T.filter (not . isSpace) $ l
         in  if null ss then Nothing else case acc of
             Nothing -> Just [(k, last ss)]
@@ -105,8 +112,8 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
             (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $ filters
-        filterItemsWith ChatSettings{..} Nothing items = 
-            take settings_batch_size . 
+        filterItemsWith ChatSettings{..} Nothing items =
+            take settings_batch_size .
             filter (with_filters [blacklist (filters_blacklist settings_filters)]) $ items
         filterItemsWith ChatSettings{..} (Just last_time) items =
             take settings_batch_size .

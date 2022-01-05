@@ -67,7 +67,7 @@ runJobs = ask >>= \env ->
                     let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
                         updated_chats = HMS.map (\c -> c { 
                             sub_last_notification = Just now,
-                            sub_next_notification = findNextTime (settings_batch_interval . sub_settings $ c) now}
+                            sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)}
                             ) relevant
                     in  evalDb env (UpsertChats updated_chats) >>= \case
                         DbOk -> pure $ HMS.union updated_chats chats_hmap
