@@ -136,9 +136,9 @@ renderCmds = T.intercalate "\n"
         "/list, /l: Get all the urls and #s of the feeds to which the chat is subscribed to, if any.\n",
         "/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.\n",
         "/purge (*chat admins only*): Make the bot and associated database forget entirely about this chat.\n",
-        "/reset (*chat admins only*): Set the chat's settings to the defaults.",
+        "/reset (*chat admins only*): Set the chat's settings to the defaults.\n",
         "/search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. Example:\n- `/se cheap cloud host`.\n",
-        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Full example 1:\nblacklist: word1, word2\nbatch: true, batch_size: 10, batch_at: 1200, 1800\nFull example 2: \nblacklist: word1, word2\nbatch: true, batch_size: 10, batch_every: 3600\n",
+        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Full example 1:\nblacklist: word1, word2\nbatch: true, batch\\_size: 10, batch\\_at: 1200, 1800\nFull example 2: \nblacklist: word1, word2\nbatch: true, batch\\_size: 10, batch\\_every: 3600\n",
         "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`: Subscribe the chat to the feeds -- if they exist -- passed as argument. Examples:\n- `/s 1 2 3`\n- `/sub https://www.compositional.fm/rss https://www.blabla.org/rss`.\n",
         "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:\n- `/u 1 2 3`\n- `/unsub https://www.compositional.fm/rss https://www.blabla.org/`."
     ] `T.append` "\n\nCheck out our channel for more info: https://t.me/feedfarer"

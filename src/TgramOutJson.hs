@@ -17,6 +17,10 @@ data Outbound
         out_parse_mode :: Maybe T.Text,
         out_disable_web_page_preview :: Bool
       }
+  | DeleteMessage {
+      del_chat_id :: ChatId,
+      del_message_id :: Int
+    }
   | SetWebHook
       { out_url :: T.Text,
         out_certificates :: Maybe T.Text,

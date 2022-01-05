@@ -8,7 +8,10 @@ import Data.Aeson (FromJSON, Value)
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text as T
 import Network.HTTP.Req
-import TgramOutJson (ChatId, Outbound (OutboundMessage))
+import TgramOutJson (ChatId, Outbound (OutboundMessage, DeleteMessage))
+import TgramInJson (Message (message_id))
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async
 
 reqSend_ :: MonadIO m => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
 -- sends HTTP requests to Telegram service, ignoring the response
@@ -46,6 +49,25 @@ reply tok cid rep = reqSend_ tok "sendMessage" (OutboundMessage cid (non_empty c
             PlainReply txt -> (txt, Nothing)
         redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
         non_empty txt = if T.null txt then "No result for this command." else txt
+
+replyThenClean :: MonadIO m => BotToken -> ChatId -> Reply -> m ()
+replyThenClean tok cid rep = reqSend tok "sendMessage" (OutboundMessage cid (non_empty contents `T.append` delstamp) message_type True) >>= \case
+    Left err -> redirect err
+    Right resp ->
+        let msg = responseBody resp :: Message
+        in  liftIO . void . async $ do
+            threadDelay 30000000 
+            reqSend_ tok "deleteMessage" (DeleteMessage cid $ message_id msg) >>= \case
+                Left err -> print err
+                Right _ -> pure ()
+    where
+        delstamp = "\nThis message will be deleted in 30s."
+        (contents, message_type) = case rep of
+            MarkdownReply txt -> (txt, Just "Markdown") 
+            PlainReply txt -> (txt, Nothing)
+        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
+        non_empty txt = if T.null txt then "No result for this command." else txt
+
 
 setWebhook :: MonadIO m => BotToken -> T.Text -> m ()
 -- registers a webhook for the given bot at the given url

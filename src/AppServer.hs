@@ -14,12 +14,12 @@ import Database (getFreshPipe, initMongoCredsFrom)
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Requests (reply)
+import Requests (replyThenClean)
 import Responses
 import Servant
 import System.Environment (getEnvironment)
 import TgActions
-import TgramInJson (Message (chat, from, text, reply_to_message), Update (message), User (user_id), chat_id)
+import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
 
 type BotAPI =
@@ -39,7 +39,7 @@ server = root :<|> handleWebhook    where
             then    handle update tok
             else    liftIO $ putStrLn "Secrets do not match."
         where
-            finishWith err t c = reply t c . PlainReply $ renderUserError err
+            finishWith err t c = replyThenClean t c . PlainReply $ renderUserError err
             handle upd tok = case message upd of
                 Nothing -> liftIO $ putStrLn "Failed to parse message"
                 Just msg ->
@@ -53,7 +53,7 @@ server = root :<|> handleWebhook    where
                                 Left err -> finishWith err tok cid
                                 Right action -> evalTgAct uid action cid >>= \case
                                     Left err -> finishWith err tok cid
-                                    Right r -> reply tok cid r
+                                    Right r -> replyThenClean tok cid r
 
     root :: MonadIO m => App m ServerResponse
     root = pure $ RespOk "ok" "testing"
