@@ -156,6 +156,9 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
                 updateEngine (search_engine env) (HMS.elems to_keep_in_memory)
                 -- increasing reads count
                 writeChan (tasks_queue env) . IncReadsJob $ relevant_feedlinks
+                -- computing next run
+                writeChan (tasks_queue env) . UpdateNotificationTimes $ HMS.keys relevant_chats
+                -- refreshing feeds mvar
                 pure (to_keep_in_memory, FeedBatches notif)
             _ -> pure (feeds_hmap, FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF")
     where

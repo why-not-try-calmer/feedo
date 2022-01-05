@@ -48,7 +48,6 @@ runRefresh = do
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now } else c) subs
                         in  evalDb env (UpsertChats updated_chats) >> pure updated_chats
-                    writeChan (tasks_queue env) $ UpdateNotificationTimes notified_chats
                 _ -> liftIO $ writeChan (tasks_queue env) . TgAlert $ "runRefresh: Worked failed to acquire notification package"
         wait_action = threadDelay interval >> action
         handler e = onError e >> action
