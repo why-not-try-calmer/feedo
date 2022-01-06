@@ -196,7 +196,8 @@ bsonToChat doc =
             settings_filters = Filters
                 (fromMaybe [] $ M.lookup "settings_blacklist" settings_doc)
                 (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc),
-            settings_is_paused = fromMaybe False $ M.lookup "settings_is_paused" doc
+            settings_is_paused = fromMaybe False $ M.lookup "settings_is_paused" doc,
+            settings_webview = fromMaybe False $ M.lookup "settings_webview" doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -212,7 +213,8 @@ chatToBson SubChat{..} =
             "settings_blacklist" =: (filters_blacklist . settings_filters $ sub_settings),
             "settings_whitelist" =: (filters_whitelist . settings_filters $ sub_settings),
             "settings_batch_size" =: settings_batch_size sub_settings,
-            "settings_is_paused" =: settings_is_paused sub_settings
+            "settings_is_paused" =: settings_is_paused sub_settings,
+            "settings_webview" =: settings_webview sub_settings
             ]
         settings = case settings_batch_interval sub_settings of
             Secs xs -> settings' ++ ["settings_batch_every" =: xs]

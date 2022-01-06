@@ -97,6 +97,78 @@ parseUpdateSettings lns = Map.fromList <$> foldr step Nothing lns
             Nothing -> Just [(k, last ss)]
             Just p -> Just $ (k, last ss):p
 
+defaultChatSettings :: ChatSettings
+defaultChatSettings = ChatSettings {
+        settings_filters = Filters [] [],
+        settings_batch_size = 15,
+        settings_batch_interval = Secs 9000,
+        settings_is_paused = False,
+        settings_webview = False
+    }
+
+mergeSettings :: ParsedChatSettings -> ChatSettings -> ChatSettings
+{-
+Expected fields:
+- blacklist: term, term, ...
+- whitelist: term, term, ...
+- batch_at: hhmm, hhmm, ...
+- batch_every: n
+- paused: true | false,
+- webview: true | false
+-}
+mergeSettings keyvals orig =
+    let updater = ChatSettings {
+            settings_filters =
+                let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
+                    whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
+                in  Filters blacklist whitelist,
+            settings_batch_size =
+                let mbread = readMaybe . T.unpack =<<
+                        Map.lookup "batch_size" keyvals
+                in  fromMaybe 10 mbread,
+            settings_batch_interval =
+                case Map.lookup "batch_every" keyvals of
+                    Nothing -> case Map.lookup "batch_at" keyvals of
+                        Nothing -> dflt
+                        Just txt ->
+                            let datetimes = T.splitOn "," txt
+                                collected = foldl' step [] datetimes
+                            in if null collected then dflt else HM collected
+                    Just mbint -> maybe dflt Secs (readMaybe . T.unpack $ mbint),
+            settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
+                Map.lookup "paused" keyvals,
+            settings_webview = maybe False (\t -> "true" `T.isInfixOf` t) $
+                Map.lookup "webview" keyvals 
+        }
+    in  orig {
+            settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
+            settings_batch_size = if "batch_size" `elem` keys then settings_batch_size updater else settings_batch_size orig,
+            settings_batch_interval =
+                if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
+                else settings_batch_interval orig,
+            settings_is_paused = if "paused" `elem` keys then settings_is_paused updater else settings_is_paused orig,
+            settings_webview = if "webview" `elem` keys then settings_webview updater else settings_webview orig
+        }
+    where
+        keys = Map.keys keyvals
+        dflt = Secs 9000
+        step acc val =
+            let (hh, mm) = T.splitAt 2 val
+                (m1, m2) = T.splitAt 1 mm
+                mm' =
+                    if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
+                    else readMaybe . T.unpack $ mm :: Maybe Int
+                hh' = readMaybe . T.unpack $ hh :: Maybe Int
+            in  case sequence [hh', mm'] of
+                Nothing -> []
+                Just parsed -> if length parsed /= 2 then [] else
+                    let (h, m) = (head parsed, last parsed)
+                    in  toAcc h m acc
+        toAcc h m acc
+            |   h < 0 || h > 24 = []
+            |   m < 0 || m > 60 = []
+            |   otherwise = acc ++ [(h, m)]
+
 notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId FeedItems
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds
     where
@@ -120,71 +192,3 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
             filter (with_filters [blacklist (filters_blacklist settings_filters), fresh]) $ items
             where
                 fresh i = last_time < i_pubdate i
-
-defaultChatSettings :: ChatSettings
-defaultChatSettings = ChatSettings {
-        settings_filters = Filters [] [],
-        settings_batch_size = 15,
-        settings_batch_interval = Secs 9000,
-        settings_is_paused = False
-    }
-
-mergeSettings :: ParsedChatSettings -> ChatSettings -> ChatSettings
-{-
-Expected fields:
-- blacklist: term, term, term...
-- whitelist: term, term, term...
-- batch_at: hhmm, hhmm...
-- batch_every: n
-- paused: true | false
--}
-mergeSettings keyvals orig =
-    let updater = ChatSettings {
-            settings_filters =
-                let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
-                    whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
-                in  Filters blacklist whitelist,
-            settings_batch_size =
-                let mbread = readMaybe . T.unpack =<<
-                        Map.lookup "batch_size" keyvals
-                in  fromMaybe 10 mbread,
-            settings_batch_interval =
-                case Map.lookup "batch_every" keyvals of
-                    Nothing -> case Map.lookup "batch_at" keyvals of
-                        Nothing -> dflt
-                        Just txt ->
-                            let datetimes = T.splitOn "," txt
-                                collected = foldl' step [] datetimes
-                            in if null collected then dflt else HM collected
-                    Just mbint -> maybe dflt Secs (readMaybe . T.unpack $ mbint),
-            settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "paused" keyvals
-        }
-    in  orig {
-            settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
-            settings_batch_size = if "batch_size" `elem` keys then settings_batch_size updater else settings_batch_size orig,
-            settings_batch_interval =
-                if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
-                else settings_batch_interval orig,
-            settings_is_paused = if "paused" `elem` keys then settings_is_paused updater else settings_is_paused orig
-        }
-    where
-        keys = Map.keys keyvals
-        dflt = Secs 9000
-        step acc val =
-            let (hh, mm) = T.splitAt 2 val
-                (m1, m2) = T.splitAt 1 mm
-                mm' =
-                    if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
-                    else readMaybe . T.unpack $ mm :: Maybe Int
-                hh' = readMaybe . T.unpack $ hh :: Maybe Int
-            in  case sequence [hh', mm'] of
-                Nothing -> []
-                Just parsed -> if length parsed /= 2 then [] else
-                    let (h, m) = (head parsed, last parsed)
-                    in  toAcc h m acc
-        toAcc h m acc
-            |   h < 0 || h > 24 = []
-            |   m < 0 || m > 60 = []
-            |   otherwise = acc ++ [(h, m)]
-

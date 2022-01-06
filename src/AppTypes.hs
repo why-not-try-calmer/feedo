@@ -75,7 +75,8 @@ data ChatSettings = ChatSettings {
     settings_is_paused :: Bool,
     settings_batch_size :: Int,
     settings_batch_interval :: BatchInterval,
-    settings_filters :: Filters
+    settings_filters :: Filters,
+    settings_webview :: Bool
 } deriving (Show, Eq)
 
 data SubChat = SubChat
