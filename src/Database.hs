@@ -51,7 +51,7 @@ withMongo config action = liftIO $ do
 initMongoCredsFrom :: T.Text -> T.Text -> DbCreds
 initMongoCredsFrom h whole_line =
     let [host_name, db_name, password] = T.splitOn ":" h
-    in MongoCreds host_name whole_line db_name password
+    in  MongoCreds host_name whole_line db_name password
 
 getFreshPipe :: MonadIO m => DbCreds -> m Pipe
 getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p

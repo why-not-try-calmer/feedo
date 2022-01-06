@@ -34,13 +34,13 @@ server = root :<|> handleWebhook    where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
-        let tok = bot_token . tg_config $ env
-        in  if      EQ == compare secret tok
-            then    handle update tok
-            else    liftIO $ putStrLn "Secrets do not match."
+        if      EQ == compare secret (tok env)
+        then    handle update env
+        else    liftIO $ putStrLn "Secrets do not match."
         where
-            finishWith err t c = replyThenClean t c . PlainReply $ renderUserError err
-            handle upd tok = case message upd of
+            tok = bot_token . tg_config
+            finishWith env cid err = replyThenClean (tok env) cid (PlainReply $ renderUserError err) (postjobs env)
+            handle upd env = case message upd of
                 Nothing -> liftIO $ putStrLn "Failed to parse message"
                 Just msg ->
                     let cid = chat_id . chat $ msg :: ChatId
@@ -50,10 +50,10 @@ server = root :<|> handleWebhook    where
                         Nothing -> case text msg of
                             Nothing -> liftIO . putStrLn $ "Suppressed message:" ++ show msg
                             Just contents -> case interpretCmd contents of
-                                Left err -> finishWith err tok cid
+                                Left err -> finishWith env cid err
                                 Right action -> evalTgAct uid action cid >>= \case
-                                    Left err -> finishWith err tok cid
-                                    Right r -> replyThenClean tok cid r
+                                    Left err -> finishWith env cid err
+                                    Right r -> replyThenClean (tok env) cid r (postjobs env)
 
     root :: MonadIO m => App m ServerResponse
     root = pure $ RespOk "ok" "testing"

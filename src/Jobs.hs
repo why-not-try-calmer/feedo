@@ -1,10 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, subs_state, postjobs, tg_config, worker_interval), DbAction (UpsertChats), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, Log, TgAlert, UpdateSchedules), ServerConfig (alert_chat, bot_token), SubChat (sub_chatid, sub_last_notification, sub_settings, sub_next_notification), runApp, DbRes (DbOk), ChatSettings (settings_batch_interval), LogItem (LogItem))
+import AppTypes (App, AppConfig (last_worker_run, postjobs, subs_state, tg_config, worker_interval), ChatSettings (settings_batch_interval), DbAction (UpsertChats), DbRes (DbOk), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (IncReadsJob, Log, RemoveMsg, TgAlert, UpdateSchedules), LogItem (LogItem), ServerConfig (alert_chat, bot_token), SubChat (sub_chatid, sub_last_notification, sub_next_notification, sub_settings), runApp)
 import Backend (evalFeedsAct)
 import Control.Concurrent
-    ( readChan, writeChan, modifyMVar_, threadDelay )
+  ( modifyMVar_,
+    readChan,
+    threadDelay,
+    writeChan,
+  )
 import Control.Concurrent.Async (async, mapConcurrently)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
@@ -12,11 +16,15 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Text as T
-import Data.Time (getCurrentTime, diffUTCTime)
+import Data.Time (diffUTCTime, getCurrentTime)
 import Database (evalDb, saveToLog)
 import Replies
-    ( Reply(PlainReply), toReply, FromContents(FromFeedsItems) )
-import Requests (reply)
+  ( FromContents (FromFeedsItems),
+    Reply (PlainReply),
+    toReply,
+  )
+import Requests (reply, reqSend_)
+import TgramOutJson (Outbound (DeleteMessage))
 import Utils (findNextTime)
 
 {- Background tasks -}
@@ -60,11 +68,16 @@ postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let action = readChan (postjobs env) >>= \case
             IncReadsJob links -> void . runApp env $ evalFeedsAct (IncReadsF links)
+            Log item -> saveToLog env item
+            RemoveMsg cid mid -> liftIO . void . async $ do
+                threadDelay 30000000
+                reqSend_ (bot_token . tg_config $ env) "deleteMessage" (DeleteMessage cid mid) >>= \case
+                    Left err -> print err
+                    Right _ -> pure ()
             TgAlert contents -> do
                 let msg = PlainReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: TgAlert " `T.append` (T.pack . show $ contents)
                 reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg
-            Log item -> saveToLog env item
             UpdateSchedules chat_ids -> 
                 getCurrentTime >>= \now -> 
                 modifyMVar_ (subs_state env) $ \chats_hmap -> 

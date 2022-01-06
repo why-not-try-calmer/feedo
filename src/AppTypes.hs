@@ -277,10 +277,11 @@ data DbCreds = MongoCreds
 type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
-    UpdateSchedules [ChatId] |
     IncReadsJob [FeedLink] |
+    RemoveMsg ChatId Int |
+    Log LogItem |
     TgAlert T.Text |
-    Log LogItem
+    UpdateSchedules [ChatId]
     deriving (Eq, Show)
 
 data AppConfig = AppConfig

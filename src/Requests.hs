@@ -1,8 +1,7 @@
 module Requests where
 
-import AppTypes (BotToken, Reply (MarkdownReply, PlainReply))
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async
+import AppTypes (BotToken, Job (RemoveMsg), Reply (MarkdownReply, PlainReply))
+import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -11,7 +10,7 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (ChatId, Outbound (DeleteMessage, OutboundMessage))
+import TgramOutJson (ChatId, Outbound (OutboundMessage))
 
 reqSend_ :: MonadIO m => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
 -- sends HTTP requests to Telegram service, ignoring the response
@@ -50,16 +49,12 @@ reply tok cid rep = reqSend_ tok "sendMessage" (OutboundMessage cid (non_empty c
         redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
         non_empty txt = if T.null txt then "No result for this command." else txt
 
-replyThenClean :: MonadIO m => BotToken -> ChatId -> Reply -> m ()
-replyThenClean tok cid rep = reqSend tok "sendMessage" (OutboundMessage cid (non_empty contents `T.append` delstamp) message_type True) >>= \case
+replyThenClean :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
+replyThenClean tok cid rep chan = reqSend tok "sendMessage" (OutboundMessage cid (non_empty contents `T.append` delstamp) message_type True) >>= \case
     Left err -> redirect err
     Right resp ->
         let res = responseBody resp :: TgGetMessageResponse
-        in  liftIO . void . async $ do
-            threadDelay 30000000 
-            reqSend_ tok "deleteMessage" (DeleteMessage cid $ message_id . resp_msg_result $ res) >>= \case
-                Left err -> print err
-                Right _ -> pure ()
+        in  liftIO $ writeChan chan (RemoveMsg cid $ message_id . resp_msg_result $ res)
     where
         delstamp = "\nThis message will be deleted in 30s."
         (contents, message_type) = case rep of
