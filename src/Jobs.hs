@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, mapConcurrently, withAsync)
+import Control.Concurrent.Async (async, withAsync, forConcurrently, link)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -29,9 +29,9 @@ import Data.Maybe (fromMaybe)
 
 {- Background tasks -}
 
-runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
-runForever_ action handler = void . async . forever $ go
-    where   go = catch action handler
+runForever_ :: Exception e => IO () -> Maybe (e -> IO ()) -> IO ()
+runForever_ action Nothing = void . async . forever $ action
+runForever_ action (Just handler) = void . async . forever $ catch action handler
 
 refresher :: MonadIO m => App m ()
 refresher = do
@@ -48,10 +48,10 @@ refresher = do
             runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct RefreshNotifyF >>= \case
                 FeedBatches payload -> liftIO $ do
                     -- sending notifications
-                    notified_chats <- mapConcurrently (\(cid, (settings, feed_items)) ->
+                    notified_chats <- forConcurrently (HMS.toList payload) $
+                        \(cid, (settings, feed_items)) -> do
                         reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
-                        >> pure cid)
-                        $ HMS.toList payload
+                        pure cid
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just t1 } else c) subs
@@ -63,13 +63,13 @@ refresher = do
                 _ -> liftIO $ writeChan (postjobs env) . JobTgAlert $ "refresher: failed to acquire notification package"
         wait_action = threadDelay interval >> action
         handler e = onError e >> action
-    liftIO $ runForever_ wait_action handler
+    liftIO $ runForever_ wait_action $ Just handler
 
 postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
-        offloading act = withAsync act $ \_ -> pure () 
+        offloading act = withAsync act $ \t -> link t `catch` handler 
         action = readChan (postjobs env) >>= \case
             JobIncReadsJob links -> offloading $ runApp env $ evalFeedsAct (IncReadsF links)
             JobLog item -> offloading $ saveToLog env item
@@ -98,4 +98,4 @@ postProcJobs = ask >>= \env ->
             let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (postjobs env) . JobTgAlert $ report
             print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
-    in  liftIO $ runForever_ action handler
+    in  liftIO $ runForever_ action (Nothing :: Maybe (SomeException -> IO ()))
