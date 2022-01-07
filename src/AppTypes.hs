@@ -249,7 +249,7 @@ data FeedsRes a where
   FeedBatches :: HMS.HashMap ChatId (Settings, FeedItems) -> FeedsRes a
   FeedLinkBatch :: [(FeedLink, [Item])] -> FeedsRes a
 
-{- JobLogs -}
+{- Logs -}
 
 data LogItem = LogItem
   { log_when :: UTCTime,
