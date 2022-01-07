@@ -67,7 +67,10 @@ instance Renderable SubChat where
             ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
             ("Blacklist", blacklist),
             ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
-            ("Batch interval", interval)
+            ("Batch interval", interval),
+            ("Webview", if settings_webview sub_settings then "enabled" else "disabled"),
+            ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled"),
+            ("Remove bot messages", if settings_pin sub_settings then "enabled" else "disabled")
         ]
 
 instance Renderable [Item] where

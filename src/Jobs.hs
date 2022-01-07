@@ -9,12 +9,13 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, withAsync, forConcurrently, link)
+import Control.Concurrent.Async (async, forConcurrently, withAsync)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Time (diffUTCTime, getCurrentTime)
 import Database (evalDb, saveToLog)
@@ -25,13 +26,11 @@ import Replies
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
 import Utils (findNextTime)
-import Data.Maybe (fromMaybe)
 
 {- Background tasks -}
 
-runForever_ :: Exception e => IO () -> Maybe (e -> IO ()) -> IO ()
-runForever_ action Nothing = void . async . forever $ action
-runForever_ action (Just handler) = void . async . forever $ catch action handler
+runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
+runForever_ action = void . async . forever . catch action
 
 refresher :: MonadIO m => App m ()
 refresher = do
@@ -48,32 +47,32 @@ refresher = do
             runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct RefreshNotifyF >>= \case
                 FeedBatches payload -> liftIO $ do
                     -- sending notifications
-                    notified_chats <- forConcurrently (HMS.toList payload) $
-                        \(cid, (settings, feed_items)) -> do
-                        reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
-                        pure cid
+                    notified_chats <- forConcurrently (HMS.toList payload) $ 
+                        \(cid, (settings, feed_items)) ->
+                            reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
+                            >> pure cid
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just t1 } else c) subs
                         in  evalDb env (UpsertChats updated_chats) >> pure updated_chats
                     t2 <- getCurrentTime
                     let diff = diffUTCTime t1 t2
-                        item = LogItem t2 "refresher" ("refresher ran successfully within " `T.append` (T.pack . show $ diff))
+                        item = LogItem t2 "refresher" "refresher ran successfully" (realToFrac diff)
                     writeChan (postjobs env) (JobLog item)
                 _ -> liftIO $ writeChan (postjobs env) . JobTgAlert $ "refresher: failed to acquire notification package"
         wait_action = threadDelay interval >> action
         handler e = onError e >> action
-    liftIO $ runForever_ wait_action $ Just handler
+    liftIO $ runForever_ wait_action handler
 
 postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
-        offloading act = withAsync act $ \t -> link t `catch` handler 
+        offloading act = withAsync act $ \_ -> pure ()
         action = readChan (postjobs env) >>= \case
             JobIncReadsJob links -> offloading $ runApp env $ evalFeedsAct (IncReadsF links)
             JobLog item -> offloading $ saveToLog env item
-            JobPin cid mid -> offloading $ reqSend_ tok "pinChatMessage" (PinMessage cid mid) >> pure ()
+            JobPin cid mid -> offloading $ reqSend_ tok "pinChatMessage" (PinMessage cid mid)
             JobRemoveMsg cid mid delay -> offloading $ do
                 threadDelay $ fromMaybe 30000000 delay
                 reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
@@ -84,10 +83,10 @@ postProcJobs = ask >>= \env ->
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
             JobUpdateSchedules chat_ids -> offloading $
-                getCurrentTime >>= \now -> 
-                modifyMVar_ (subs_state env) $ \chats_hmap -> 
+                getCurrentTime >>= \now ->
+                modifyMVar_ (subs_state env) $ \chats_hmap ->
                     let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
-                        updated_chats = HMS.map (\c -> c { 
+                        updated_chats = HMS.map (\c -> c {
                             sub_last_notification = Just now,
                             sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)}
                             ) relevant
@@ -98,4 +97,4 @@ postProcJobs = ask >>= \env ->
             let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (postjobs env) . JobTgAlert $ report
             print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
-    in  liftIO $ runForever_ action (Nothing :: Maybe (SomeException -> IO ()))
+    in  liftIO $ runForever_ action handler

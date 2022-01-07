@@ -20,8 +20,7 @@ import Search (searchWith)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
-import Utils (maybeUserIdx, partitionEither, parseSettings, tooManySubs)
-import qualified Data.Map as Map
+import Utils (maybeUserIdx, parseSettings, partitionEither, tooManySubs)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -65,12 +64,14 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right ref -> Right . About $ head ref
-    | cmd == "/settings_channel" =
-        if null args then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
+    | cmd == "/channel_settings" =
+        if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
         let body = tail . T.lines . T.toLower $ contents
-        in  case parseSettings body of
-            Nothing -> Left . BadInput $ "Unable to parse channel settings. Did you forget to use linebreaks afters /channel?"
-            Just settings -> Right $ SetChannelSettings settings
+        in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "/settings needs at least 2 arguments, and the first one stands for the id of the target channel. I coulnd't find the first argument."
+            Just n -> case parseSettings body of
+                Nothing -> Left . BadInput $ "Unable to parse channel settings. Did you forget to use linebreaks afters /channel?"
+                Just settings -> Right $ SetChannelSettings n settings
     | cmd == "/fresh" || cmd == "/f" =
         if length args /= 1 then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
@@ -81,6 +82,11 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right single_ref -> Right . GetItems . head $ single_ref
+    | cmd == "/link_channel" || cmd == "/link" =
+        if length args /= 1 then Left . BadInput $ "/link_channel needs exactly 1 argument, standing for the id of the target channel."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "/link_channel's argument must be a valid integer, positive or negative."
+            Just n -> Right . LinkChannel $ n
     | cmd == "/list" || cmd == "/l" =
         if not . null $ args then Left . BadInput $ "/list takes no argument."
         else Right ListSubs
@@ -243,8 +249,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
 evalTgAct _ Purge cid = withChat Purge cid >>= \case
     Left _ -> pure . Right . ServiceReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
     Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
-evalTgAct _ (About ref) cid = do
-    env <- ask
+evalTgAct _ (About ref) cid = ask >>= \env -> do
     chats_hmap <- liftIO . readMVar $ subs_state env
     case HMS.lookup cid chats_hmap of
         Nothing -> pure . Left $ NotFoundChat
@@ -264,8 +269,7 @@ evalTgAct _ GetSubFeedSettings cid = ask >>= liftIO . readMVar . subs_state >>= 
     case HMS.lookup cid hmap of
         Nothing -> pure . Left $ NotFoundChat
         Just ch -> pure . Right . ServiceReply . render $ ch
-evalTgAct uid (SetSubFeedSettings settings) cid =
-    ask >>= \env ->
+evalTgAct uid (SetSubFeedSettings settings) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
@@ -273,36 +277,30 @@ evalTgAct uid (SetSubFeedSettings settings) cid =
             else withChat (SetSubFeedSettings settings) cid >>= \case
                 Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
-evalTgAct uid (LinkChannel channel_id) _ =
-    ask >>= \env ->
-    checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
+evalTgAct uid (LinkChannel channel_id) _ = ask >>= \env ->
+    let tok = bot_token . tg_config $ env
+        jobs = postjobs env
+    in  checkIfAdmin tok uid channel_id >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then pure . Left . NotAdmin $ "Only users with administrative rights in the target channel is allowed to link the bot to the channel."
-            else
-                reqSend (bot_token . tg_config $ env) "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed soon." Nothing (Just True)) >>= \case
-                Left _ -> pure . Left $ TelegramErr
+            else reqSend tok "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed soon." Nothing (Just True)) >>= \case
+                Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ channel_id) `T.append` ". Make sure the bot has administrative rights in that channel."
                 Right resp ->
                     let res = responseBody resp :: TgGetMessageResponse
                         mid = message_id . resp_msg_result $ res
-                    in  if not $ resp_msg_ok res then pure . Left $ TelegramErr
-                        else do
-                            liftIO $ writeChan (postjobs env) $ JobRemoveMsg channel_id mid (Just 3000000)
-                            pure . Right . ServiceReply $ "Channel linked successfully."
-evalTgAct uid (SetChannelSettings settings) _ =
-    ask >>= \env ->
-    let mb_chat_id = read . T.unpack <$> Map.lookup "chat_id" settings :: Maybe ChatId
-    in  case mb_chat_id of
+                    in  if not (resp_msg_ok res) then pure . Left $ TelegramErr else do
+                        liftIO $ writeChan jobs $ JobRemoveMsg channel_id mid (Just 3000000)
+                        pure . Right . ServiceReply $ "Channel linked successfully."
+evalTgAct uid (SetChannelSettings channel_id settings) _ = ask >>= \env ->
+    checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
         Nothing -> pure . Left $ TelegramErr
-        Just channel_id -> checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
-            Nothing -> pure . Left $ TelegramErr
-            Just verdict ->
-                if not verdict then exitNotAuth uid
-                else withChat (SetSubFeedSettings settings) channel_id >>= \case
-                    Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
-                    Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
-evalTgAct uid (Pause pause_or_resume) cid =
-    ask >>= \env ->
+        Just verdict ->
+            if not verdict then exitNotAuth uid
+            else withChat (SetSubFeedSettings settings) channel_id >>= \case
+                Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
+                Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
+evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->

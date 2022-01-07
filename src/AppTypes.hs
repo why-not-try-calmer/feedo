@@ -21,12 +21,13 @@ import Database.MongoDB (Pipe)
 
 {- Replies -}
 
-data Reply = ChatReply {
-    reply_contents :: T.Text,
-    reply_markdown :: Bool,
-    reply_pin_on_send :: Bool,
-    reply_webview :: Bool,
-    reply_clean_behind :: Bool
+data Reply = 
+    ChatReply {
+        reply_contents :: T.Text,
+        reply_markdown :: Bool,
+        reply_pin_on_send :: Bool,
+        reply_webview :: Bool,
+        reply_clean_behind :: Bool
     } | ServiceReply T.Text
     deriving Show
 
@@ -140,7 +141,7 @@ data UserAction
   | RenderCmds
   | Reset
   | Search [T.Text]
-  | SetChannelSettings ParsedSettings
+  | SetChannelSettings ChatId ParsedSettings
   | SetSubFeedSettings ParsedSettings
   | Sub [T.Text]
   | UnSub [FeedRef]
@@ -253,7 +254,8 @@ data FeedsRes a where
 data LogItem = LogItem
   { log_when :: UTCTime,
     log_who :: T.Text,
-    log_what :: T.Text
+    log_what :: T.Text,
+    log_n :: Double
   }
   deriving (Eq, Show)
 
