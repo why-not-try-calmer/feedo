@@ -48,10 +48,9 @@ refresher = do
             runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct RefreshNotifyF >>= \case
                 FeedBatches payload -> liftIO $ do
                     -- sending notifications
-                    notified_chats <- mapConcurrently
-                        (\(cid, (settings, feed_items)) -> 
-                            reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
-                            >> pure cid)
+                    notified_chats <- mapConcurrently (\(cid, (settings, feed_items)) ->
+                        reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
+                        >> pure cid)
                         $ HMS.toList payload
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
