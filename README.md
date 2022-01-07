@@ -39,7 +39,7 @@ Ask for an invite with https://t.me/+zMdPlkeEu7w2NjM0.
 Check out our channel for more info: https://t.me/feedfarer.
 
 ## Roadmap & todo
-- [x] Architecture, business JobLogic
+- [x] Architecture, business logic
 - [x] Implementation
 - [x] Tests
 - [x] Test deployment
@@ -111,7 +111,7 @@ Example:
 ```
 ALERT_CHATID=1234567890
 MONGODB_SHARDS=cluster1:my-app:passwd
-STARTING_FEEDS=https://bJobLog.system76.com/rss,https://www.reddit.com/r/pop_os.rss
+STARTING_FEEDS=https://blog.system76.com/rss,https://www.reddit.com/r/pop_os.rss
 TELEGRAM_TOKEN=1202309djkj@@kskdjkcjkjxkj
 WEBHOOK_URL=https://mydomain.org/path/to/wehbook
 
