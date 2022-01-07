@@ -221,12 +221,12 @@ data DbError
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
 renderDbError DbChangedMaster = "You need to make sure you are authenticating with the latest master instance."
-renderDbError DbLoginFailed = "Pipe acquired, but JobLogin failed."
+renderDbError DbLoginFailed = "Pipe acquired, but login failed."
 renderDbError FailedToDeleteAll = "Unable to delete these items."
 renderDbError (FailedToUpdate txt) = "Unable to update these items for this reason: " `T.append` txt
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToStoreAll = "Unable to store all these items."
-renderDbError FailedToLog = "Failed to JobLog"
+renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 
 {- Feeds -}
