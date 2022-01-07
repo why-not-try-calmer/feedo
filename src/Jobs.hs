@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, mapConcurrently)
+import Control.Concurrent.Async (async, mapConcurrently, withAsync)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -69,20 +69,21 @@ postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
+        offloading act = withAsync act $ \_ -> pure () 
         action = readChan (postjobs env) >>= \case
-            JobIncReadsJob links -> void . runApp env $ evalFeedsAct (IncReadsF links)
-            JobLog item -> saveToLog env item
-            JobPin cid mid -> reqSend_ tok "pinChatMessage" (PinMessage cid mid) >> pure ()
-            JobRemoveMsg cid mid delay -> liftIO . void . async $ do
+            JobIncReadsJob links -> offloading $ runApp env $ evalFeedsAct (IncReadsF links)
+            JobLog item -> offloading $ saveToLog env item
+            JobPin cid mid -> offloading $ reqSend_ tok "pinChatMessage" (PinMessage cid mid) >> pure ()
+            JobRemoveMsg cid mid delay -> offloading $ do
                 threadDelay $ fromMaybe 30000000 delay
                 reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
                     Left err -> print err
                     Right _ -> pure ()
-            JobTgAlert contents -> do
+            JobTgAlert contents -> offloading $ do
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
-            JobUpdateSchedules chat_ids -> 
+            JobUpdateSchedules chat_ids -> offloading $
                 getCurrentTime >>= \now -> 
                 modifyMVar_ (subs_state env) $ \chats_hmap -> 
                     let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
