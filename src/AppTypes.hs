@@ -123,7 +123,7 @@ toFeedRef ss
     intoUrls = map ByUrl ss
     intoIds = maybe [] (map ById) (traverse (readMaybe . T.unpack) ss)
 
--- -- Business JobLogic -- --
+-- -- Business logic -- --
 
 {- User actions, errors -}
 
