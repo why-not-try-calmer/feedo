@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Requests where
 
 import AppTypes (BotToken, Job (JobRemoveMsg, JobPin), Reply (reply_contents, reply_markdown, reply_webview, reply_pin_on_send, reply_clean_behind))
@@ -42,20 +44,17 @@ reply :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
 reply tok cid rep chan
     |   reply_pin_on_send rep = reqSend tok "sendMessage" msg >>= \case
             Left err -> redirect err
-            Right resp -> 
-                let res = responseBody resp :: TgGetMessageResponse
-                    mid = message_id . resp_msg_result $ res
-                in  liftIO . writeChan chan $ JobPin cid mid
+            Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
     |   reply_clean_behind rep = reqSend tok "sendMessage" msg >>= \case
             Left err -> redirect err
-            Right resp -> 
-                let res = responseBody resp :: TgGetMessageResponse
-                    mid = message_id . resp_msg_result $ res
-                in  liftIO . writeChan chan $ JobRemoveMsg cid mid Nothing
+            Right resp -> liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
     |   otherwise = reqSend_ tok "sendMessage" msg >>= \case
             Left err -> redirect err
             Right _ -> pure ()
     where
+        mid_from resp = 
+            let res = responseBody resp :: TgGetMessageResponse
+            in  message_id . resp_msg_result $ res
         msg = OutboundMessage cid (non_empty contents) parsemode webview
         contents = reply_contents rep
         parsemode = if reply_markdown rep then Just "Markdown" else Nothing

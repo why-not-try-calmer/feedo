@@ -278,7 +278,7 @@ evalTgAct uid (LinkChannel channel_id) _ =
     checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
-            if not verdict then pure . Left . NotAdmin $ "Only users with administrator rights in the target channel can link the bot to the channel."
+            if not verdict then pure . Left . NotAdmin $ "Only users with administrative rights in the target channel is allowed to link the bot to the channel."
             else
                 reqSend (bot_token . tg_config $ env) "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed soon." Nothing (Just True)) >>= \case
                 Left _ -> pure . Left $ TelegramErr
