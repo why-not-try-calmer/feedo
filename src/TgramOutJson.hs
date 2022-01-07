@@ -15,11 +15,15 @@ data Outbound
       { out_chat_id :: ChatId,
         out_text :: T.Text,
         out_parse_mode :: Maybe T.Text,
-        out_disable_web_page_preview :: Bool
+        out_disable_web_page_preview :: Maybe Bool
       }
   | DeleteMessage {
-      del_chat_id :: ChatId,
-      del_message_id :: Int
+      out_chat_id :: ChatId,
+      out_message_id :: Int
+    }
+  | PinMessage {
+      out_chat_id :: ChatId,
+      out_message_id :: Int
     }
   | SetWebHook
       { out_url :: T.Text,

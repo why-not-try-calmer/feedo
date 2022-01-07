@@ -171,7 +171,7 @@ bsonToChat :: Document -> SubChat
 bsonToChat doc =
     let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
-        feeds_settings_docs = ChatSettings {
+        feeds_settings_docs = Settings {
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
             settings_batch_interval =
                 let raw_value = M.lookup "settings_batch_every" settings_doc :: Maybe NominalDiffTime
@@ -197,7 +197,9 @@ bsonToChat doc =
                 (fromMaybe [] $ M.lookup "settings_blacklist" settings_doc)
                 (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc),
             settings_is_paused = fromMaybe False $ M.lookup "settings_is_paused" doc,
-            settings_webview = fromMaybe False $ M.lookup "settings_webview" doc
+            settings_webview = fromMaybe False $ M.lookup "settings_webview" doc,
+            settings_pin = fromMaybe False $ M.lookup "settings_pin" doc,
+            settings_clean = fromMaybe False $ M.lookup "settings_clean" doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -214,7 +216,9 @@ chatToBson SubChat{..} =
             "settings_whitelist" =: (filters_whitelist . settings_filters $ sub_settings),
             "settings_batch_size" =: settings_batch_size sub_settings,
             "settings_is_paused" =: settings_is_paused sub_settings,
-            "settings_webview" =: settings_webview sub_settings
+            "settings_webview" =: settings_webview sub_settings,
+            "settings_pin" =: settings_pin sub_settings,
+            "settings_clean" =: settings_clean sub_settings
             ]
         settings = case settings_batch_interval sub_settings of
             Secs xs -> settings' ++ ["settings_batch_every" =: xs]

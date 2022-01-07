@@ -98,33 +98,44 @@ data FromContents a where
     FromFeedsItems :: [(Feed, [Item])] -> FromContents a
     FromFeedLinkItems :: [(FeedLink, [Item])] -> FromContents a
     FromStart :: FromContents a
+    FromSearchRes :: [Item] -> FromContents a
 
-toReply :: FromContents a -> Reply
-toReply FromStart = MarkdownReply renderCmds
-toReply (FromChatFeeds _ feeds) =
+toReply :: FromContents a -> Maybe Settings -> Reply
+toReply FromStart _ = ServiceReply renderCmds
+toReply (FromChatFeeds _ feeds) mbs =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
         step = (\(!txt, !counter) f ->
             let link = f_link f
                 title = f_title f
                 rendered = toHrefEntities (Just counter) title link
             in  (T.append txt rendered `T.append` "\n", counter + 1))
-    in  MarkdownReply . fst $ foldl' step start feeds
-toReply (FromFeedDetails feed) = PlainReply $ render feed
-toReply (FromFeedItems f) =
+        payload = fst $ foldl' step start feeds
+    in  case mbs of
+        Just s -> ChatReply payload True (settings_pin s) (settings_webview s) (settings_clean s)
+        Nothing -> ServiceReply payload
+toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
+toReply (FromFeedItems f) _ =
     let rendered_items =
             render .
             sortBy (comparing $ Down . i_pubdate) .
             f_items $ f
-    in  MarkdownReply rendered_items
-toReply (FromFeedsItems items) =
+    in  ChatReply rendered_items True False False False
+toReply (FromFeedsItems items) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
             -- escapeWhere (f_title f) mkdSingles `T.append` "*:\n"
             `T.append` (render . sortBy (comparing $ Down . i_pubdate) $ i)
             `T.append` "\n")
-    in  MarkdownReply $ foldl' step mempty items
-toReply (FromFeedLinkItems flinkitems) =
+        payload = foldl' step mempty items
+    in  case mbs of
+        Just s -> ChatReply payload True (settings_pin s) (settings_webview s) (settings_clean s)
+        Nothing -> ServiceReply payload
+toReply (FromFeedLinkItems flinkitems) mbs =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
-    in  MarkdownReply $ foldl' step mempty flinkitems
+        payload = foldl' step mempty flinkitems
+    in  case mbs of 
+        Just s -> ChatReply payload True (settings_pin s) (settings_webview s) (settings_clean s)
+        Nothing -> ServiceReply payload
+toReply (FromSearchRes items) _ = ChatReply (render items) True False False False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

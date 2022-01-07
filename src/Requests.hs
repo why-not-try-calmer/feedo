@@ -1,6 +1,6 @@
 module Requests where
 
-import AppTypes (BotToken, Job (RemoveMsg), Reply (MarkdownReply, PlainReply))
+import AppTypes (BotToken, Job (JobRemoveMsg, JobPin), Reply (reply_contents, reply_markdown, reply_webview, reply_pin_on_send, reply_clean_behind))
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad (void)
@@ -38,29 +38,29 @@ reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
             let reqUrl = https "api.telegram.org" /: tok /: postMeth
             in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) jsonResponse mempty
 
-reply :: MonadIO m => BotToken -> ChatId -> Reply -> m ()
-reply tok cid rep = reqSend_ tok "sendMessage" (OutboundMessage cid (non_empty contents) message_type True) >>= \case
-    Left err -> redirect err
-    Right _ -> pure ()
+reply :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
+reply tok cid rep chan
+    |   reply_pin_on_send rep = reqSend tok "sendMessage" msg >>= \case
+            Left err -> redirect err
+            Right resp -> 
+                let res = responseBody resp :: TgGetMessageResponse
+                    mid = message_id . resp_msg_result $ res
+                in  liftIO . writeChan chan $ JobPin cid mid
+    |   reply_clean_behind rep = reqSend tok "sendMessage" msg >>= \case
+            Left err -> redirect err
+            Right resp -> 
+                let res = responseBody resp :: TgGetMessageResponse
+                    mid = message_id . resp_msg_result $ res
+                in  liftIO . writeChan chan $ JobRemoveMsg cid mid Nothing
+    |   otherwise = reqSend_ tok "sendMessage" msg >>= \case
+            Left err -> redirect err
+            Right _ -> pure ()
     where
-        (contents, message_type) = case rep of
-            MarkdownReply txt -> (txt, Just "Markdown") 
-            PlainReply txt -> (txt, Nothing)
-        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
-        non_empty txt = if T.null txt then "No result for this command." else txt
-
-replyThenClean :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
-replyThenClean tok cid rep chan = reqSend tok "sendMessage" (OutboundMessage cid (non_empty contents `T.append` delstamp) message_type True) >>= \case
-    Left err -> redirect err
-    Right resp ->
-        let res = responseBody resp :: TgGetMessageResponse
-        in  liftIO $ writeChan chan (RemoveMsg cid $ message_id . resp_msg_result $ res)
-    where
-        delstamp = "\nThis message will be deleted in 30s."
-        (contents, message_type) = case rep of
-            MarkdownReply txt -> (txt, Just "Markdown") 
-            PlainReply txt -> (txt, Nothing)
-        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
+        msg = OutboundMessage cid (non_empty contents) parsemode webview
+        contents = reply_contents rep
+        parsemode = if reply_markdown rep then Just "Markdown" else Nothing
+        webview = if reply_webview rep then Just True else Nothing
+        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing Nothing
         non_empty txt = if T.null txt then "No result for this command." else txt
 
 setWebhook :: MonadIO m => BotToken -> T.Text -> m ()

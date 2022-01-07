@@ -14,7 +14,7 @@ import Database (getFreshPipe, initMongoCredsFrom)
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Requests (replyThenClean)
+import Requests (reply)
 import Responses
 import Servant
 import System.Environment (getEnvironment)
@@ -39,7 +39,7 @@ server = root :<|> handleWebhook    where
         else    liftIO $ putStrLn "Secrets do not match."
         where
             tok = bot_token . tg_config
-            finishWith env cid err = replyThenClean (tok env) cid (PlainReply $ renderUserError err) (postjobs env)
+            finishWith env cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
             handle upd env = case message upd of
                 Nothing -> liftIO $ putStrLn "Failed to parse message"
                 Just msg ->
@@ -53,7 +53,7 @@ server = root :<|> handleWebhook    where
                                 Left err -> finishWith env cid err
                                 Right action -> evalTgAct uid action cid >>= \case
                                     Left err -> finishWith env cid err
-                                    Right r -> replyThenClean (tok env) cid r (postjobs env)
+                                    Right r -> reply (tok env) cid r (postjobs env)
 
     root :: MonadIO m => App m ServerResponse
     root = pure $ RespOk "ok" "testing"

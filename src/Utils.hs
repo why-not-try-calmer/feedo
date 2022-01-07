@@ -85,9 +85,9 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
 
 {- Update settings -}
 
-parseUpdateSettings :: [T.Text] -> Maybe ParsedChatSettings
-parseUpdateSettings [] = Nothing
-parseUpdateSettings lns = Map.fromList <$> foldr step Nothing lns
+parseSettings :: [T.Text] -> Maybe ParsedSettings
+parseSettings [] = Nothing
+parseSettings lns = Map.fromList <$> foldr step Nothing lns
     where
     step l acc =
         let (k:ss) =
@@ -97,16 +97,18 @@ parseUpdateSettings lns = Map.fromList <$> foldr step Nothing lns
             Nothing -> Just [(k, last ss)]
             Just p -> Just $ (k, last ss):p
 
-defaultChatSettings :: ChatSettings
-defaultChatSettings = ChatSettings {
+defaultChatSettings :: Settings
+defaultChatSettings = Settings {
         settings_filters = Filters [] [],
         settings_batch_size = 15,
         settings_batch_interval = Secs 9000,
         settings_is_paused = False,
-        settings_webview = False
+        settings_webview = False,
+        settings_pin = False,
+        settings_clean = False
     }
 
-mergeSettings :: ParsedChatSettings -> ChatSettings -> ChatSettings
+mergeSettings :: ParsedSettings -> Settings -> Settings
 {-
 Expected fields:
 - blacklist: term, term, ...
@@ -114,10 +116,12 @@ Expected fields:
 - batch_at: hhmm, hhmm, ...
 - batch_every: n
 - paused: true | false,
-- webview: true | false
+- webview: true | false,
+- pin: true | false,
+- clean_behind: true | false
 -}
 mergeSettings keyvals orig =
-    let updater = ChatSettings {
+    let updater = Settings {
             settings_filters =
                 let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
                     whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
@@ -138,7 +142,11 @@ mergeSettings keyvals orig =
             settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
                 Map.lookup "paused" keyvals,
             settings_webview = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "webview" keyvals 
+                Map.lookup "webview" keyvals,
+            settings_pin = maybe False (\t -> "true" `T.isInfixOf` t) $
+                Map.lookup "pin" keyvals,
+            settings_clean = maybe False (\t -> "true" `T.isInfixOf` t) $
+                Map.lookup "clean_behind" keyvals
         }
     in  orig {
             settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
@@ -147,7 +155,9 @@ mergeSettings keyvals orig =
                 if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
                 else settings_batch_interval orig,
             settings_is_paused = if "paused" `elem` keys then settings_is_paused updater else settings_is_paused orig,
-            settings_webview = if "webview" `elem` keys then settings_webview updater else settings_webview orig
+            settings_webview = if "webview" `elem` keys then settings_webview updater else settings_webview orig,
+            settings_pin = if "pin" `elem` keys then settings_webview updater else settings_webview orig,
+            settings_clean = if "clean_behind" `elem` keys then settings_clean updater else settings_clean orig
         }
     where
         keys = Map.keys keyvals
@@ -169,25 +179,23 @@ mergeSettings keyvals orig =
             |   m < 0 || m > 60 = []
             |   otherwise = acc ++ [(h, m)]
 
-notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId FeedItems
+notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds
     where
         layer acc f = HMS.foldl' (\hmapping c ->
-            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f)
-            then hmapping
-            else
-                let v = (f, fresh_filtered c f)
-                in  HMS.alter (\case
-                    Nothing -> Just [v]
-                    Just vs -> Just (v:vs)) (sub_chatid c) hmapping) acc subs
+            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping else
+            let v = (f, fresh_filtered c f)
+            in  HMS.alter (\case
+                Nothing -> Just (sub_settings c, [v])
+                Just (s, vs) -> Just (s, v:vs)) (sub_chatid c) hmapping) acc subs
         fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
             (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $ filters
-        filterItemsWith ChatSettings{..} Nothing items =
+        filterItemsWith Settings{..} Nothing items =
             take settings_batch_size .
             filter (with_filters [blacklist (filters_blacklist settings_filters)]) $ items
-        filterItemsWith ChatSettings{..} (Just last_time) items =
+        filterItemsWith Settings{..} (Just last_time) items =
             take settings_batch_size .
             filter (with_filters [blacklist (filters_blacklist settings_filters), fresh]) $ items
             where

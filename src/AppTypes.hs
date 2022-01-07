@@ -21,8 +21,15 @@ import Database.MongoDB (Pipe)
 
 {- Replies -}
 
-data Reply = MarkdownReply T.Text | PlainReply T.Text deriving (Show)
-    
+data Reply = ChatReply {
+    reply_contents :: T.Text,
+    reply_markdown :: Bool,
+    reply_pin_on_send :: Bool,
+    reply_webview :: Bool,
+    reply_clean_behind :: Bool
+    } | ServiceReply T.Text
+    deriving Show
+
 {- URLs -}
 
 type Host = T.Text
@@ -71,12 +78,14 @@ data Filters = Filters {
 
 data BatchInterval = Secs NominalDiffTime | HM [(Int, Int)] deriving (Eq, Show)
 
-data ChatSettings = ChatSettings {
+data Settings = Settings {
     settings_is_paused :: Bool,
     settings_batch_size :: Int,
     settings_batch_interval :: BatchInterval,
     settings_filters :: Filters,
-    settings_webview :: Bool
+    settings_webview :: Bool,
+    settings_pin :: Bool,
+    settings_clean :: Bool
 } deriving (Show, Eq)
 
 data SubChat = SubChat
@@ -84,7 +93,7 @@ data SubChat = SubChat
     sub_last_notification :: Maybe UTCTime,
     sub_next_notification :: Maybe UTCTime,
     sub_feeds_links :: S.Set FeedLink,
-    sub_settings :: ChatSettings
+    sub_settings :: Settings
 } deriving (Show, Eq)
 
 type SubChats = (HMS.HashMap ChatId SubChat)
@@ -113,24 +122,26 @@ toFeedRef ss
     intoUrls = map ByUrl ss
     intoIds = maybe [] (map ById) (traverse (readMaybe . T.unpack) ss)
 
--- -- Business logic -- --
+-- -- Business JobLogic -- --
 
 {- User actions, errors -}
 
-type ParsedChatSettings = Map.Map T.Text T.Text
+type ParsedSettings = Map.Map T.Text T.Text
 
 data UserAction
   = About FeedRef
-  | ListSubs
   | GetItems FeedRef
   | GetLastXDaysItems Int
   | GetSubFeedSettings
+  | LinkChannel ChatId
+  | ListSubs
   | Pause Bool
   | Purge
   | RenderCmds
   | Reset
   | Search [T.Text]
-  | SetSubFeedSettings ParsedChatSettings
+  | SetChannelSettings ParsedSettings
+  | SetSubFeedSettings ParsedSettings
   | Sub [T.Text]
   | UnSub [FeedRef]
   deriving (Eq, Show)
@@ -209,12 +220,12 @@ data DbError
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
 renderDbError DbChangedMaster = "You need to make sure you are authenticating with the latest master instance."
-renderDbError DbLoginFailed = "Pipe acquired, but login failed."
+renderDbError DbLoginFailed = "Pipe acquired, but JobLogin failed."
 renderDbError FailedToDeleteAll = "Unable to delete these items."
 renderDbError (FailedToUpdate txt) = "Unable to update these items for this reason: " `T.append` txt
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToStoreAll = "Unable to store all these items."
-renderDbError FailedToLog = "Failed to log"
+renderDbError FailedToLog = "Failed to JobLog"
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 
 {- Feeds -}
@@ -234,10 +245,10 @@ type FeedItems = [(Feed, [Item])]
 data FeedsRes a where
   FeedsOk :: FeedsRes a
   FeedsError :: DbError -> FeedsRes a
-  FeedBatches :: HMS.HashMap ChatId FeedItems -> FeedsRes a
+  FeedBatches :: HMS.HashMap ChatId (Settings, FeedItems) -> FeedsRes a
   FeedLinkBatch :: [(FeedLink, [Item])] -> FeedsRes a
 
-{- Logs -}
+{- JobLogs -}
 
 data LogItem = LogItem
   { log_when :: UTCTime,
@@ -278,11 +289,12 @@ data DbCreds = MongoCreds
 type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
-    IncReadsJob [FeedLink] |
-    RemoveMsg ChatId Int |
-    Log LogItem |
-    TgAlert T.Text |
-    UpdateSchedules [ChatId]
+    JobIncReadsJob [FeedLink] |
+    JobRemoveMsg ChatId Int (Maybe Int) |
+    JobLog LogItem |
+    JobPin ChatId Int |
+    JobTgAlert T.Text |
+    JobUpdateSchedules [ChatId]
     deriving (Eq, Show)
 
 data AppConfig = AppConfig

@@ -20,7 +20,8 @@ import Search (searchWith)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
-import Utils (maybeUserIdx, partitionEither, parseUpdateSettings, tooManySubs)
+import Utils (maybeUserIdx, partitionEither, parseSettings, tooManySubs)
+import qualified Data.Map as Map
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -34,17 +35,17 @@ checkIfAdmin tok uid cid = do
     resp_chat_admins <- getChatAdmins
     case resp_chat_admins of
         Left _ -> pure Nothing
-        Right res -> 
+        Right res ->
             let chat_resp = responseBody res :: TgGetChatResponse
                 c = resp_result chat_resp :: Chat
-            in  if chat_type c == Private then pure. Just $ True else do 
+            in  if chat_type c == Private then pure. Just $ True else do
                 resp_chat_type <- getChatType
                 case resp_chat_type of
                     Left _ -> pure Nothing
                     Right res_chat_admins ->
                         let res_cms = responseBody res_chat_admins :: TgGetChatMembersResponse
                             chat_members = resp_cm_result res_cms :: [ChatMember]
-                        in  pure . Just . if_admin $ chat_members 
+                        in  pure . Just . if_admin $ chat_members
     where
         getChatType = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
         getChatAdmins = reqSend tok "getChat" $ GetChatAdministrators cid
@@ -64,6 +65,12 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right ref -> Right . About $ head ref
+    | cmd == "/settings_channel" =
+        if null args then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
+        let body = tail . T.lines . T.toLower $ contents
+        in  case parseSettings body of
+            Nothing -> Left . BadInput $ "Unable to parse channel settings. Did you forget to use linebreaks afters /channel?"
+            Just settings -> Right $ SetChannelSettings settings
     | cmd == "/fresh" || cmd == "/f" =
         if length args /= 1 then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
@@ -87,7 +94,7 @@ interpretCmd contents
     | cmd == "/settings" || cmd == "/set" =
         if null args then Right GetSubFeedSettings else
         let body = tail . T.lines . T.toLower $ contents
-        in  case parseUpdateSettings body of
+        in  case parseSettings body of
             Nothing -> Left . BadInput $ "Unable to parse settings update. Did you forget to use linebreaks after /settings? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
             Just settings -> Right $ SetSubFeedSettings settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
@@ -101,7 +108,7 @@ interpretCmd contents
             Right refs -> Right . UnSub $ refs
     | otherwise = Left . BadInput $ "Unable to parse your command. Please try again."
     where
-        (cmd, args) = 
+        (cmd, args) =
             let (h':t) = T.words contents
                 (h:_) = T.splitOn "@" h'
             in  (h, t)
@@ -114,7 +121,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
     if tooManySubs 50 chats cid
     then exitTooMany
     else checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
-        Nothing -> pure . Left $ TelegramErr 
+        Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
             else liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->
@@ -129,7 +136,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
                         new_keys = filter (`notElem` old_keys) urls
                     in  unless (null old_keys) (void $ withChat (Sub old_keys) cid) >>
                         if null new_keys
-                        then pure . Right . PlainReply $ "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
+                        then pure . Right . ServiceReply $ "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
                         -- fetches feeds at remaining urls
                         else liftIO (mapConcurrently getFeedFromHref new_keys) >>= \res ->
                             -- add feeds
@@ -139,22 +146,22 @@ evalTgAct uid (Sub feeds_urls) cid = do
                                     -- subscribes chat to newly added feeds, returning result to caller
                                     let to_sub_to = map f_link built_feeds
                                     in  withChat (Sub to_sub_to) cid >>= \case
-                                    Left err -> pure . Right . PlainReply $ renderUserError err
+                                    Left err -> pure . Right . ServiceReply $ renderUserError err
                                     Right _ ->
                                         let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate " " failed
                                             ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate " " (map f_link built_feeds)
-                                        in  pure . Right . PlainReply $ (if null failed then ok_text else T.append ok_text failed_text)
+                                        in  pure . Right . ServiceReply $ (if null failed then ok_text else T.append ok_text failed_text)
                                 _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
     where
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
-        Nothing -> pure . Right . PlainReply $ "Error occured when requesting Telegram. Try again."
+        Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
         Just is_admin ->
             if not is_admin then exitNotAuth uid
             else withChat (UnSub feeds) cid >>= \case
             Left err -> pure . Left $ err
-            Right _ -> pure . Right . PlainReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
+            Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct _ (GetItems ref) cid = do
     env <- ask
     let feeds_mvar = feeds_state env
@@ -167,7 +174,7 @@ evalTgAct _ (GetItems ref) cid = do
     case ref of
         ByUrl url -> urlPath url feeds_hmap chats_hmap env
         ById _id -> case HMS.lookup cid chats_hmap of
-            Nothing -> pure . Right . PlainReply . renderUserError $ NotFoundChat
+            Nothing -> pure . Right . ServiceReply . renderUserError $ NotFoundChat
             Just c -> case maybeUserIdx (sort . S.toList $ sub_feeds_links c) _id of
                 Nothing -> pure . Left . BadRef $ T.pack . show $ _id
                 Just r -> urlPath r feeds_hmap chats_hmap env
@@ -176,47 +183,47 @@ evalTgAct _ (GetItems ref) cid = do
             Nothing -> pure . Left . NotFoundFeed $ url
             Just f ->
                 if hasSubToFeed (f_link f) c_hmap then do
-                liftIO $ writeChan (postjobs env) (IncReadsJob [f_link f])
-                pure . Right . toReply . FromFeedItems $ f
-                else pure . Right . PlainReply $ "It appears that you are not subscribed to this feed. Use /sub or talk to your chat administrator about it."
+                liftIO $ writeChan (postjobs env) (JobIncReadsJob [f_link f])
+                pure . Right $ toReply (FromFeedItems f) Nothing
+                else pure . Right . ServiceReply $ "It appears that you are not subscribed to this feed. Use /sub or talk to your chat administrator about it."
         hasSubToFeed flink chats_hmap = maybe False (\c -> flink `elem` sub_feeds_links c) (HMS.lookup cid chats_hmap)
 evalTgAct _ (GetLastXDaysItems n) cid = do
     env <- ask
     chats_hmap <- liftIO . readMVar $ subs_state env
     case HMS.lookup cid chats_hmap of
-        Nothing -> pure . Right . PlainReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
+        Nothing -> pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
         Just c ->
             let subscribed = S.toList . sub_feeds_links $ c
-            in  if null subscribed then pure . Right . PlainReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
+            in  if null subscribed then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else evalFeedsAct (GetAllXDays subscribed n) >>= \case
                 FeedLinkBatch feeds -> do
-                    liftIO $ writeChan (postjobs env) (IncReadsJob $ map fst feeds)
-                    pure . Right . toReply . FromFeedLinkItems $ feeds
-                _ -> pure . Right . PlainReply $ "Unable to find any feed for this chat."
+                    liftIO $ writeChan (postjobs env) (JobIncReadsJob $ map fst feeds)
+                    pure . Right $ toReply (FromFeedLinkItems feeds) (Just $ sub_settings c)
+                _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
 evalTgAct _ ListSubs cid = do
     env <- ask
     chats_hmap <- liftIO . readMVar $ subs_state env
     case HMS.lookup cid chats_hmap of
-        Nothing -> pure . Right . PlainReply $ "This chat is not subscribed to any feed yet!"
+        Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
         Just c ->
             let subs = sort . S.toList . sub_feeds_links $ c
-            in  if null subs then pure . Right . PlainReply $ "This chat is not subscribed to any feed yet!"
+            in  if null subs then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
                 else do
                 feeds_hmap <- liftIO (readMVar $ feeds_state env)
                 case traverse (`HMS.lookup` feeds_hmap) subs of
                     Nothing -> pure . Left . NotFoundFeed $
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
-                    Just feeds -> pure . Right . toReply . FromChatFeeds c $ feeds
-evalTgAct _ RenderCmds _ = pure . Right . toReply $ FromStart
+                    Just feeds -> pure . Right $ toReply (FromChatFeeds c feeds) (Just $ sub_settings c) 
+evalTgAct _ RenderCmds _ = pure . Right $ toReply FromStart Nothing
 evalTgAct uid Reset cid = do
     env <- ask
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
-        Nothing -> pure . Left $ TelegramErr 
+        Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat Reset cid >>= \case
-                Left err -> pure . Right . PlainReply $ renderUserError err
-                Right _ -> pure . Right . PlainReply $ "Chat settings set to defaults."
+                Left err -> pure . Right . ServiceReply $ renderUserError err
+                Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct _ (Search keywords) cid = ask >>= \env ->
     let get_chats = liftIO . readMVar $ subs_state env
         search_from_subs subs =
@@ -226,17 +233,16 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
                         let i = item kitem
                         in  if i_feed_link i `elem` subs then acc ++ [i]
                             else acc) [] results
-        prepare_reply res = pure . Right . MarkdownReply . render $ res
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
-        Nothing -> pure . Right . PlainReply $ "This chat is not subscribed to any feed yet!"
+        Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
         Just c ->
             let subs = S.toList . sub_feeds_links $ c
             in  if null subs
-                then pure . Right . PlainReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
-                else search_from_subs subs >>= prepare_reply
+                then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
+                else search_from_subs subs >>= \res -> pure . Right $ toReply (FromSearchRes res) Nothing
 evalTgAct _ Purge cid = withChat Purge cid >>= \case
-    Left _ -> pure . Right . PlainReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
-    Right _ -> pure . Right . PlainReply $ "Successfully purged the chat from the database."
+    Left _ -> pure . Right . ServiceReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
+    Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct _ (About ref) cid = do
     env <- ask
     chats_hmap <- liftIO . readMVar $ subs_state env
@@ -248,34 +254,62 @@ evalTgAct _ (About ref) cid = do
                 else liftIO (readMVar $ feeds_state env) >>= \feeds_hmap -> case ref of
                     ByUrl u -> case HMS.lookup u feeds_hmap of
                         Nothing -> pure . Left $ NotSubscribed
-                        Just f -> pure . Right . toReply . FromFeedDetails $ f
+                        Just f -> pure . Right $ toReply (FromFeedDetails f) (Just $ sub_settings c)
                     ById i ->
                         let feed = (`HMS.lookup` feeds_hmap) =<< maybeUserIdx subs i
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
-                            Just f -> pure . Right . toReply . FromFeedDetails $ f
+                            Just f -> pure . Right $ toReply (FromFeedDetails f) (Just $ sub_settings c)
 evalTgAct _ GetSubFeedSettings cid = ask >>= liftIO . readMVar . subs_state >>= \hmap ->
     case HMS.lookup cid hmap of
         Nothing -> pure . Left $ NotFoundChat
-        Just ch -> pure . Right . PlainReply . render $ ch
+        Just ch -> pure . Right . ServiceReply . render $ ch
 evalTgAct uid (SetSubFeedSettings settings) cid =
     ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
-        Just verdict -> 
+        Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat (SetSubFeedSettings settings) cid >>= \case
-                Left _ -> pure . Right . PlainReply $ "Unable to udpate this chat settings"
-                Right _ -> pure . Right . PlainReply $ "Settings applied successfully."
+                Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
+                Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
+evalTgAct uid (LinkChannel channel_id) _ =
+    ask >>= \env ->
+    checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
+        Nothing -> pure . Left $ TelegramErr
+        Just verdict ->
+            if not verdict then pure . Left . NotAdmin $ "Only users with administrator rights in the target channel can link the bot to the channel."
+            else
+                reqSend (bot_token . tg_config $ env) "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed soon." Nothing (Just True)) >>= \case
+                Left _ -> pure . Left $ TelegramErr
+                Right resp ->
+                    let res = responseBody resp :: TgGetMessageResponse
+                        mid = message_id . resp_msg_result $ res
+                    in  if not $ resp_msg_ok res then pure . Left $ TelegramErr
+                        else do
+                            liftIO $ writeChan (postjobs env) $ JobRemoveMsg channel_id mid (Just 3000000)
+                            pure . Right . ServiceReply $ "Channel linked successfully."
+evalTgAct uid (SetChannelSettings settings) _ =
+    ask >>= \env ->
+    let mb_chat_id = read . T.unpack <$> Map.lookup "chat_id" settings :: Maybe ChatId
+    in  case mb_chat_id of
+        Nothing -> pure . Left $ TelegramErr
+        Just channel_id -> checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
+            Nothing -> pure . Left $ TelegramErr
+            Just verdict ->
+                if not verdict then exitNotAuth uid
+                else withChat (SetSubFeedSettings settings) channel_id >>= \case
+                    Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
+                    Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
 evalTgAct uid (Pause pause_or_resume) cid =
     ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
-        Just verdict -> 
+        Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat (Pause pause_or_resume) cid >>= \case
-                Left err -> pure . Right . PlainReply . renderUserError $ err
-                Right _ -> pure . Right . PlainReply $ succeeded
+                Left err -> pure . Right . ServiceReply . renderUserError $ err
+                Right _ -> pure . Right . ServiceReply $ succeeded
     where
         succeeded =
             if pause_or_resume then "All notifications to this chat are now suspended. Use /resume to resume."
