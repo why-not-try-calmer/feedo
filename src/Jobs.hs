@@ -68,14 +68,20 @@ postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
+        with_cid_txt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
         action = readChan (postjobs env) >>= \case
             JobIncReadsJob links -> fork $ runApp env $ evalFeedsAct (IncReadsF links)
             JobLog item -> fork $ saveToLog env item
-            JobPin cid mid -> fork $ reqSend_ tok "pinChatMessage" (PinMessage cid mid)
+            JobPin cid mid -> fork $ do
+                reqSend_ tok "pinChatMessage" (PinMessage cid mid) >>= \case
+                    Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to pin a message in (chat_id) " cid $
+                        " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
+                    Right _ -> pure ()
             JobRemoveMsg cid mid delay -> fork $ do
                 threadDelay $ fromMaybe 30000000 delay
                 reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
-                    Left err -> print err
+                    Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
+                        " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
                     Right _ -> pure ()
             JobTgAlert contents -> fork $ do
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents

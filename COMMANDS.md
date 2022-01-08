@@ -102,10 +102,10 @@ command   | argument
 /list, /l | none    
 ----------+---------
 example   | /l      
-----------+------------------------------
+----------+-----------------------------
 response  | list of #s associated with   
           | each subscripbed to web feed 
------------------------------------------
+----------------------------------------
 ```
 
 ### Show information about a subscribed to feed
@@ -125,13 +125,14 @@ response     | information about the target feed
 
 ```
 command  | argument
----------+----------------------------------------------------------+
-/fresh   | <# of days representing how old the items can be at most |
----------+----------------------------------------------------------+
+---------+----------------------------------------------------------
+/fresh   | <# of days representing how old the items can be at most 
+---------+----------------------------------------------------------
 example  | /fresh 1 
 ---------+----------------------------------------------------------
-response | all at most #-old items collected from all feeds the chat is subscribed to
---------------------------------------------------------------------+
+response | all at most #-old items collected from
+         |  all feeds the chat is subscribed to
+--------------------------------------------------------------------
 ```
 
 ### Displaying items from a single feed
@@ -139,7 +140,7 @@ response | all at most #-old items collected from all feeds the chat is subscrib
 ```
 command     | argument
 ------------+----------------------------------------------------------
-/items, /i   | <# or full url of the target of days representing the max "age" of the items
+/items, /i  | <# or full url of the target of days representing the max "age" of the items
 ------------+----------------------------------------------------------
 example     | /items 1
             | /i https://www.phoronix.com/rss.php
