@@ -74,11 +74,6 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right single_ref -> Right . GetItems . head $ single_ref
-    | cmd == "/subchan" =
-        if length args /= 1 then Left . BadInput $ "/subchan needs exactly 1 argument, standing for the id of the target channel."
-        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "/subchan's argument must be a valid integer, positive or negative."
-            Just n -> Right $ SubChannel n (tail args)
     | cmd == "/list" || cmd == "/l" =
         if not . null $ args then Left . BadInput $ "/list takes no argument."
         else Right ListSubs
@@ -107,6 +102,11 @@ interpretCmd contents
     | cmd == "/sub" || cmd == "/s" =
         if null args then Left . BadInput $ "/sub needs at least 1 argument, standing for the url of the feed to subscribe to."
         else Right . Sub $ args
+    | cmd == "/subchan" =
+        if length args /= 1 then Left . BadInput $ "/subchan needs exactly 1 argument, standing for the id of the target channel."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "/subchan's argument must be a valid integer, positive or negative."
+            Just n -> Right $ SubChannel n (tail args)
     | cmd == "/unsub" =
         if null args then Left . BadInput $ "/remove needs at least 1 argument, standing for the url or # of the feed to unsubscribe from."
         else case toFeedRef args of
