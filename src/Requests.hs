@@ -21,7 +21,8 @@ setWebhook tok webhook = do
     resp <- withReqManager $ runReq defaultHttpConfig . pure request 
     let code = responseStatusCode (resp :: JsonResponse Value) :: Int
         message = responseStatusMessage resp
-    if code /= 200 then liftIO . throwIO . userError $ "Failed to set webhook, error message reads:" ++ show message else pure ()
+    if code /= 200 then liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message 
+    else pure ()
     where
         request = req Network.HTTP.Req.GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
             "url" =: (webhook `T.append` "/webhook/" `T.append` tok)
