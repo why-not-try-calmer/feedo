@@ -22,6 +22,9 @@ escapeWhere txt suspects =
             else t `T.append` T.singleton c
     ) mempty txt
 
+skipWhere :: T.Text -> [T.Text] -> T.Text
+skipWhere txt suspects = T.filter (\t -> T.singleton t `notElem` suspects) txt
+
 mkdSingles :: [T.Text]
 mkdSingles = ["_", "*", "`"]
 
@@ -45,7 +48,7 @@ instance Renderable Feed where
             ]
 
 instance Renderable SubChat where
-    render SubChat{..} = 
+    render SubChat{..} =
         let adjust c = if c == "0" then "00" else c
             interval = case settings_batch_interval sub_settings of
                 HM vals -> "every day at " `T.append` foldl' (\s (!h, !m) ->
@@ -53,7 +56,7 @@ instance Renderable SubChat where
                         s' = if s == mempty then s else s `T.append` ", "
                     in  s' `T.append` body) mempty vals
                 Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
-            blacklist = 
+            blacklist =
                 let bs = filters_blacklist . settings_filters $ sub_settings
                 in  if null bs then "none" else T.intercalate "," bs
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
@@ -82,12 +85,12 @@ instance Renderable [Item] where
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities Nothing tag link =
-    let tag' = "[" `T.append` tag `T.append` "]"
+    let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
         link' = "(" `T.append` link `T.append` ")"
     in  tag' `T.append` link'
 toHrefEntities (Just counter) tag link =
     let counter' = T.pack . show $ counter
-        tag' = " [" `T.append` tag `T.append` "]"
+        tag' = " [" `T.append` skipWhere tag (mkdDoubles ++ mkdSingles) `T.append` "]"
         link' = "(" `T.append` link `T.append` ")"
     in  counter' `T.append` tag' `T.append` link'
 
