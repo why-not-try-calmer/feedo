@@ -118,3 +118,6 @@ TELEGRAM_TOKEN=1202309djkj@@kskdjkcjkjxkj
 WEBHOOK_URL=https://mydomain.org/path/to/wehbook
 
 ```
+
+## Support this bot
+I am hosting the bot on my own. If you want to [pay me a coffee or a beer](https://paypal.me/WhyNotTryCalmer) to show your appreciation, that will help me maintain the code and pay the electricity bills...
