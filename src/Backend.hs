@@ -147,7 +147,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
             notif = notifFor updated_feeds relevant_chats
             -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
             to_keep_in_memory = HMS.filter (\f -> f_link f `elem` within_top100_reads succeeded) updated_feeds
-        unless (null failed) (writeChan (postjobs env) $ TgAlert $
+        unless (null failed) (writeChan (postjobs env) $ JobTgAlert $
             "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
         -- saving to memory & db
         evalDb env (UpsertFeeds succeeded) >>= \case
@@ -155,9 +155,9 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
                 -- updating search engine on successful save to database.
                 updateEngine (search_engine env) (HMS.elems to_keep_in_memory)
                 -- increasing reads count
-                writeChan (postjobs env) . IncReadsJob $ relevant_feedlinks
+                writeChan (postjobs env) . JobIncReadsJob $ relevant_feedlinks
                 -- computing next run
-                writeChan (postjobs env) . UpdateSchedules $ HMS.keys relevant_chats
+                writeChan (postjobs env) . JobUpdateSchedules $ HMS.keys relevant_chats
                 -- refreshing feeds mvar
                 pure (to_keep_in_memory, FeedBatches notif)
             _ -> pure (feeds_hmap, FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF")

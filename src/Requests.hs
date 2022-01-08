@@ -1,6 +1,10 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Requests where
 
-import AppTypes (BotToken, Job (RemoveMsg), Reply (MarkdownReply, PlainReply))
+import AppTypes (BotToken, Job (JobRemoveMsg, JobPin), Reply (reply_contents, reply_markdown, reply_webview, reply_pin_on_send, reply_clean_behind, ChatReply, ServiceReply))
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad (void)
@@ -12,64 +16,13 @@ import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (ChatId, Outbound (OutboundMessage))
 
-reqSend_ :: MonadIO m => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
--- sends HTTP requests to Telegram service, ignoring the response
-reqSend_ tok postMeth encodedMsg = liftIO (try action) >>= \case
-    Left (SomeException err) -> 
-        let msg = "Tried to send a request, but failed for this reason: " ++ show err ++ " Please try again the very action you were doing"
-        in  pure . Left . T.pack $ msg
-    Right _ -> pure . Right $ ()
-    where
-        action = withReqManager $ runReq defaultHttpConfig . pure request 
-        request = 
-            let reqUrl = https "api.telegram.org" /: tok /: postMeth
-            in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) ignoreResponse mempty
-
-reqSend :: (MonadIO m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
--- sends HTTP requests to Telegram service, capturing the response
-reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
-    Left (SomeException err) -> 
-        let msg = "Tried to send a request, but failed for this reason: " ++ show err ++ " Please try again the very action you were doing"
-        in  pure . Left . T.pack $ msg
-    Right resp -> pure . Right $ resp
-    where
-        action = withReqManager $ runReq defaultHttpConfig . pure request 
-        request =
-            let reqUrl = https "api.telegram.org" /: tok /: postMeth
-            in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) jsonResponse mempty
-
-reply :: MonadIO m => BotToken -> ChatId -> Reply -> m ()
-reply tok cid rep = reqSend_ tok "sendMessage" (OutboundMessage cid (non_empty contents) message_type True) >>= \case
-    Left err -> redirect err
-    Right _ -> pure ()
-    where
-        (contents, message_type) = case rep of
-            MarkdownReply txt -> (txt, Just "Markdown") 
-            PlainReply txt -> (txt, Nothing)
-        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
-        non_empty txt = if T.null txt then "No result for this command." else txt
-
-replyThenClean :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
-replyThenClean tok cid rep chan = reqSend tok "sendMessage" (OutboundMessage cid (non_empty contents `T.append` delstamp) message_type True) >>= \case
-    Left err -> redirect err
-    Right resp ->
-        let res = responseBody resp :: TgGetMessageResponse
-        in  liftIO $ writeChan chan (RemoveMsg cid $ message_id . resp_msg_result $ res)
-    where
-        delstamp = "\nThis message will be deleted in 30s."
-        (contents, message_type) = case rep of
-            MarkdownReply txt -> (txt, Just "Markdown") 
-            PlainReply txt -> (txt, Nothing)
-        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing True
-        non_empty txt = if T.null txt then "No result for this command." else txt
-
 setWebhook :: MonadIO m => BotToken -> T.Text -> m ()
--- registers a webhook for the given bot at the given url
 setWebhook tok webhook = do
     resp <- withReqManager $ runReq defaultHttpConfig . pure request 
     let code = responseStatusCode (resp :: JsonResponse Value) :: Int
         message = responseStatusMessage resp
-    if code /= 200 then liftIO . throwIO . userError $ "Failed to set webhook, error message reads:" ++ show message else pure ()
+    if code /= 200 then liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message 
+    else pure ()
     where
         request = req Network.HTTP.Req.GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
             "url" =: (webhook `T.append` "/webhook/" `T.append` tok)
@@ -84,3 +37,46 @@ fetchFeed url = liftIO (try action :: IO (Either SomeException LbsResponse)) >>=
     where
         action = withReqManager $ runReq defaultHttpConfig . pure request
         request = req GET url NoReqBody lbsResponse mempty
+
+reqSend :: (MonadIO m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
+reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
+    Left (SomeException err) -> 
+        let msg = "Tried to send a request, but failed for this reason: " ++ show err ++ " Please try again the very action you were doing"
+        in  pure . Left . T.pack $ msg
+    Right resp -> pure . Right $ resp
+    where
+        action = withReqManager $ runReq defaultHttpConfig . pure request 
+        request =
+            let reqUrl = https "api.telegram.org" /: tok /: postMeth
+            in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) jsonResponse mempty
+
+reqSend_ :: MonadIO m => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
+reqSend_ a b c = reqSend a b c >>= \case
+    Left txt -> pure $ Left txt
+    Right (_ :: JsonResponse Value) -> pure $ Right ()
+
+reply :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
+reply tok cid rep chan =
+    let mid_from resp = 
+            let b = responseBody resp :: TgGetMessageResponse
+            in  message_id . resp_msg_result $ b
+        fromReply ChatReply{..} = OutboundMessage cid (non_empty reply_contents)
+            (if reply_markdown then Just "Markdown" else Nothing)
+            (if reply_webview then Just True else Nothing)
+        fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing Nothing
+        redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing Nothing
+        non_empty txt = if T.null txt then "No result for this command." else txt
+        triage_replies msg@ChatReply{..} 
+            |   reply_pin_on_send = reqSend tok "sendMessage" (fromReply msg) >>= \case
+                    Left err -> redirect err
+                    Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
+            |   reply_clean_behind = reqSend tok "sendMessage" (fromReply msg) >>= \case
+                    Left err -> redirect err
+                    Right resp -> liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
+            |   otherwise = reqSend_ tok "sendMessage" (fromReply msg) >>= \case
+                    Left err -> redirect err
+                    Right _ -> pure ()
+        triage_replies serv_rep = reqSend tok "sendMessage" (fromReply serv_rep) >>= \case
+            Left err -> redirect err
+            Right resp ->  liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
+    in  triage_replies rep

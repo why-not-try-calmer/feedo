@@ -21,8 +21,16 @@ import Database.MongoDB (Pipe)
 
 {- Replies -}
 
-data Reply = MarkdownReply T.Text | PlainReply T.Text deriving (Show)
-    
+data Reply = 
+    ChatReply {
+        reply_contents :: T.Text,
+        reply_markdown :: Bool,
+        reply_pin_on_send :: Bool,
+        reply_webview :: Bool,
+        reply_clean_behind :: Bool
+    } | ServiceReply T.Text
+    deriving Show
+
 {- URLs -}
 
 type Host = T.Text
@@ -71,12 +79,14 @@ data Filters = Filters {
 
 data BatchInterval = Secs NominalDiffTime | HM [(Int, Int)] deriving (Eq, Show)
 
-data ChatSettings = ChatSettings {
+data Settings = Settings {
     settings_is_paused :: Bool,
     settings_batch_size :: Int,
     settings_batch_interval :: BatchInterval,
     settings_filters :: Filters,
-    settings_webview :: Bool
+    settings_webview :: Bool,
+    settings_pin :: Bool,
+    settings_clean :: Bool
 } deriving (Show, Eq)
 
 data SubChat = SubChat
@@ -84,7 +94,7 @@ data SubChat = SubChat
     sub_last_notification :: Maybe UTCTime,
     sub_next_notification :: Maybe UTCTime,
     sub_feeds_links :: S.Set FeedLink,
-    sub_settings :: ChatSettings
+    sub_settings :: Settings
 } deriving (Show, Eq)
 
 type SubChats = (HMS.HashMap ChatId SubChat)
@@ -117,22 +127,29 @@ toFeedRef ss
 
 {- User actions, errors -}
 
-type ParsedChatSettings = Map.Map T.Text T.Text
+type ParsedSettings = Map.Map T.Text T.Text
 
 data UserAction
   = About FeedRef
-  | ListSubs
   | GetItems FeedRef
   | GetLastXDaysItems Int
   | GetSubFeedSettings
+  | ListSubs
+  | ListSubsChannel ChatId
   | Pause Bool
+  | PauseChannel ChatId Bool
   | Purge
+  | PurgeChannel ChatId
   | RenderCmds
   | Reset
+  | ResetChannel ChatId
   | Search [T.Text]
-  | SetSubFeedSettings ParsedChatSettings
+  | SetChannelSettings ChatId ParsedSettings
+  | SetSubFeedSettings ParsedSettings
   | Sub [T.Text]
+  | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]
+  | UnSubChannel ChatId [FeedRef]
   deriving (Eq, Show)
 
 data UserError
@@ -169,7 +186,6 @@ renderUserError BadFilter = "Filters should be at least 4-character long."
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
 renderUserError NoSettings = "No settings found for the supscription to this feed."
 renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
-
 
 {- Database actions, errors -}
 
@@ -214,7 +230,7 @@ renderDbError FailedToDeleteAll = "Unable to delete these items."
 renderDbError (FailedToUpdate txt) = "Unable to update these items for this reason: " `T.append` txt
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToStoreAll = "Unable to store all these items."
-renderDbError FailedToLog = "Failed to log"
+renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 
 {- Feeds -}
@@ -234,7 +250,7 @@ type FeedItems = [(Feed, [Item])]
 data FeedsRes a where
   FeedsOk :: FeedsRes a
   FeedsError :: DbError -> FeedsRes a
-  FeedBatches :: HMS.HashMap ChatId FeedItems -> FeedsRes a
+  FeedBatches :: HMS.HashMap ChatId (Settings, FeedItems) -> FeedsRes a
   FeedLinkBatch :: [(FeedLink, [Item])] -> FeedsRes a
 
 {- Logs -}
@@ -242,7 +258,8 @@ data FeedsRes a where
 data LogItem = LogItem
   { log_when :: UTCTime,
     log_who :: T.Text,
-    log_what :: T.Text
+    log_what :: T.Text,
+    log_n :: Double
   }
   deriving (Eq, Show)
 
@@ -278,11 +295,12 @@ data DbCreds = MongoCreds
 type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
-    IncReadsJob [FeedLink] |
-    RemoveMsg ChatId Int |
-    Log LogItem |
-    TgAlert T.Text |
-    UpdateSchedules [ChatId]
+    JobIncReadsJob [FeedLink] |
+    JobRemoveMsg ChatId Int (Maybe Int) |
+    JobLog LogItem |
+    JobPin ChatId Int |
+    JobTgAlert T.Text |
+    JobUpdateSchedules [ChatId]
     deriving (Eq, Show)
 
 data AppConfig = AppConfig
