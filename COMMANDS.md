@@ -164,17 +164,18 @@ example     | /items 1
 response    | all the items available from the target feed
 ----------------------------------------------------------
 ```
-
-### Other commands
-- /pause, /p
+### Miscellaneous
+- /pause, /p: Suspend notification to the chat
+- /pausechan `<chat_id>`: Like the previous one but for channels
 - /resume:  Whether the bot is allowed to send notification messages to the chat.
+- /resumechan `<chat_id>`: like the previous one but for channels
 - /purge (chat admins only): Make the database forget entirely about the chat
-- /purgechan (chat admins only): Make the database forget entirely about the channel
+- /purgechan `<chat_id>` (chat admins only): Make the database forget entirely about the channel
 - /reset (chat admins only): Set the chat's settings to the defaults
-- /resetchan (chat admins only) `<channel_id>`: Set the channels's settings to the defaults
+- /resetchan `<chat_id>` (chat admins only) `<channel_id>`: Set the channels's settings to the defaults
 - /search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. 
     - Example: `/se cheap cloud host`
 - /unsub (chat admins only) `<list of 1-space-separated #s or full url addresses>`
     - unsubscribe from all the feeds passed as argument, if indeed they exits
     - examples, `/u 1 2 3`, `/unsub https://www.compositional.fm/rss https://www.blabla.org/feed`
-- /unsubchan (chat admins only) `<channel id> + <list of 1-space-separated # or full urls>`: like the previous one but for channels 
+- /unsubchan `<chat_id>` (chat admins only) `<channel id> + <list of 1-space-separated # or full urls>`: like the previous one but for channels 

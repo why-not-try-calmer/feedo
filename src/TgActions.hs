@@ -80,22 +80,32 @@ interpretCmd contents
         else Right ListSubs
     | cmd == "/listchan" || cmd == "/lchan" =
         if length args /= 1 then Left . BadInput $ "/listchan takes exactly one argument, standing for the chat_id of the target channel."
-        else case readMaybe . show . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The value you gave me could not be parsed into a valid chat_id."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /listchan could not be parsed into a valid chat_id."
             Just chan_id -> Right . ListSubsChannel $ chan_id
     | cmd == "/pause" || cmd == "/p" = Right . Pause $ True
+    | cmd == "/pausechan" =
+        if length args /= 1 then Left . BadInput $ "/pausechan takes exactly one argument, standing for the chat_id of the target channel."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /pausechan could not be parsed into a valid chat_id."
+            Just chan_id -> Right . PauseChannel chan_id $ True
     | cmd == "/purge" = if not . null $ args then Left . BadInput $ "/purge takes no argument." else Right Purge
     | cmd == "/purgechan" = 
         if length args /= 1 then Left . BadInput $ "/purgechan takes exactly one argument, standing for the target channel id."
-        else case readMaybe . show . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The value you gave me could not be parsed into a valid chat_id."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /purgechan could not be parsed into a valid chat_id."
             Just chan_id -> Right . PurgeChannel $ chan_id 
     | cmd == "/resume" = Right . Pause $ False
+    | cmd == "/resumechan" =
+        if length args /= 1 then Left . BadInput $ "/resumechan takes exactly one argument, standing for the chat_id of the target channel."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /resumechan could not be parsed into a valid chat_id."
+            Just chan_id -> Right . PauseChannel chan_id $ False 
     | cmd == "/reset" = Right Reset
     | cmd == "/resetchan" =
         if length args /= 1 then Left . BadInput $ "/resetchan takes exactly one argument, standing for the target channel id."
-        else case readMaybe . show . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The value you gave me could not be parsed into a valid chat_id."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /resetchan could not be parsed into a valid chat_id."
             Just chan_id -> Right . ResetChannel $ chan_id
     | cmd == "/search" || cmd == "/se" =
         if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
@@ -119,9 +129,9 @@ interpretCmd contents
         if null args then Left . BadInput $ "/sub needs at least 1 argument, standing for the url of the feed to subscribe to."
         else Right . Sub $ args
     | cmd == "/subchan" =
-        if length args /= 1 then Left . BadInput $ "/subchan needs exactly 1 argument, standing for the id of the target channel."
+        if length args < 2 then Left . BadInput $ "/subchan at least 2 arguments, the first standing for the id of the target channel, and another argument for the target web feed (url)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "/subchan's argument must be a valid integer, positive or negative."
+            Nothing -> Left . BadInput $ "/subchan's first argument must be a valid integer, positive or negative."
             Just n -> Right $ SubChannel n (tail args)
     | cmd == "/unsub" =
         if null args then Left . BadInput $ "/unsub needs at least 1 argument, standing for the url or # of the feed to unsubscribe from."
@@ -130,7 +140,7 @@ interpretCmd contents
             Right refs -> Right . UnSub $ refs
     | cmd == "/unsubchan" =
         if length args < 2 then Left . BadInput $ "/unsubchan takes at least two arguments, the chat_id of the target channel and either a # or full url of the target feed."
-        else case readMaybe . show . head $ args :: Maybe ChatId of
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The first argument of /unsubchan must be a valid chat_id."
             Just n -> case toFeedRef . tail $ args of
                 Left err -> Left err
