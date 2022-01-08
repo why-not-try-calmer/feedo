@@ -87,13 +87,8 @@ instance Renderable [Item] where
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
-toHrefEntities Nothing tag link =
+toHrefEntities mbcounter tag link =
     let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
-        link' = "(" `T.append` link `T.append` ")"
-    in  tag' `T.append` link'
-toHrefEntities (Just counter) tag link =
-    let counter' = T.pack . show $ counter
-        tag' = " [" `T.append` skipWhere tag (mkdDoubles ++ mkdSingles) `T.append` "]"
         link' = "(" `T.append` link `T.append` ")"
     in  case mbcounter of
         Nothing -> tag' `T.append` link'
