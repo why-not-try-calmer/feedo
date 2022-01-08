@@ -1,5 +1,5 @@
 # feedfarer
-A fast, efficient network app for subscribing Telegram chats to web feeds.
+A fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
 
 ## What this package provides
 - a Telegram bot able to post updates to any web feed (Atom or RSS) feed a chat is subscribed to; the bot is also replies directly to commands for consuming feeds at one's favorite pace
@@ -23,7 +23,7 @@ All chats types are supported:
 
 The bot does not require any permission; it just need to be a member of the group to which it posts updates.
 
-For the exhaustive list of commands, see this [document](/COMMMANDS.md).
+For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/dev/COMMANDS.md).
 
 __Getting started__:
 

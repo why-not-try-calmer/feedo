@@ -1,93 +1,159 @@
 ## Commands
 
-### Subscribe a 1-1 chat, private group or public group to a web feed
+### Subscribe a channel, 1-1 chat, private group, or public group to a web feed
 
-_Chat admins only._
+__Any chat but a channel__:
 
-```
-command  | argument
--------------------------------------------------------
-/sub     | <list of comma-separated full url addresses>
-------------------------------------------------------- 
-example  | /sub https://www.reddit.com/r/pop_os.rss
-```
-### Subscribe a channel
-
-_Both user performing this command and the bot must be admin in the target channel. The bot must have the permission to edit and pin messages._
-
-The command may be issued from any chat with the bot.
-
-```
-command              | argument
---------------------------------------------------------------------------
-/sub_channel, /subchan | <unique identifier (chat_id) of the target channel>
---------------------------------------------------------------------------
-example  | /subchan -25154554 https://www.reddit.com/r/pop_os.rss
-```
-### Edit a chat's or channel's settings
-
-_Chat admins only._
-
-__Chat__:
+_The user issuing the command must have administrative rights in the chat._
 
 ```
 command  | argument
--------------------------------------------------------
-/set     | <line break + ":"-separated key-value pairs>
-------------------------------------------------------- 
-example  | /set
-           batch_size: 10
-           batch_at: 0800, 1200
-           webview: true
+---------+---------------------------------------------
+/sub     | <list of comma-separated full url addresses> 
+---------+---------------------------------------------
+example  | /sub https://www.reddit.com/r/pop_os.rss     
+---------+---------------------------------------------
+response | error or success message                    
+---------+---------------------------------------------
 ```
 
 __Channel__:
+
+_Both the user performing this command and the bot must be admin in the target channel. The command may be issued from any chat with the bot. For a better experience it is recommended to give bot the permission to edit and pin messages._
+
 ```
 command  | argument
------------------------------------------------------------------------------
-/setchan, /set_channel | <unique identifier (chat_id)> + <line break with ":"-separated key-value pairs>
------------------------------------------------------------------------------ 
-example  | /setchan -25154554
-           batch_every: 3600
-           pin: true
-           web_view: true
+---------+-------------------------------------------------------
+/subchan | <chat_id>                                 
+---------+-------------------------------------------------------
+example  | /subchan -25154554 https://www.reddit.com/r/pop_os.rss  
+---------+-------------------------------------------------------
+response | error or success message                               
+---------+-------------------------------------------------------
 ```
 
-WIP...
+### View or edit a chat's or channel's settings
 
-- /about, /a `<url or #>`
+Available values:
 
-Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:
-- /info 2, /info https://www.compositional.fm/rss.
+- blacklist: term, term, ...
+    - excludes feed items where a term is found in either their url or description
+    - example: `blacklist: itsmycode, butIamproudofit`
+- batch_at: HHMM, HHMM, ...
+    - incompatible with "batch_every"
+    - batch all updates and post them at the given times
+    - example: `batch_at: 0800, 1200, 1800`
+- batch_every: n
+    - incompatible with "batch_at"
+    - batch all updates and post them every n seconds
+    - example: `batch_every: 9000` (= 20 minutes)
+- paused: "true" or "false"
+    - suspend all notifications to the chat
+- webview: "true" or "false"
+    - allow Telegram to display the last shown items in webview mode
+- pin: "true" or "false",
+    - have the bot try to pin every batch message
+- clean_behind: "true" or "false"
+    - have the bot try to delete their own messages
+    - does not apply to batch messages
 
-/fresh, /f <n>: Get all the most recent items (less than n-days old, where n is the argument) from all the feeds the chat is subscribed.
+_The user issuing the command must have administrative rights in the chat._
 
-/help, /start:  Get the list of commands this bot answers to.
+__Any chat but a channel__:
 
-/items, /i <url or #>: Get the most recent items from the feed at the url or #s passed as argument, if any. Examples:
-- /items 2
--/i https://www.compositional.fm/rss.
+```
+command  | argument
+---------+------------------------------------------
+/set     | optional argument after line break
+         | <":"-separated key-value pairs>            
+---------+------------------------------------------
+example  |  /set 
+         |  batch_size: 10
+         |  batch_at: 0800, 1200
+         |  webview: true >
+---------+------------------------------------------
+response | with no argument: list of settings
+         | with argument: error or success message
+---------+------------------------------------------
+```
+__Channel__:
 
-/list, /l: Get all the urls and #s of the feeds to which the chat is subscribed to, if any.
+_Both the user performing this command and the bot must be admin in the target channel. The command may be issued from any chat with the bot. For a better experience it is recommended to give bot the permission to edit and pin messages._
 
-/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.
+```
+command  | argument
+---------+---------------------------------------------
+/setchan | <line break + ":"-separated key-value pairs 
+---------+--------------+------------------------------
+example  |  /setchan -25154554
+         |  batch_every: 9000
+         |  pin: true
+         |  webview: true
+---------+---------------------------------------------
+returns  | error or success message                                   
+---------+---------------------------------------------
+```
 
-/purge (chat admins only): Make the bot and associated database forget entirely about this chat.
+### List subscribed to web feeds
 
-/reset (chat admins only): Set the chat's settings to the defaults.
+```
+command   | argument
+----------+---------
+/list, /l | none    
+----------+---------
+example   | /l      
+----------+------------------------------
+response  | list of #s associated with   
+          | each subscripbed to web feed 
+-----------------------------------------
+```
 
-/search, /se <space-separated keywords>: Search for keywords in all items in all feeds the current chat is subscribed to. Example:
-- /se cheap cloud host.
+### Show information about a subscribed to feed
 
-/settings, /set optional <linebreak + key:value single lines> (admins only with argument): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example: /settings
-blacklist: word1, word2
-batch_size: 10, batch_at: 1200, 1800
-webview: true
+```
+command      | argument
+-------------+------------------------------------------------
+/feed, /f    | <# of the target feed, or full url >           
+-------------+------------------------------------------------
+example      | /feed 1, /feed https://www.phoronix.com/rss.php
+-------------+------------------------------------------------
+response     | information about the target feed              
+-------------+------------------------------------------------
+```
 
-Examples:
-- /s 1 2 3
-- /sub https://www.compositional.fm/rss https://www.blabla.org/rss.
+### Fetching fresh items
 
-/unsub (chat admins only) <list of 1-space-separated full url addresses>: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:
-- /u 1 2 3
-- /unsub https://www.compositional.fm/rss https://www.blabla.org/.
+```
+command  | argument
+---------+----------------------------------------------------------+
+/fresh   | <# of days representing how old the items can be at most |
+---------+----------------------------------------------------------+
+example  | /fresh 1 
+---------+----------------------------------------------------------
+response | all at most #-old items collected from all feeds the chat is subscribed to
+--------------------------------------------------------------------+
+```
+
+### Displaying items from a single feed
+
+```
+command     | argument
+------------+----------------------------------------------------------
+/items, /i   | <# or full url of the target of days representing the max "age" of the items
+------------+----------------------------------------------------------
+example     | /items 1
+            | /i https://www.phoronix.com/rss.php
+------------+----------------------------------------------------------
+response    | all the items available from the target feed
+-----------------------------------------------------------------------
+```
+
+### Other commands
+- /pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.
+- /purge (chat admins only): Make the bot and associated database forget entirely about this chat.
+- /reset (chat admins only): Set the chat's settings to the defaults.
+- /search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. 
+    - Example: `/se cheap cloud host`
+- /unsub (chat admins only) `<list of 1-space-separated full url addresses>`
+    - unsubscribe from all the feeds passed as argument, if indeed they exits
+    - examples, `/u 1 2 3`, `/unsub https://www.compositional.fm/rss https://www.blabla.org/feed`

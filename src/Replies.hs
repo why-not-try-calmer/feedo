@@ -87,24 +87,23 @@ instance Renderable [Item] where
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
-toHrefEntities Nothing tag link =
+toHrefEntities mbcounter tag link =
     let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
         link' = "(" `T.append` link `T.append` ")"
-    in  tag' `T.append` link'
-toHrefEntities (Just counter) tag link =
-    let counter' = T.pack . show $ counter
-        tag' = " [" `T.append` skipWhere tag (mkdDoubles ++ mkdSingles) `T.append` "]"
-        link' = "(" `T.append` link `T.append` ")"
-    in  counter' `T.append` tag' `T.append` link'
+    in  case mbcounter of
+        Nothing -> tag' `T.append` link'
+        Just c -> 
+            let counter = T.pack . show $ c
+            in  counter `T.append` tag' `T.append` link'
 
 data FromContents a where
-    FromFeedDetails :: Feed -> FromContents a
     FromChatFeeds :: SubChat -> [Feed] -> FromContents a
+    FromFeedDetails :: Feed -> FromContents a
     FromFeedItems :: Feed -> FromContents a
-    FromFeedsItems :: [(Feed, [Item])] -> FromContents a
     FromFeedLinkItems :: [(FeedLink, [Item])] -> FromContents a
-    FromStart :: FromContents a
+    FromFeedsItems :: [(Feed, [Item])] -> FromContents a
     FromSearchRes :: [Item] -> FromContents a
+    FromStart :: FromContents a
 
 toReply :: FromContents a -> Maybe Settings -> Reply
 toReply FromStart _ = ChatReply renderCmds True False False False

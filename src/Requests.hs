@@ -67,14 +67,14 @@ reply tok cid rep chan =
         non_empty txt = if T.null txt then "No result for this command." else txt
         triage_replies msg@ChatReply{..} 
             |   reply_pin_on_send = reqSend tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> redirect err
-                Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
+                    Left err -> redirect err
+                    Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
             |   reply_clean_behind = reqSend tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> redirect err
-                Right resp -> liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
+                    Left err -> redirect err
+                    Right resp -> liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
             |   otherwise = reqSend_ tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> redirect err
-                Right _ -> pure ()
+                    Left err -> redirect err
+                    Right _ -> pure ()
         triage_replies serv_rep = reqSend tok "sendMessage" (fromReply serv_rep) >>= \case
             Left err -> redirect err
             Right resp ->  liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing

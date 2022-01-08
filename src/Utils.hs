@@ -85,17 +85,23 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
 
 {- Update settings -}
 
-parseSettings :: [T.Text] -> Maybe ParsedSettings
-parseSettings [] = Nothing
-parseSettings lns = Map.fromList <$> foldr step Nothing lns
+parseSettings :: [T.Text] -> Either T.Text ParsedSettings
+parseSettings [] = Left "Unable to parse from an empty string."
+parseSettings lns = case foldr step Nothing lns of
+    Nothing -> Left "Unable to parse one or more fields/values. Did you forget to use linebreaks after /set or /setchan? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
+    Just keyvals -> 
+        let filtered = filter (\(k, _) -> k `elem` ["batch_at", "batch_every"]) keyvals
+        in  if length filtered > 1 then Left "'batch_at' and 'batch_every' are mutually exclusive."
+            else Right $ Map.fromList keyvals
     where
     step l acc =
         let (k:ss) =
                 T.splitOn ":" .
                 T.filter (not . isSpace) $ l
-        in  if null ss then Nothing else case acc of
-            Nothing -> Just [(k, last ss)]
-            Just p -> Just $ (k, last ss):p
+        in  if null ss then Nothing 
+            else case acc of
+                Nothing -> Just [(k, last ss)]
+                Just p -> Just $ (k, last ss):p
 
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {

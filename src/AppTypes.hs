@@ -182,7 +182,6 @@ renderUserError NotSubscribed = "The feed your were looking for could not be fou
 renderUserError NoSettings = "No settings found for the supscription to this feed."
 renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
 
-
 {- Database actions, errors -}
 
 data DbAction

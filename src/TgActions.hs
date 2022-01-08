@@ -64,14 +64,6 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right ref -> Right . About $ head ref
-    | cmd == "/channel_settings" || cmd == "/chanset" =
-        if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
-        let body = tail . T.lines . T.toLower $ contents
-        in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "/settings needs at least 2 arguments, and the first one stands for the id of the target channel. I coulnd't find the first argument."
-            Just n -> case parseSettings body of
-                Nothing -> Left . BadInput $ "Unable to parse channel settings. Did you forget to use linebreaks afters /channel?"
-                Just settings -> Right $ SetChannelSettings n settings
     | cmd == "/fresh" =
         if length args /= 1 then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
@@ -82,10 +74,10 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right single_ref -> Right . GetItems . head $ single_ref
-    | cmd == "/sub_channel" || cmd == "/subchan" =
-        if length args /= 1 then Left . BadInput $ "/link_channel needs exactly 1 argument, standing for the id of the target channel."
+    | cmd == "/subchan" =
+        if length args /= 1 then Left . BadInput $ "/subchan needs exactly 1 argument, standing for the id of the target channel."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "/link_channel's argument must be a valid integer, positive or negative."
+            Nothing -> Left . BadInput $ "/subchan's argument must be a valid integer, positive or negative."
             Just n -> Right $ SubChannel n (tail args)
     | cmd == "/list" || cmd == "/l" =
         if not . null $ args then Left . BadInput $ "/list takes no argument."
@@ -97,12 +89,20 @@ interpretCmd contents
     | cmd == "/search" || cmd == "/se" =
         if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
         else Right . Search $ args
-    | cmd == "/settings" || cmd == "/set" =
+    | cmd == "/set" =
         if null args then Right GetSubFeedSettings else
         let body = tail . T.lines . T.toLower $ contents
         in  case parseSettings body of
-            Nothing -> Left . BadInput $ "Unable to parse settings update. Did you forget to use linebreaks after /settings? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
-            Just settings -> Right $ SetSubFeedSettings settings
+            Left err -> Left . BadInput $ err
+            Right settings -> Right $ SetSubFeedSettings settings
+    | cmd == "/setchan" =
+        if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
+        let body = tail . T.lines . T.toLower $ contents
+        in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "/settings needs at least 2 arguments, and the first one stands for the id of the target channel. I coulnd't find the first argument."
+            Just n -> case parseSettings body of
+                Left err -> Left . BadInput $ err
+                Right settings -> Right $ SetChannelSettings n settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
     | cmd == "/sub" || cmd == "/s" =
         if null args then Left . BadInput $ "/sub needs at least 1 argument, standing for the url of the feed to subscribe to."
@@ -153,10 +153,10 @@ evalTgAct :: MonadIO m => UserId -> UserAction -> ChatId -> App m (Either UserEr
 evalTgAct uid (Sub feeds_urls) cid = do
     env <- ask
     chats <- liftIO . readMVar $ subs_state env
+    let tok = bot_token . tg_config $ env
     -- fails if 50 feeds subscribed to already
-    if tooManySubs 50 chats cid
-    then exitTooMany
-    else checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+    if tooManySubs 50 chats cid then exitTooMany
+    else checkIfAdmin tok uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
@@ -226,7 +226,8 @@ evalTgAct _ ListSubs cid = do
 evalTgAct _ RenderCmds _ = pure . Right $ toReply FromStart Nothing
 evalTgAct uid Reset cid = do
     env <- ask
-    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+    let tok = bot_token . tg_config $ env
+    checkIfAdmin tok uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
@@ -273,7 +274,8 @@ evalTgAct _ GetSubFeedSettings cid = ask >>= liftIO . readMVar . subs_state >>= 
         Nothing -> pure . Left $ NotFoundChat
         Just ch -> pure . Right . ServiceReply . render $ ch
 evalTgAct uid (SetSubFeedSettings settings) cid = ask >>= \env ->
-    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+    let tok = bot_token . tg_config $ env in
+    checkIfAdmin tok uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
@@ -299,15 +301,17 @@ evalTgAct uid (SubChannel channel_id urls) _ = ask >>= \env ->
                     in  if not (resp_msg_ok res) then pure . Left $ TelegramErr
                         else first >> and_then
 evalTgAct uid (SetChannelSettings channel_id settings) _ = ask >>= \env ->
-    checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
+    let tok = bot_token . tg_config $ env in
+    checkIfAdmin tok uid channel_id >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat (SetSubFeedSettings settings) channel_id >>= \case
                 Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
-evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
-    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env -> 
+    let tok = bot_token . tg_config $ env in
+    checkIfAdmin tok uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
@@ -315,6 +319,6 @@ evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
                 Left err -> pure . Right . ServiceReply . renderUserError $ err
                 Right _ -> pure . Right . ServiceReply $ succeeded
     where
-        succeeded =
+        succeeded = 
             if pause_or_resume then "All notifications to this chat are now suspended. Use /resume to resume."
             else "Resuming notifications. This chat is receiving messages again."
