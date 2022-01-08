@@ -135,16 +135,21 @@ data UserAction
   | GetLastXDaysItems Int
   | GetSubFeedSettings
   | ListSubs
+  | ListSubsChannel ChatId
   | Pause Bool
+  | PauseChannel ChatId Bool
   | Purge
+  | PurgeChannel ChatId
   | RenderCmds
   | Reset
+  | ResetChannel ChatId
   | Search [T.Text]
   | SetChannelSettings ChatId ParsedSettings
   | SetSubFeedSettings ParsedSettings
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]
+  | UnSubChannel ChatId [FeedRef]
   deriving (Eq, Show)
 
 data UserError

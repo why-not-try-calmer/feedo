@@ -96,6 +96,8 @@ returns  | error or success message
 
 ### List subscribed to web feeds
 
+__Any chat but a channel__:
+
 ```
 command   | argument
 ----------+---------
@@ -107,6 +109,19 @@ response  | list of #s associated with
           | each subscripbed to web feed 
 ----------------------------------------
 ```
+
+```
+command   | argument
+----------+---------------------------------
+/listchan, /lchan | <chat_id of the channel>    
+----------+---------------------------------
+example   | /lchan -25154554
+----------+---------------------------------
+response  | list of #s associated with   
+          | each subscripbed to web feed 
+--------------------------------------------
+```
+
 
 ### Show information about a subscribed to feed
 
@@ -139,22 +154,27 @@ response | all at most #-old items collected from
 
 ```
 command     | argument
-------------+----------------------------------------------------------
-/items, /i  | <# or full url of the target of days representing the max "age" of the items
-------------+----------------------------------------------------------
+------------+--------------------------------------------
+/items, /i  | <# or full url of the target of days 
+            |   representing the max "age" of the items
+------------+--------------------------------------------
 example     | /items 1
             | /i https://www.phoronix.com/rss.php
-------------+----------------------------------------------------------
+------------+---------------------------------------------
 response    | all the items available from the target feed
------------------------------------------------------------------------
+----------------------------------------------------------
 ```
 
 ### Other commands
-- /pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.
-- /purge (chat admins only): Make the bot and associated database forget entirely about this chat.
-- /reset (chat admins only): Set the chat's settings to the defaults.
+- /pause, /p
+- /resume:  Whether the bot is allowed to send notification messages to the chat.
+- /purge (chat admins only): Make the database forget entirely about the chat
+- /purgechan (chat admins only): Make the database forget entirely about the channel
+- /reset (chat admins only): Set the chat's settings to the defaults
+- /resetchan (chat admins only) `<channel_id>`: Set the channels's settings to the defaults
 - /search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. 
     - Example: `/se cheap cloud host`
-- /unsub (chat admins only) `<list of 1-space-separated full url addresses>`
+- /unsub (chat admins only) `<list of 1-space-separated #s or full url addresses>`
     - unsubscribe from all the feeds passed as argument, if indeed they exits
     - examples, `/u 1 2 3`, `/unsub https://www.compositional.fm/rss https://www.blabla.org/feed`
+- /unsubchan (chat admins only) `<channel id> + <list of 1-space-separated # or full urls>`: like the previous one but for channels 
