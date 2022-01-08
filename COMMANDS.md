@@ -7,11 +7,11 @@ _Chat admins only._
 ```
 command  | argument
 -------------------------------------------------------
-/s, /sub | <list of comma-separated full url addresses>
+/sub     | <list of comma-separated full url addresses>
 ------------------------------------------------------- 
 example  | /sub https://www.reddit.com/r/pop_os.rss
 ```
-### Register a channel
+### Subscribe a channel
 
 _Both user performing this command and the bot must be admin in the target channel. The bot must have the permission to edit and pin messages._
 
@@ -20,13 +20,42 @@ The command may be issued from any chat with the bot.
 ```
 command              | argument
 --------------------------------------------------------------------------
-/link, /link_channel | <unique identifier (chat_id) of the target channel>
+/sub_channel, /subchan | <unique identifier (chat_id) of the target channel>
 --------------------------------------------------------------------------
-example  | /link_channel -25154554
+example  | /subchan -25154554 https://www.reddit.com/r/pop_os.rss
 ```
-This command is naturally followed
+### Edit a chat's or channel's settings
 
-__/about, /a <url or #>`__
+_Chat admins only._
+
+__Chat__:
+
+```
+command  | argument
+-------------------------------------------------------
+/set     | <line break + ":"-separated key-value pairs>
+------------------------------------------------------- 
+example  | /set
+           batch_size: 10
+           batch_at: 0800, 1200
+           webview: true
+```
+
+__Channel__:
+```
+command  | argument
+-----------------------------------------------------------------------------
+/setchan, /set_channel | <unique identifier (chat_id)> + <line break with ":"-separated key-value pairs>
+----------------------------------------------------------------------------- 
+example  | /setchan -25154554
+           batch_every: 3600
+           pin: true
+           web_view: true
+```
+
+WIP...
+
+- /about, /a `<url or #>`
 
 Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:
 - /info 2, /info https://www.compositional.fm/rss.

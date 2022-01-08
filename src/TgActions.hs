@@ -64,7 +64,7 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right ref -> Right . About $ head ref
-    | cmd == "/channel_settings" || cmd == "/cset" =
+    | cmd == "/channel_settings" || cmd == "/chanset" =
         if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
         let body = tail . T.lines . T.toLower $ contents
         in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
@@ -82,11 +82,11 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right single_ref -> Right . GetItems . head $ single_ref
-    | cmd == "/link_channel" || cmd == "/link" =
+    | cmd == "/sub_channel" || cmd == "/subchan" =
         if length args /= 1 then Left . BadInput $ "/link_channel needs exactly 1 argument, standing for the id of the target channel."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "/link_channel's argument must be a valid integer, positive or negative."
-            Just n -> Right . LinkChannel $ n
+            Just n -> Right $ SubChannel n (tail args)
     | cmd == "/list" || cmd == "/l" =
         if not . null $ args then Left . BadInput $ "/list takes no argument."
         else Right ListSubs
@@ -119,6 +119,36 @@ interpretCmd contents
                 (h:_) = T.splitOn "@" h'
             in  (h, t)
 
+subFeed :: MonadIO m => AppConfig -> ChatId -> [T.Text] -> App m (Either UserError Reply)
+subFeed env cid feeds_urls = liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->
+    -- check url scheme
+    case traverse eitherUrlScheme feeds_urls of
+    Left err -> pure . Left $ err
+    Right valid_urls ->
+        -- sort out already existent feeds to minimize network call
+        -- and subscribe chat to them
+        let urls = map renderUrl valid_urls
+            old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) known_feeds
+            new_keys = filter (`notElem` old_keys) urls
+        in  unless (null old_keys) (void $ withChat (Sub old_keys) cid) >>
+            if null new_keys
+            then pure . Right . ServiceReply $ "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
+            -- fetches feeds at remaining urls
+            else liftIO (mapConcurrently getFeedFromHref new_keys) >>= \res ->
+                -- add feeds
+                let (failed, built_feeds) = partitionEither res
+                in  evalFeedsAct (AddF built_feeds) >>= \case
+                    FeedsOk ->
+                        -- subscribes chat to newly added feeds, returning result to caller
+                        let to_sub_to = map f_link built_feeds
+                        in  withChat (Sub to_sub_to) cid >>= \case
+                        Left err -> pure . Right . ServiceReply $ renderUserError err
+                        Right _ ->
+                            let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate " " failed
+                                ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate " " (map f_link built_feeds)
+                            in  pure . Right . ServiceReply $ (if null failed then ok_text else T.append ok_text failed_text)
+                    _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
+
 evalTgAct :: MonadIO m => UserId -> UserAction -> ChatId -> App m (Either UserError Reply)
 evalTgAct uid (Sub feeds_urls) cid = do
     env <- ask
@@ -130,37 +160,9 @@ evalTgAct uid (Sub feeds_urls) cid = do
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
-            else liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->
-                -- check url scheme
-                case traverse eitherUrlScheme feeds_urls of
-                Left err -> pure . Left $ err
-                Right valid_urls ->
-                    -- sort out already existent feeds to minimize network call
-                    -- and subscribe chat to them
-                    let urls = map renderUrl valid_urls
-                        old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) known_feeds
-                        new_keys = filter (`notElem` old_keys) urls
-                    in  unless (null old_keys) (void $ withChat (Sub old_keys) cid) >>
-                        if null new_keys
-                        then pure . Right . ServiceReply $ "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
-                        -- fetches feeds at remaining urls
-                        else liftIO (mapConcurrently getFeedFromHref new_keys) >>= \res ->
-                            -- add feeds
-                            let (failed, built_feeds) = partitionEither res
-                            in  evalFeedsAct (AddF built_feeds) >>= \case
-                                FeedsOk ->
-                                    -- subscribes chat to newly added feeds, returning result to caller
-                                    let to_sub_to = map f_link built_feeds
-                                    in  withChat (Sub to_sub_to) cid >>= \case
-                                    Left err -> pure . Right . ServiceReply $ renderUserError err
-                                    Right _ ->
-                                        let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate " " failed
-                                            ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate " " (map f_link built_feeds)
-                                        in  pure . Right . ServiceReply $ (if null failed then ok_text else T.append ok_text failed_text)
-                                _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
+            else subFeed env cid feeds_urls
     where
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
-evalTgAct uid (SubChannel channel_id urls) _ = evalTgAct uid (Sub urls) channel_id
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
@@ -278,23 +280,24 @@ evalTgAct uid (SetSubFeedSettings settings) cid = ask >>= \env ->
             else withChat (SetSubFeedSettings settings) cid >>= \case
                 Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
-evalTgAct uid (LinkChannel channel_id) _ = ask >>= \env ->
+evalTgAct uid (SubChannel channel_id urls) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
     in  checkIfAdmin tok uid channel_id >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then pure . Left . NotAdmin $ "Only users with administrative rights in the target channel is allowed to link the bot to the channel."
-            else reqSend tok "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed in 10s." Nothing (Just True)) >>= \case
+            else reqSend tok "sendMessage" (OutboundMessage channel_id "Channel linked successfully. This message will be removed in 10s." Nothing (Just True)) >>= \case
                 Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ channel_id) `T.append` ". Make sure the bot has administrative rights in that channel."
                 Right resp ->
                     let res = responseBody resp :: TgGetMessageResponse
                         mid = message_id . resp_msg_result $ res
-                    in  if not (resp_msg_ok res) then pure . Left $ TelegramErr else do
-                        liftIO $ do 
+                        first = liftIO $ do 
                             writeChan jobs $ JobPin channel_id mid
-                            -- writeChan jobs $ JobRemoveMsg channel_id mid (Just 10000000)
-                        pure . Right . ServiceReply $ "Channel linked successfully."
+                            writeChan jobs $ JobRemoveMsg channel_id mid (Just 10000000)
+                        and_then = subFeed env channel_id urls
+                    in  if not (resp_msg_ok res) then pure . Left $ TelegramErr
+                        else first >> and_then
 evalTgAct uid (SetChannelSettings channel_id settings) _ = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case
         Nothing -> pure . Left $ TelegramErr

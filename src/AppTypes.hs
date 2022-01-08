@@ -134,7 +134,6 @@ data UserAction
   | GetItems FeedRef
   | GetLastXDaysItems Int
   | GetSubFeedSettings
-  | LinkChannel ChatId
   | ListSubs
   | Pause Bool
   | Purge
