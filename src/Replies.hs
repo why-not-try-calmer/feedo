@@ -22,7 +22,7 @@ escapeWhere txt suspects =
             else t `T.append` T.singleton c
     ) mempty txt
 
-skipWhere :: T.Text -> [T.Text] -> T.Text 
+skipWhere :: T.Text -> [T.Text] -> T.Text
 skipWhere txt suspects = T.filter (\t -> T.singleton t `notElem` suspects) txt
 
 mkdSingles :: [T.Text]
@@ -87,8 +87,13 @@ instance Renderable [Item] where
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
-toHrefEntities mbcounter tag link =
+toHrefEntities Nothing tag link =
     let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
+        link' = "(" `T.append` link `T.append` ")"
+    in  tag' `T.append` link'
+toHrefEntities (Just counter) tag link =
+    let counter' = T.pack . show $ counter
+        tag' = " [" `T.append` skipWhere tag (mkdDoubles ++ mkdSingles) `T.append` "]"
         link' = "(" `T.append` link `T.append` ")"
     in  case mbcounter of
         Nothing -> tag' `T.append` link'
