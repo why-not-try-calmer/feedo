@@ -36,24 +36,24 @@ response | error or success message
 
 Available values:
 
-- blacklist: term, term, ...
+- `blacklist: term, term, ...`
     - excludes feed items where a term is found in either their url or description
     - example: `blacklist: itsmycode, butIamproudofit`
-- batch_at: HHMM, HHMM, ...
+- `batch_at: HHMM, HHMM, ...`
     - incompatible with "batch_every"
     - batch all updates and post them at the given times
     - example: `batch_at: 0800, 1200, 1800`
-- batch_every: n
+- `batch_every: n`
     - incompatible with "batch_at"
     - batch all updates and post them every n seconds
     - example: `batch_every: 9000` (= 20 minutes)
-- paused: "true" or "false"
+- `paused: "true" or "false"`
     - suspend all notifications to the chat
-- webview: "true" or "false"
+- `webview: "true" or "false"`
     - allow Telegram to display the last shown items in webview mode
-- pin: "true" or "false",
+- `pin: "true" or "false"`,
     - have the bot try to pin every batch message
-- clean_behind: "true" or "false"
+- `clean_behind: "true" or "false"`
     - have the bot try to delete their own messages
     - does not apply to batch messages
 
@@ -76,7 +76,7 @@ response | with no argument: list of settings
          | with argument: error or success message
 ---------+------------------------------------------
 ```
-__Channel__:
+__Channels__:
 
 _Both the user performing this command and the bot must be admin in the target channel. The command may be issued from any chat with the bot. For a better experience it is recommended to give bot the permission to edit and pin messages._
 
@@ -110,6 +110,8 @@ response  | list of #s associated with
 ----------------------------------------
 ```
 
+__Channels__:
+
 ```
 command   | argument
 ----------+---------------------------------
@@ -121,7 +123,6 @@ response  | list of #s associated with
           | each subscripbed to web feed 
 --------------------------------------------
 ```
-
 
 ### Show information about a subscribed to feed
 
@@ -135,7 +136,6 @@ example      | /feed 1, /feed https://www.phoronix.com/rss.php
 response     | information about the target feed              
 -------------+------------------------------------------------
 ```
-
 ### Fetching fresh items
 
 ```
@@ -165,6 +165,7 @@ response    | all the items available from the target feed
 ----------------------------------------------------------
 ```
 ### Miscellaneous
+
 - /pause, /p: Suspend notification to the chat
 - /pausechan `<chat_id>`: Like the previous one but for channels
 - /resume:  Whether the bot is allowed to send notification messages to the chat.
@@ -174,8 +175,8 @@ response    | all the items available from the target feed
 - /reset (chat admins only): Set the chat's settings to the defaults
 - /resetchan `<chat_id>` (chat admins only) `<channel_id>`: Set the channels's settings to the defaults
 - /search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. 
-    - Example: `/se cheap cloud host`
+    - example: `/se cheap cloud host`
 - /unsub (chat admins only) `<list of 1-space-separated #s or full url addresses>`
     - unsubscribe from all the feeds passed as argument, if indeed they exits
-    - examples, `/u 1 2 3`, `/unsub https://www.compositional.fm/rss https://www.blabla.org/feed`
+    - examples: `/u 1 2 3`, `/unsub https://www.compositional.fm/rss https://www.blabla.org/feed`
 - /unsubchan `<chat_id>` (chat admins only) `<channel id> + <list of 1-space-separated # or full urls>`: like the previous one but for channels 
