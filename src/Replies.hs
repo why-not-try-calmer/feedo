@@ -107,7 +107,7 @@ data FromContents a where
     FromSearchRes :: [Item] -> FromContents a
 
 toReply :: FromContents a -> Maybe Settings -> Reply
-toReply FromStart _ = ServiceReply renderCmds
+toReply FromStart _ = ChatReply renderCmds True False False False
 toReply (FromChatFeeds _ feeds) mbs =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
         step = (\(!txt, !counter) f ->
@@ -144,8 +144,9 @@ toReply (FromSearchRes items) _ = ChatReply (render items) True False False Fals
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"
+    {-
     [
-        "/about, /a `<url or #>`: Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:\n- `/info 2`, `/info https://www.compositional.fm/rss`.\n",
+        "/about, /a `<url or #>` Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:\n- `/info 2`, `/info https://www.compositional.fm/rss`.\n",
         "/fresh, /f `<n>`: Get all the most recent items (less than n-days old, where n is the argument) from all the feeds the chat is subscribed.\n",
         "/help, /start:  Get the list of commands this bot answers to.\n",
         "/items, /i `<url or #>`: Get the most recent items from the feed at the url or #s passed as argument, if any. Examples:\n- `/items 2`\n-`/i https://www.compositional.fm/rss`.\n",
@@ -157,4 +158,23 @@ renderCmds = T.intercalate "\n"
         "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example: /settings\nblacklist: word1, word2\nbatch\\_size: 10, batch\\_at: 1200, 1800\nwebview: true\n",
         "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`: Subscribe the chat to the feeds -- if they exist -- passed as argument. Examples:\n- `/s 1 2 3`\n- `/sub https://www.compositional.fm/rss https://www.blabla.org/rss`.\n",
         "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:\n- `/u 1 2 3`\n- `/unsub https://www.compositional.fm/rss https://www.blabla.org/`."
-    ] `T.append` "\n\nCheck out our channel for more info: https://t.me/feedfarer"
+    ]
+    -}
+    [
+        "/channel_settings, /cset `optional <linebreak + key:value single lines>` (*admins only with argument*)\n",
+        "/feed, /f `<url or #>`\n",
+        "/fresh `<n>`\n",
+        "/help, /start\n",
+        "/items, /i `<url or #>`\n",
+        "/link, /link_channel `<channel id>`\n",
+        "/list, /l\n",
+        "/pause, /p\n",
+        "/purge (*chat admins only*)\n",
+        "/reset (*chat admins only*)\n",
+        "/resume\n",
+        "/search, /se `<space-separated keywords>`\n",
+        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*)\n",
+        "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`\n",
+        "/sub_channel, /csub `<channel id> <list of comma-separated url addresses>`",
+        "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`\n"
+    ] `T.append` "\n\nCheck out this [link](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."

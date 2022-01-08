@@ -59,12 +59,12 @@ exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
 interpretCmd :: T.Text -> Either UserError UserAction
 interpretCmd contents
-    | cmd == "/about" || cmd == "/a" =
+    | cmd == "/feed" || cmd == "/f" =
         if length args /= 1 then Left . BadInput $ "/about takes exactly 1 argument, standing for the url or # of the feed to get information about."
         else case toFeedRef args of
             Left err -> Left err
             Right ref -> Right . About $ head ref
-    | cmd == "/channel_settings" =
+    | cmd == "/channel_settings" || cmd == "/cset" =
         if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
         let body = tail . T.lines . T.toLower $ contents
         in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
@@ -72,7 +72,7 @@ interpretCmd contents
             Just n -> case parseSettings body of
                 Nothing -> Left . BadInput $ "Unable to parse channel settings. Did you forget to use linebreaks afters /channel?"
                 Just settings -> Right $ SetChannelSettings n settings
-    | cmd == "/fresh" || cmd == "/f" =
+    | cmd == "/fresh" =
         if length args /= 1 then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
             Nothing -> Left . BadInput $ "/fresh's argument must be a valid integer."
@@ -160,6 +160,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
                                 _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
     where
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
+evalTgAct uid (SubChannel channel_id urls) _ = evalTgAct uid (Sub urls) channel_id
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."

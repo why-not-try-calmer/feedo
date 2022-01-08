@@ -11,8 +11,20 @@ command  | argument
 ------------------------------------------------------- 
 example  | /sub https://www.reddit.com/r/pop_os.rss
 ```
+### Register a channel
+
+_Both user performing this command and the bot must be admin in the target channel. The bot must have the permission to edit and pin messages._
+
+The command may be issued from any chat with the bot.
 
 ```
+command              | argument
+--------------------------------------------------------------------------
+/link, /link_channel | <unique identifier (chat_id) of the target channel>
+--------------------------------------------------------------------------
+example  | /link_channel -25154554
+```
+This command is naturally followed
 
 __/about, /a <url or #>`__
 

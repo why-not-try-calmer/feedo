@@ -144,6 +144,7 @@ data UserAction
   | SetChannelSettings ChatId ParsedSettings
   | SetSubFeedSettings ParsedSettings
   | Sub [T.Text]
+  | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]
   deriving (Eq, Show)
 
