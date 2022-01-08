@@ -1,0 +1,52 @@
+## Commands
+
+### Subscribe a 1-1 chat, private group or public group to a web feed
+
+_Chat admins only._
+
+```
+command  | argument
+-------------------------------------------------------
+/s, /sub | <list of comma-separated full url addresses>
+------------------------------------------------------- 
+example  | /sub https://www.reddit.com/r/pop_os.rss
+```
+
+```
+
+__/about, /a <url or #>`__
+
+Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:
+- /info 2, /info https://www.compositional.fm/rss.
+
+/fresh, /f <n>: Get all the most recent items (less than n-days old, where n is the argument) from all the feeds the chat is subscribed.
+
+/help, /start:  Get the list of commands this bot answers to.
+
+/items, /i <url or #>: Get the most recent items from the feed at the url or #s passed as argument, if any. Examples:
+- /items 2
+-/i https://www.compositional.fm/rss.
+
+/list, /l: Get all the urls and #s of the feeds to which the chat is subscribed to, if any.
+
+/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.
+
+/purge (chat admins only): Make the bot and associated database forget entirely about this chat.
+
+/reset (chat admins only): Set the chat's settings to the defaults.
+
+/search, /se <space-separated keywords>: Search for keywords in all items in all feeds the current chat is subscribed to. Example:
+- /se cheap cloud host.
+
+/settings, /set optional <linebreak + key:value single lines> (admins only with argument): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example: /settings
+blacklist: word1, word2
+batch_size: 10, batch_at: 1200, 1800
+webview: true
+
+Examples:
+- /s 1 2 3
+- /sub https://www.compositional.fm/rss https://www.blabla.org/rss.
+
+/unsub (chat admins only) <list of 1-space-separated full url addresses>: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:
+- /u 1 2 3
+- /unsub https://www.compositional.fm/rss https://www.blabla.org/.

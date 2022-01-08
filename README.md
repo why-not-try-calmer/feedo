@@ -23,6 +23,8 @@ All chats types are supported:
 
 The bot does not require any permission; it just need to be a member of the group to which it posts updates.
 
+For the exhaustive list of commands, see this [document](/COMMMANDS.md).
+
 __Getting started__:
 
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). The bot listens only to messages using commands defined for it.

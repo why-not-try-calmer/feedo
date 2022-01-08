@@ -284,13 +284,15 @@ evalTgAct uid (LinkChannel channel_id) _ = ask >>= \env ->
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then pure . Left . NotAdmin $ "Only users with administrative rights in the target channel is allowed to link the bot to the channel."
-            else reqSend tok "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed soon." Nothing (Just True)) >>= \case
+            else reqSend tok "sendMessage" (OutboundMessage channel_id "This is a test message. It will be automatically removed in 10s." Nothing (Just True)) >>= \case
                 Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ channel_id) `T.append` ". Make sure the bot has administrative rights in that channel."
                 Right resp ->
                     let res = responseBody resp :: TgGetMessageResponse
                         mid = message_id . resp_msg_result $ res
                     in  if not (resp_msg_ok res) then pure . Left $ TelegramErr else do
-                        liftIO $ writeChan jobs $ JobRemoveMsg channel_id mid (Just 3000000)
+                        liftIO $ do 
+                            writeChan jobs $ JobPin channel_id mid
+                            -- writeChan jobs $ JobRemoveMsg channel_id mid (Just 10000000)
                         pure . Right . ServiceReply $ "Channel linked successfully."
 evalTgAct uid (SetChannelSettings channel_id settings) _ = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid channel_id >>= \case

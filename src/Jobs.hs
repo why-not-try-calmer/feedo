@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, forConcurrently, withAsync)
+import Control.Concurrent.Async (async, forConcurrently)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -30,7 +30,7 @@ import Utils (findNextTime)
 {- Background tasks -}
 
 runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
-runForever_ action = void . async . forever . catch action
+runForever_ action handler = void . async . forever $ catch action handler
 
 refresher :: MonadIO m => App m ()
 refresher = do
@@ -68,22 +68,21 @@ postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
-        offloading act = withAsync act $ \_ -> pure ()
         action = readChan (postjobs env) >>= \case
-            JobIncReadsJob links -> offloading $ runApp env $ evalFeedsAct (IncReadsF links)
-            JobLog item -> offloading $ saveToLog env item
-            JobPin cid mid -> offloading $ reqSend_ tok "pinChatMessage" (PinMessage cid mid)
-            JobRemoveMsg cid mid delay -> offloading $ do
+            JobIncReadsJob links -> fork $ runApp env $ evalFeedsAct (IncReadsF links)
+            JobLog item -> fork $ saveToLog env item
+            JobPin cid mid -> fork $ reqSend_ tok "pinChatMessage" (PinMessage cid mid)
+            JobRemoveMsg cid mid delay -> fork $ do
                 threadDelay $ fromMaybe 30000000 delay
                 reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
                     Left err -> print err
                     Right _ -> pure ()
-            JobTgAlert contents -> offloading $ do
+            JobTgAlert contents -> fork $ do
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
-            JobUpdateSchedules chat_ids -> offloading $
-                getCurrentTime >>= \now ->
+            JobUpdateSchedules chat_ids -> fork $ do
+                now <- getCurrentTime
                 modifyMVar_ (subs_state env) $ \chats_hmap ->
                     let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
                         updated_chats = HMS.map (\c -> c {
@@ -98,3 +97,5 @@ postProcJobs = ask >>= \env ->
             writeChan (postjobs env) . JobTgAlert $ report
             print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
     in  liftIO $ runForever_ action handler
+    where fork = void . async
+        
