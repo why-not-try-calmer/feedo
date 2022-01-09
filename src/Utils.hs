@@ -8,11 +8,12 @@ import Data.List (foldl', sort)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
-import Data.Time (UTCTime (utctDayTime), addUTCTime)
+import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, calendarTimeTime)
 import Data.Time.Clock.POSIX
   ( posixSecondsToUTCTime,
     utcTimeToPOSIXSeconds,
   )
+import Data.Time.Format.ISO8601 (iso8601Show)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 
@@ -21,8 +22,7 @@ import TgramOutJson (ChatId)
 partitionEither :: [Either a b] -> ([a], [b])
 partitionEither = foldl' step ([],[])
     where
-        step (!ls, !rs) val =
-            case val of
+        step (!ls, !rs) val = case val of
             Left l -> (ls++[l], rs)
             Right r -> (ls, rs++[r])
 
@@ -50,6 +50,13 @@ removeByUserIdx ls is =
             if n == i then rm acc (n+1) ls' is'
             else rm (acc++[l]) (n+1) ls' (i:is')
 
+tooManySubs :: Int -> SubChats -> ChatId -> Bool
+tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
+    Nothing -> False
+    Just chat ->
+        let diff = upper_bound - length (sub_feeds_links chat)
+        in  diff < 0
+
 {- Time -}
 
 freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]
@@ -59,29 +66,30 @@ freshLastXDays days now items =
     in  filter (\i -> i_pubdate i > x_days_ago) items
 
 findNextTime :: UTCTime -> BatchInterval -> UTCTime
-findNextTime now (Secs xs) = addUTCTime xs now
-findNextTime now (HM ts) =
+findNextTime now (BatchInterval Nothing Nothing) = addUTCTime 9000 now
+findNextTime now (BatchInterval (Just xs) Nothing) = addUTCTime xs now
+findNextTime now (BatchInterval mbxs (Just ts)) =
     let from_midnight = realToFrac $ utctDayTime now
         times = foldl' (\acc (!h, !m) ->
             let t = toNominalDifftime h m
             in  if from_midnight < t then (t - from_midnight):acc else acc
             ) [] ts
-    in  if null times then
-            let (early_h, early_m) = foldl' (\(!h, !m) (!h', !m') ->
-                    if h' < h || (h == h' && m' < m) then (h', m') else (h, m)) (23, 59) ts
-                to_midnight = realToFrac $ 86401 - utctDayTime now
-                until_midnight = addUTCTime to_midnight now
-            in  addUTCTime (toNominalDifftime early_h early_m) until_midnight
-        else addUTCTime (minimum times) now
+        (early_h, early_m) =
+            foldl' (\(!h, !m) (!h', !m') ->
+                if h' < h || (h == h' && m' < m) then (h', m')
+                else (h, m)) (23, 59) ts
+        to_midnight = realToFrac $ 86401 - utctDayTime now
+        until_midnight = addUTCTime to_midnight now
+        next_day = addUTCTime (toNominalDifftime early_h early_m) until_midnight
+        still_today = addUTCTime (minimum times) now
+    in  if null times then maybe next_day
+            (\xs -> if xs >= 86401 then xs `addUTCTime` next_day else next_day) mbxs
+        else still_today
     where
         toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
 
-tooManySubs :: Int -> SubChats -> ChatId -> Bool
-tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
-    Nothing -> False
-    Just chat ->
-        let diff = upper_bound - length (sub_feeds_links chat)
-        in  diff < 0
+secsToReadable :: NominalDiffTime -> String
+secsToReadable = iso8601Show . calendarTimeTime
 
 {- Update settings -}
 
@@ -89,7 +97,7 @@ parseSettings :: [T.Text] -> Either T.Text ParsedSettings
 parseSettings [] = Left "Unable to parse from an empty string."
 parseSettings lns = case foldr step Nothing lns of
     Nothing -> Left "Unable to parse one or more fields/values. Did you forget to use linebreaks after /set or /setchan? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
-    Just keyvals -> 
+    Just keyvals ->
         let filtered = filter (\(k, _) -> k `elem` ["batch_at", "batch_every"]) keyvals
         in  if length filtered > 1 then Left "'batch_at' and 'batch_every' are mutually exclusive."
             else Right $ Map.fromList keyvals
@@ -98,7 +106,7 @@ parseSettings lns = case foldr step Nothing lns of
         let (k:ss) =
                 T.splitOn ":" .
                 T.filter (not . isSpace) $ l
-        in  if null ss then Nothing 
+        in  if null ss then Nothing
             else case acc of
                 Nothing -> Just [(k, last ss)]
                 Just p -> Just $ (k, last ss):p
@@ -107,7 +115,7 @@ defaultChatSettings :: Settings
 defaultChatSettings = Settings {
         settings_filters = Filters [] [],
         settings_batch_size = 15,
-        settings_batch_interval = Secs 9000,
+        settings_batch_interval = BatchInterval (Just 9000) Nothing,
         settings_is_paused = False,
         settings_webview = False,
         settings_pin = False,
@@ -120,7 +128,7 @@ Expected fields:
 - blacklist: term, term, ...
 - whitelist: term, term, ...
 - batch_at: hhmm, hhmm, ...
-- batch_every: n
+- batch_every: <n>m (minutes) | <n>h (hours) | <n>d (days)  
 - paused: true | false,
 - webview: true | false,
 - pin: true | false,
@@ -137,14 +145,28 @@ mergeSettings keyvals orig =
                         Map.lookup "batch_size" keyvals
                 in  fromMaybe 10 mbread,
             settings_batch_interval =
-                case Map.lookup "batch_every" keyvals of
-                    Nothing -> case Map.lookup "batch_at" keyvals of
-                        Nothing -> dflt
+                let batch_at = case Map.lookup "batch_at" keyvals of
+                        Nothing -> Nothing
                         Just txt ->
                             let datetimes = T.splitOn "," txt
-                                collected = foldl' step [] datetimes
-                            in if null collected then dflt else HM collected
-                    Just mbint -> maybe dflt Secs (readMaybe . T.unpack $ mbint),
+                                collected = foldl' collectHM [] datetimes
+                            in if null collected then Nothing else Just collected
+                    batch_every = case Map.lookup "batch_every" keyvals of
+                        Nothing -> Nothing
+                        Just every_s ->
+                            let int = T.init every_s
+                                t_tag = T.singleton . T.last $ every_s
+                                triage n t
+                                    | n < 1 = Nothing
+                                    | "m" == t = Just $ n * 60
+                                    | "h" == t = Just $ n * 3600
+                                    | "d" == t = Just $ n * 86400
+                                    | otherwise = Nothing
+                            in  if T.length every_s < 2 then Nothing else
+                                case readMaybe . T.unpack $ int :: Maybe Int of
+                                    Nothing -> Nothing
+                                    Just n -> triage n t_tag
+                in  BatchInterval (realToFrac <$> batch_every) batch_at,
             settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
                 Map.lookup "paused" keyvals,
             settings_webview = maybe False (\t -> "true" `T.isInfixOf` t) $
@@ -167,8 +189,7 @@ mergeSettings keyvals orig =
         }
     where
         keys = Map.keys keyvals
-        dflt = Secs 9000
-        step acc val =
+        collectHM acc val =
             let (hh, mm) = T.splitAt 2 val
                 (m1, m2) = T.splitAt 1 mm
                 mm' =

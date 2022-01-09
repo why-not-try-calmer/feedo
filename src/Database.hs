@@ -174,25 +174,20 @@ bsonToChat doc =
         feeds_settings_docs = Settings {
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
             settings_batch_interval =
-                let raw_value = M.lookup "settings_batch_every" settings_doc :: Maybe NominalDiffTime
+                let every = M.lookup "settings_batch_every" settings_doc :: Maybe NominalDiffTime
                     hm_docs = M.lookup "settings_batch_at" settings_doc :: Maybe [Document]
-                    dflt = Secs 9000
                     adjust n
-                        |   n < 6 && n > 0 = n * 10
-                        |   otherwise = n
-                in  case raw_value of
-                    Nothing -> case hm_docs of
-                        Nothing -> Secs 9000
-                        Just docs ->
-                            let collected = foldr (\d acc ->
-                                    let h = M.lookup "hour" d :: Maybe Int
-                                        m = M.lookup "minute" d :: Maybe Int
-                                    in  case sequence [h, m] of
-                                        Nothing -> []
-                                        Just hm -> acc ++ [(head hm, adjust $ last hm)]) [] docs
-                            in  if null collected then dflt
-                                else HM collected
-                    Just xs -> Secs xs,
+                        | n < 6 && n > 0 = n * 10
+                        | otherwise = n
+                    extract mds = case mds of 
+                        Nothing -> []
+                        Just docs -> foldr (\d acc ->
+                            let h = M.lookup "hour" d :: Maybe Int
+                                m = M.lookup "minute" d :: Maybe Int
+                            in  case sequence [h, m] of
+                                Nothing -> []
+                                Just hm -> acc ++ [(head hm, adjust $ last hm)]) [] docs
+                in  BatchInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs),
             settings_filters = Filters
                 (fromMaybe [] $ M.lookup "settings_blacklist" settings_doc)
                 (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc),
@@ -211,7 +206,7 @@ bsonToChat doc =
 
 chatToBson :: SubChat -> Document
 chatToBson SubChat{..} =
-    let settings' = [
+    let settings = [
             "settings_blacklist" =: (filters_blacklist . settings_filters $ sub_settings),
             "settings_whitelist" =: (filters_whitelist . settings_filters $ sub_settings),
             "settings_batch_size" =: settings_batch_size sub_settings,
@@ -220,14 +215,17 @@ chatToBson SubChat{..} =
             "settings_pin" =: settings_pin sub_settings,
             "settings_clean" =: settings_clean sub_settings
             ]
-        settings = case settings_batch_interval sub_settings of
-            Secs xs -> settings' ++ ["settings_batch_every" =: xs]
-            HM hm -> settings' ++ ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm]
+        with_secs = maybe [] 
+            (\secs -> ["settings_batch_secs" =: secs])
+            (batch_secs . settings_batch_interval $ sub_settings)
+        with_at = maybe []
+            (\hm -> ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm])
+            (batch_at . settings_batch_interval $ sub_settings) 
     in  [
             "sub_chatid" =: sub_chatid,
             "sub_last_notification" =: sub_last_notification,
             "sub_feeds_links" =: (S.toList sub_feeds_links :: [T.Text]),
-            "sub_settings" =: settings,
+            "sub_settings" =: settings ++ with_secs ++ with_at,
             "sub_next_notification" =: sub_next_notification
         ]
 
@@ -241,7 +239,12 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env item = withMongo env $ insert "logs" doc >> pure ()
     where
-        doc = ["log_when" =: log_when item, "log_who" =: log_who item, "log_what" =: log_what item]
+        doc = [
+            "log_when" =: log_when item, 
+            "log_who" =: log_who item, 
+            "log_what" =: log_what item,
+            "log_n" =: log_n item
+            ]
 
 {- Cleanup -}
 

@@ -77,7 +77,10 @@ data Filters = Filters {
     filters_whitelist :: [T.Text] 
 } deriving (Show, Eq)
 
-data BatchInterval = Secs NominalDiffTime | HM [(Int, Int)] deriving (Eq, Show)
+data BatchInterval = BatchInterval {
+    batch_secs :: Maybe NominalDiffTime,
+    batch_at :: Maybe [(Int, Int)]
+} deriving (Eq, Show)
 
 data Settings = Settings {
     settings_is_paused :: Bool,

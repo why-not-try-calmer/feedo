@@ -12,6 +12,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Parser (renderAvgInterval)
+import Utils (secsToReadable)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -50,28 +51,32 @@ instance Renderable Feed where
 instance Renderable SubChat where
     render SubChat{..} =
         let adjust c = if c == "0" then "00" else c
-            interval = case settings_batch_interval sub_settings of
-                HM vals -> "every day at " `T.append` foldl' (\s (!h, !m) ->
-                    let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
-                        s' = if s == mempty then s else s `T.append` ", "
-                    in  s' `T.append` body) mempty vals
-                Secs xs -> "every " `T.append` (T.pack . show $ xs) `T.append` " (seconds)"
+            at = case batch_at . settings_batch_interval $ sub_settings of
+                Nothing -> mempty
+                Just ts -> "every day at " `T.append` foldl' (\s (!h, !m) ->
+                        let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
+                            s' = if s == mempty then s else s `T.append` ", "
+                        in  s' `T.append` body) mempty ts
+            every = maybe
+              mempty (T.pack . secsToReadable)
+              (batch_secs . settings_batch_interval $ sub_settings)
             blacklist =
                 let bs = filters_blacklist . settings_filters $ sub_settings
                 in  if null bs then "none" else T.intercalate "," bs
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
-        [   ("Chat id", T.pack . show $ sub_chatid),
-            ("Status", if settings_is_paused sub_settings then "paused" else "active"),
-            ("Last notification", maybe "none" (T.pack . show) sub_last_notification),
-            ("Next notication", maybe "none scheduled" (T.pack . show) sub_next_notification),
-            ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
-            ("Blacklist", blacklist),
-            ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
-            ("Batch interval", interval),
-            ("Webview", if settings_webview sub_settings then "enabled" else "disabled"),
-            ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled"),
-            ("Remove bot messages", if settings_pin sub_settings then "enabled" else "disabled")
-        ]
+            [   ("Chat id", T.pack . show $ sub_chatid),
+                ("Status", if settings_is_paused sub_settings then "paused" else "active"),
+                ("Last notification", maybe "none" (T.pack . show) sub_last_notification),
+                ("Next notication", maybe "none scheduled" (T.pack . show) sub_next_notification),
+                ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
+                ("Blacklist", blacklist),
+                ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
+                ("Batch at", if T.null at then " not defined" else at),
+                ("Batch every", if T.null every then " not defined" else every),
+                ("Webview", if settings_webview sub_settings then "enabled" else "disabled"),
+                ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled"),
+                ("Remove bot messages", if settings_pin sub_settings then "enabled" else "disabled")
+            ]
 
 instance Renderable [Item] where
     render = fst . foldl' step (mempty, 0)
@@ -92,7 +97,7 @@ toHrefEntities mbcounter tag link =
         link' = "(" `T.append` link `T.append` ")"
     in  case mbcounter of
         Nothing -> tag' `T.append` link'
-        Just c -> 
+        Just c ->
             let counter = T.pack . show $ c
             in  counter `T.append` tag' `T.append` link'
 

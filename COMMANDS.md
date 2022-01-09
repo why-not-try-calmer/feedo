@@ -40,13 +40,17 @@ Available values:
     - excludes feed items where a term is found in either their url or description
     - example: `blacklist: itsmycode, butIamproudofit`
 - `batch_at: HHMM, HHMM, ...`
-    - incompatible with "batch_every"
     - batch all updates and post them at the given times
     - example: `batch_at: 0800, 1200, 1800`
-- `batch_every: n`
-    - incompatible with "batch_at"
-    - batch all updates and post them every n seconds
-    - example: `batch_every: 9000` (= 20 minutes)
+- `batch_every: <integer><m | h | d>`
+    - batch all updates and post them every n-minute, n-hour or n-day
+    - examples:
+        - `batch_every: 20m` (= 20 minutes)
+        - `batch_every: 6h` (= 6 hours)
+        - `batch_every: 1d` (= 1 day)
+
+__NB__: As of the latest version, this settings _is_ compatible with `batch_at` provided that the value of `batch_every` is 1 or more __days__. If the value of `batch_every` is expressed in minutes or hours and `batch_at` is defined in the settings, the application will ignore `batch_every` and use only `batch_at`.
+
 - `paused: "true" or "false"`
     - suspend all notifications to the chat
 - `webview: "true" or "false"`
