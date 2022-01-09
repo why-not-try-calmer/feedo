@@ -8,7 +8,6 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
-import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -130,7 +129,7 @@ toFeedRef ss
 
 {- User actions, errors -}
 
-type ParsedSettings = Map.Map T.Text T.Text
+type ParsedSettings = Settings
 
 data UserAction
   = About FeedRef

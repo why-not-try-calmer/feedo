@@ -115,7 +115,7 @@ interpretCmd contents
         let body = tail . T.lines . T.toLower $ contents
         in  case parseSettings body of
             Left err -> Left . BadInput $ err
-            Right settings -> Right $ SetSubFeedSettings settings
+            Right settings -> Right $ SetSubFeedSettings . snd $ settings
     | cmd == "/setchan" =
         if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
         let body = tail . T.lines . T.toLower $ contents
@@ -123,7 +123,7 @@ interpretCmd contents
             Nothing -> Left . BadInput $ "/settings needs at least 2 arguments, and the first one stands for the id of the target channel. I coulnd't find the first argument."
             Just n -> case parseSettings body of
                 Left err -> Left . BadInput $ err
-                Right settings -> Right $ SetChannelSettings n settings
+                Right settings -> Right $ SetChannelSettings n . snd $ settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
     | cmd == "/sub" || cmd == "/s" =
         if null args then Left . BadInput $ "/sub needs at least 1 argument, standing for the url of the feed to subscribe to."

@@ -64,7 +64,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetSubFeedSettings unparsed ->
-                let updated_settings = mergeSettings unparsed $ sub_settings c
+                let updated_settings = mergeSettings [] unparsed $ sub_settings c
                     updated_c = c { sub_settings = updated_settings }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case

@@ -94,16 +94,73 @@ secsToReadable t =
 
 {- Update settings -}
 
-parseSettings :: [T.Text] -> Either T.Text ParsedSettings
+parseSettings :: [T.Text] -> Either T.Text ([T.Text], ParsedSettings)
 parseSettings [] = Left "Unable to parse from an empty string."
-parseSettings lns = case foldr step Nothing lns of
+parseSettings lns = case foldr parsePairs Nothing lns of
     Nothing -> Left "Unable to parse one or more fields/values. Did you forget to use linebreaks after /set or /setchan? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
-    Just keyvals ->
-        let filtered = filter (\(k, _) -> k `elem` ["batch_at", "batch_every"]) keyvals
-        in  if length filtered > 1 then Left "'batch_at' and 'batch_every' are mutually exclusive."
-            else Right $ Map.fromList keyvals
+    Just l_keyvals -> 
+        let keys = map fst l_keyvals
+            settings = settings_from . Map.fromList $ l_keyvals
+        in  Right (keys, settings)
     where
-    step l acc =
+    settings_from keyvals = Settings {
+        settings_filters =
+            let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
+                whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
+            in  Filters blacklist whitelist,
+        settings_batch_size =
+            let mbread = readMaybe . T.unpack =<<
+                    Map.lookup "batch_size" keyvals
+            in  fromMaybe 10 mbread,
+        settings_batch_interval =
+            let batch_at = case Map.lookup "batch_at" keyvals of
+                    Nothing -> Nothing
+                    Just txt ->
+                        let datetimes = T.splitOn "," txt
+                            collected = foldl' collectHM [] datetimes
+                        in if null collected then Nothing else Just collected
+                batch_every = case Map.lookup "batch_every" keyvals of
+                    Nothing -> Nothing
+                    Just every_s ->
+                        let int = T.init every_s
+                            t_tag = T.singleton . T.last $ every_s
+                            triage n t
+                                | n < 1 = Nothing
+                                | "m" == t = Just $ n * 60
+                                | "h" == t = Just $ n * 3600
+                                | "d" == t = Just $ n * 86400
+                                | otherwise = Nothing
+                        in  if T.length every_s < 2 then Nothing else
+                            case readMaybe . T.unpack $ int :: Maybe Int of
+                                Nothing -> Nothing
+                                Just n -> triage n t_tag
+            in  BatchInterval (realToFrac <$> batch_every) batch_at,
+        settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
+            Map.lookup "paused" keyvals,
+        settings_webview = maybe False (\t -> "true" `T.isInfixOf` t) $
+            Map.lookup "webview" keyvals,
+        settings_pin = maybe False (\t -> "true" `T.isInfixOf` t) $
+            Map.lookup "pin" keyvals,
+        settings_clean = maybe False (\t -> "true" `T.isInfixOf` t) $
+            Map.lookup "clean_behind" keyvals
+        }
+    collectHM acc val =
+        let (hh, mm) = T.splitAt 2 val
+            (m1, m2) = T.splitAt 1 mm
+            mm' =
+                if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
+                else readMaybe . T.unpack $ mm :: Maybe Int
+            hh' = readMaybe . T.unpack $ hh :: Maybe Int
+        in  case sequence [hh', mm'] of
+            Nothing -> []
+            Just parsed -> if length parsed /= 2 then [] else
+                let (h, m) = (head parsed, last parsed)
+                in  groupPairs h m acc
+    groupPairs h m acc
+        |   h < 0 || h > 24 = []
+        |   m < 0 || m > 60 = []
+        |   otherwise = acc ++ [(h, m)]
+    parsePairs l acc =
         let (k:ss) =
                 T.splitOn ":" .
                 T.filter (not . isSpace) $ l
@@ -123,89 +180,31 @@ defaultChatSettings = Settings {
         settings_clean = False
     }
 
-mergeSettings :: ParsedSettings -> Settings -> Settings
-{-
-Expected fields:
-- blacklist: term, term, ...
-- whitelist: term, term, ...
-- batch_at: hhmm, hhmm, ...
-- batch_every: <n>m (minutes) | <n>h (hours) | <n>d (days)  
-- paused: true | false,
-- webview: true | false,
-- pin: true | false,
-- clean_behind: true | false
--}
-mergeSettings keyvals orig =
-    let updater = Settings {
-            settings_filters =
-                let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" keyvals
-                    whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" keyvals
-                in  Filters blacklist whitelist,
-            settings_batch_size =
-                let mbread = readMaybe . T.unpack =<<
-                        Map.lookup "batch_size" keyvals
-                in  fromMaybe 10 mbread,
-            settings_batch_interval =
-                let batch_at = case Map.lookup "batch_at" keyvals of
-                        Nothing -> Nothing
-                        Just txt ->
-                            let datetimes = T.splitOn "," txt
-                                collected = foldl' collectHM [] datetimes
-                            in if null collected then Nothing else Just collected
-                    batch_every = case Map.lookup "batch_every" keyvals of
-                        Nothing -> Nothing
-                        Just every_s ->
-                            let int = T.init every_s
-                                t_tag = T.singleton . T.last $ every_s
-                                triage n t
-                                    | n < 1 = Nothing
-                                    | "m" == t = Just $ n * 60
-                                    | "h" == t = Just $ n * 3600
-                                    | "d" == t = Just $ n * 86400
-                                    | otherwise = Nothing
-                            in  if T.length every_s < 2 then Nothing else
-                                case readMaybe . T.unpack $ int :: Maybe Int of
-                                    Nothing -> Nothing
-                                    Just n -> triage n t_tag
-                in  BatchInterval (realToFrac <$> batch_every) batch_at,
-            settings_is_paused = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "paused" keyvals,
-            settings_webview = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "webview" keyvals,
-            settings_pin = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "pin" keyvals,
-            settings_clean = maybe False (\t -> "true" `T.isInfixOf` t) $
-                Map.lookup "clean_behind" keyvals
-        }
-    in  orig {
-            settings_filters = if "blacklist" `elem` keys then settings_filters updater else settings_filters orig,
-            settings_batch_size = if "batch_size" `elem` keys then settings_batch_size updater else settings_batch_size orig,
-            settings_batch_interval =
-                if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
-                else settings_batch_interval orig,
-            settings_is_paused = if "paused" `elem` keys then settings_is_paused updater else settings_is_paused orig,
-            settings_webview = if "webview" `elem` keys then settings_webview updater else settings_webview orig,
-            settings_pin = if "pin" `elem` keys then settings_webview updater else settings_webview orig,
-            settings_clean = if "clean_behind" `elem` keys then settings_clean updater else settings_clean orig
-        }
-    where
-        keys = Map.keys keyvals
-        collectHM acc val =
-            let (hh, mm) = T.splitAt 2 val
-                (m1, m2) = T.splitAt 1 mm
-                mm' =
-                    if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
-                    else readMaybe . T.unpack $ mm :: Maybe Int
-                hh' = readMaybe . T.unpack $ hh :: Maybe Int
-            in  case sequence [hh', mm'] of
-                Nothing -> []
-                Just parsed -> if length parsed /= 2 then [] else
-                    let (h, m) = (head parsed, last parsed)
-                    in  toAcc h m acc
-        toAcc h m acc
-            |   h < 0 || h > 24 = []
-            |   m < 0 || m > 60 = []
-            |   otherwise = acc ++ [(h, m)]
+mergeSettings :: [T.Text] -> ParsedSettings -> Settings -> Settings
+mergeSettings [] updater _ = updater 
+mergeSettings keys updater orig = orig {
+    settings_filters = 
+        if "blacklist" `elem` keys then settings_filters updater
+        else settings_filters orig,
+    settings_batch_size = 
+        if "batch_size" `elem` keys then settings_batch_size updater
+        else settings_batch_size orig,
+    settings_batch_interval =
+        if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
+        else settings_batch_interval orig,
+    settings_is_paused = 
+        if "paused" `elem` keys then settings_is_paused updater 
+        else settings_is_paused orig,
+    settings_webview = 
+        if "webview" `elem` keys then settings_webview updater
+        else settings_webview orig,
+    settings_pin = 
+        if "pin" `elem` keys then settings_webview updater 
+        else settings_webview orig,
+    settings_clean = 
+        if "clean_behind" `elem` keys 
+        then settings_clean updater else settings_clean orig
+    }
 
 notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds
