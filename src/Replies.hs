@@ -138,7 +138,7 @@ toReply (FromFeedsItems items) mbs =
             reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
-            reply_webview =  settings_webview s,
+            reply_webview = settings_webview s,
             reply_clean_behind = False
         }
         Nothing -> ServiceReply payload
