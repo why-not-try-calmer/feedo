@@ -8,12 +8,11 @@ import Data.List (foldl', sort)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, calendarTimeTime)
+import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, timeToDaysAndTimeOfDay)
 import Data.Time.Clock.POSIX
   ( posixSecondsToUTCTime,
     utcTimeToPOSIXSeconds,
   )
-import Data.Time.Format.ISO8601 (iso8601Show)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 
@@ -88,8 +87,10 @@ findNextTime now (BatchInterval mbxs (Just ts)) =
     where
         toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
 
-secsToReadable :: NominalDiffTime -> String
-secsToReadable = iso8601Show . calendarTimeTime
+secsToReadable :: NominalDiffTime -> T.Text
+secsToReadable t = 
+    let (days, time) = timeToDaysAndTimeOfDay t
+    in  (T.pack . show $ days) `T.append` " day(s), " `T.append` (T.pack . show $ time) `T.append` " hour(s)"
 
 {- Update settings -}
 

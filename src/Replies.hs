@@ -58,7 +58,7 @@ instance Renderable SubChat where
                             s' = if s == mempty then s else s `T.append` ", "
                         in  s' `T.append` body) mempty ts
             every = maybe
-              mempty (T.pack . secsToReadable)
+              mempty secsToReadable
               (batch_secs . settings_batch_interval $ sub_settings)
             blacklist =
                 let bs = filters_blacklist . settings_filters $ sub_settings
@@ -112,7 +112,7 @@ data FromContents a where
 
 toReply :: FromContents a -> Maybe Settings -> Reply
 toReply FromStart _ = ChatReply renderCmds True False False False
-toReply (FromChatFeeds _ feeds) mbs =
+toReply (FromChatFeeds _ feeds) _ =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
         step = (\(!txt, !counter) f ->
             let link = f_link f
@@ -120,9 +120,7 @@ toReply (FromChatFeeds _ feeds) mbs =
                 rendered = toHrefEntities (Just counter) title link
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
-    in  case mbs of
-        Just s -> ChatReply payload True (settings_pin s) (settings_webview s) (settings_clean s)
-        Nothing -> ServiceReply payload
+    in  ChatReply payload True False False False
 toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =
@@ -136,34 +134,22 @@ toReply (FromFeedsItems items) mbs =
             `T.append` "\n")
         payload = foldl' step mempty items
     in  case mbs of
-        Just s -> ChatReply payload True (settings_pin s) (settings_webview s) (settings_clean s)
+        Just s -> ChatReply {
+            reply_contents = payload,
+            reply_markdown = True,
+            reply_pin_on_send = settings_pin s,
+            reply_webview =  settings_webview s,
+            reply_clean_behind = False
+        }
         Nothing -> ServiceReply payload
-toReply (FromFeedLinkItems flinkitems) mbs =
+toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
-    in  case mbs of
-        Just s -> ChatReply payload True (settings_pin s) (settings_webview s) (settings_clean s)
-        Nothing -> ServiceReply payload
+    in  ChatReply payload True False False False
 toReply (FromSearchRes items) _ = ChatReply (render items) True False False False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"
-    {-
-    [
-        "/about, /a `<url or #>` Get information about the feed at the url or # passed as argument. Does not require that the calling chat has subscribed as long as another chat has. Example:\n- `/info 2`, `/info https://www.compositional.fm/rss`.\n",
-        "/fresh, /f `<n>`: Get all the most recent items (less than n-days old, where n is the argument) from all the feeds the chat is subscribed.\n",
-        "/help, /start:  Get the list of commands this bot answers to.\n",
-        "/items, /i `<url or #>`: Get the most recent items from the feed at the url or #s passed as argument, if any. Examples:\n- `/items 2`\n-`/i https://www.compositional.fm/rss`.\n",
-        "/list, /l: Get all the urls and #s of the feeds to which the chat is subscribed to, if any.\n",
-        "/pause, /p, /resume:  Whether the bot is allowed to send notification messages to the chat.\n",
-        "/purge (*chat admins only*): Make the bot and associated database forget entirely about this chat.\n",
-        "/reset (*chat admins only*): Set the chat's settings to the defaults.\n",
-        "/search, /se `<space-separated keywords>`: Search for keywords in all items in all feeds the current chat is subscribed to. Example:\n- `/se cheap cloud host`.\n",
-        "/settings, /set `optional <linebreak + key:value single lines>` (*admins only with argument*): Get the settings for the referenced chat (version without argument) or set the settings for this chat. Example: /settings\nblacklist: word1, word2\nbatch\\_size: 10, batch\\_at: 1200, 1800\nwebview: true\n",
-        "/sub, /s (*chat admins only*) `<list of comma-separated full url addresses>`: Subscribe the chat to the feeds -- if they exist -- passed as argument. Examples:\n- `/s 1 2 3`\n- `/sub https://www.compositional.fm/rss https://www.blabla.org/rss`.\n",
-        "/unsub (*chat admins only*) `<list of 1-space-separated full url addresses>`: Unsubscribe from all the feeds passed as argument, if indeed they exits. Examples:\n- `/u 1 2 3`\n- `/unsub https://www.compositional.fm/rss https://www.blabla.org/`."
-    ]
-    -}
     [
         "/channel_settings, /cset `optional <linebreak + key:value single lines>` (*admins only with argument*)\n",
         "/feed, /f `<url or #>`\n",
