@@ -94,14 +94,29 @@ secsToReadable t =
 
 {- Update settings -}
 
+validSettingsKeys :: [T.Text]
+validSettingsKeys = [
+    "blacklist", 
+    "batch_size",
+    "batch_at", 
+    "batch_every",
+    "webview",
+    "paused,",
+    "webview",
+    "pin",
+    "clean_behind"
+    ] 
+
 parseSettings :: [T.Text] -> Either T.Text ([T.Text], ParsedSettings)
 parseSettings [] = Left "Unable to parse from an empty string."
 parseSettings lns = case foldr parsePairs Nothing lns of
     Nothing -> Left "Unable to parse one or more fields/values. Did you forget to use linebreaks after /set or /setchan? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
     Just l_keyvals -> 
         let keys = map fst l_keyvals
+            invalid_keys = filter (`notElem` validSettingsKeys) keys
             settings = settings_from . Map.fromList $ l_keyvals
-        in  Right (keys, settings)
+        in  if null invalid_keys then Right (keys, settings)
+            else Left $ "Found invalid keys: " `T.append` T.intercalate "," invalid_keys
     where
     settings_from keyvals = Settings {
         settings_filters =
@@ -144,18 +159,6 @@ parseSettings lns = case foldr parsePairs Nothing lns of
         settings_clean = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "clean_behind" keyvals
         }
-    collectHM acc val =
-        let (hh, mm) = T.splitAt 2 val
-            (m1, m2) = T.splitAt 1 mm
-            mm' =
-                if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
-                else readMaybe . T.unpack $ mm :: Maybe Int
-            hh' = readMaybe . T.unpack $ hh :: Maybe Int
-        in  case sequence [hh', mm'] of
-            Nothing -> []
-            Just parsed -> if length parsed /= 2 then [] else
-                let (h, m) = (head parsed, last parsed)
-                in  groupPairs h m acc
     groupPairs h m acc
         |   h < 0 || h > 24 = []
         |   m < 0 || m > 60 = []
@@ -168,6 +171,18 @@ parseSettings lns = case foldr parsePairs Nothing lns of
             else case acc of
                 Nothing -> Just [(k, last ss)]
                 Just p -> Just $ (k, last ss):p
+    collectHM acc val =
+        let (hh, mm) = T.splitAt 2 val
+            (m1, m2) = T.splitAt 1 mm
+            mm' =
+                if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
+                else readMaybe . T.unpack $ mm :: Maybe Int
+            hh' = readMaybe . T.unpack $ hh :: Maybe Int
+        in  case sequence [hh', mm'] of
+            Nothing -> []
+            Just parsed -> if length parsed /= 2 then [] else
+                let (h, m) = (head parsed, last parsed)
+                in  groupPairs h m acc
 
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {
