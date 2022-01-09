@@ -101,7 +101,7 @@ validSettingsKeys = [
     "batch_at", 
     "batch_every",
     "webview",
-    "paused,",
+    "pause",
     "webview",
     "pin",
     "clean_behind"
