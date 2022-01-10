@@ -100,6 +100,15 @@ toHrefEntities mbcounter tag link =
             let counter = T.pack . show $ c
             in  counter `T.append` tag' `T.append` link'
 
+defaultReply :: T.Text -> Reply
+defaultReply payload = ChatReply {
+    reply_contents = payload,
+    reply_markdown = True,
+    reply_pin_on_send = False,
+    reply_disable_webview = False,
+    reply_clean_behind = False
+    }
+
 toReply :: ToReply -> Maybe Settings -> Reply
 toReply FromChangelog _ = ServiceReply "check out https://t.me/feedfarer"
 toReply (FromChatFeeds _ feeds) _ =
@@ -110,14 +119,15 @@ toReply (FromChatFeeds _ feeds) _ =
                 rendered = toHrefEntities (Just counter) title link
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
-    in  ChatReply payload True False False False
+    in  defaultReply payload
 toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =
             render .
             sortBy (comparing $ Down . i_pubdate) .
             f_items $ f
-    in  ChatReply rendered_items True True False False
+    in  defaultReply rendered_items
+
 toReply (FromFeedsItems items) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
             `T.append` (render . sortBy (comparing $ Down . i_pubdate) $ i)
@@ -135,7 +145,7 @@ toReply (FromFeedsItems items) mbs =
 toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
-    in  ChatReply payload True False False False
+    in  defaultReply payload
 toReply (FromSearchRes items) _ = ChatReply (render items) True True False False
 toReply FromStart _ = ChatReply renderCmds True True False False
 

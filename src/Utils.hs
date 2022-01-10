@@ -187,7 +187,7 @@ defaultChatSettings :: Settings
 defaultChatSettings = Settings {
         settings_filters = Filters [] [],
         settings_batch_size = 10,
-        settings_batch_interval = BatchInterval (Just 9000) Nothing,
+        settings_batch_interval = BatchInterval (Just 86400) Nothing,
         settings_paused = False,
         settings_disable_web_view = False,
         settings_pin = False,
