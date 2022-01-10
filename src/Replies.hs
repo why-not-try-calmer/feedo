@@ -72,7 +72,7 @@ instance Renderable SubChat where
                 ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
                 ("Batch at", if T.null at then " not defined" else at),
                 ("Batch every", if T.null every then " not defined" else every),
-                ("Webview", if settings_disable_web_view sub_settings then "enabled" else "disabled"),
+                ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
                 ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled"),
                 ("Remove bot messages", if settings_pin sub_settings then "enabled" else "disabled")
             ]
@@ -167,26 +167,26 @@ renderCmds = T.intercalate "\n"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
-    changelog - recent changes to the bot
-    feed - <# or url> info about the feed
-    fresh - <n> n-old items, in number of days
-    help - these commands
-    items - <# or url> all the items fetched from the reference feed 
-    list - all the feeds this chat is subscribed to 
-    listchan - <channel id> all the feeds that channel is subscribed to
-    pause - stop posting updates to this chat
-    pausechan - <channel id> stop posting updates to that channel
-    purge - erase the database from all data about this chat
-    purgechan - <channel id> erase the database from all data about that channel
-    reset - set this chat's settings to their default values
-    resetchan - <channel id> set this chat's settings to their default values
-    resume - resume updates to this chat
-    resumechan - <channel id> resume updates to that channel
-    search - <term1 term2...> search all items across all feeds for the given keywords 
-    set - <linebreak + key:value pairs> edit this chat's settings
-    setchan - <channel id> <linebreak + key:value pairs> edit that channel's settings
-    sub - <url1 url2...> subscribe this chat to the target feed(s)
-    subchan - <channel id> <url1 url2...> subscribe that channel to the target feeds
-    unsub - <url url2...> unsubscribe this chat from the target feed(s)
-    unsubchan - <channel id> <url1 url2...> unsubscribe that channel from the target feed(s)
+changelog - recent changes to the bot
+feed - <# or url> info about the feed
+fresh - <n> n-old items, in number of days
+help - these commands
+items - <# or url> all the items fetched from the reference feed 
+list - all the feeds this chat is subscribed to 
+listchan - <channel id> all the feeds that channel is subscribed to
+pause - stop posting updates to this chat
+pausechan - <channel id> stop posting updates to that channel
+purge - erase the database from all data about this chat
+purgechan - <channel id> erase the database from all data about that channel
+reset - set this chat's settings to their default values
+resetchan - <channel id> set this chat's settings to their default values
+resume - resume updates to this chat
+resumechan - <channel id> resume updates to that channel
+search - <term1 term2...> search all items across all feeds for the given keywords 
+set - <linebreak + key:value pairs> edit this chat's settings
+setchan - <channel id> <linebreak + key:value pairs> edit that channel's settings
+sub - <url1 url2...> subscribe this chat to the target feed(s)
+subchan - <channel id> <url1 url2...> subscribe that channel to the target feeds
+unsub - <url url2...> unsubscribe this chat from the target feed(s)
+unsubchan - <channel id> <url1 url2...> unsubscribe that channel from the target feed(s)
 -}
