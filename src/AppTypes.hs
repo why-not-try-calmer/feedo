@@ -81,13 +81,13 @@ data BatchInterval = BatchInterval {
 } deriving (Eq, Show)
 
 data Settings = Settings {
-    settings_paused :: Bool,
-    settings_batch_size :: Int,
     settings_batch_interval :: BatchInterval,
-    settings_filters :: Filters,
+    settings_batch_size :: Int,
+    settings_clean :: Bool,
     settings_disable_web_view :: Bool,
-    settings_pin :: Bool,
-    settings_clean :: Bool
+    settings_filters :: Filters,
+    settings_paused :: Bool,
+    settings_pin :: Bool
 } deriving (Show, Eq)
 
 data SubChat = SubChat
