@@ -67,18 +67,18 @@ __Any chat but a channel__:
 
 ```
 command  | argument
----------+------------------------------------------
+---------+----------------------------------------
 /set     | optional argument after line break
          | <":"-separated key-value pairs>            
----------+------------------------------------------
+---------+----------------------------------------
 example  |  /set 
          |  batch_size: 10
          |  batch_at: 0800, 1200
          |  disable_webview: true >
----------+------------------------------------------
+---------+----------------------------------------
 response | with no argument: list of settings
          | with argument: error or success message
----------+------------------------------------------
+---------+----------------------------------------
 ```
 __Channels__:
 
@@ -86,16 +86,16 @@ _Both the user performing this command and the bot must be admin in the target c
 
 ```
 command  | argument
----------+---------------------------------------------
+---------+--------------------------------------------
 /setchan | <line break + ":"-separated key-value pairs 
----------+--------------+------------------------------
+---------+--------------------------------------------
 example  |  /setchan -25154554
          |  batch_every: 9000
          |  pin: true
          |  disable_webview: true
----------+---------------------------------------------
+---------+--------------------------------------------
 returns  | error or success message                                   
----------+---------------------------------------------
+---------+--------------------------------------------
 ```
 
 ### List subscribed to web feeds
@@ -144,24 +144,24 @@ response     | information about the target feed
 
 ```
 command  | argument
----------+----------------------------------------------------------
+---------+---------------------------------------------------------
 /fresh   | <# of days representing how old the items can be at most 
----------+----------------------------------------------------------
+---------+---------------------------------------------------------
 example  | /fresh 1 
----------+----------------------------------------------------------
+---------+---------------------------------------------------------
 response | all at most #-old items collected from
          |  all feeds the chat is subscribed to
---------------------------------------------------------------------
+-------------------------------------------------------------------
 ```
 
 ### Displaying items from a single feed
 
 ```
 command     | argument
-------------+--------------------------------------------
+------------+---------------------------------------------
 /items, /i  | <# or full url of the target of days 
             |   representing the max "age" of the items
-------------+--------------------------------------------
+------------+---------------------------------------------
 example     | /items 1
             | /i https://www.phoronix.com/rss.php
 ------------+---------------------------------------------
@@ -170,6 +170,7 @@ response    | all the items available from the target feed
 ```
 ### Miscellaneous
 
+- /changelog: Show the latest changelog
 - /pause, /p: Suspend notification to the chat
 - /pausechan `<chat_id>`: Like the previous one but for channels
 - /resume:  Whether the bot is allowed to send notification messages to the chat.
