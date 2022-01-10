@@ -76,7 +76,7 @@ data Filters = Filters {
 } deriving (Show, Eq)
 
 data BatchInterval = BatchInterval {
-    batch_secs :: Maybe NominalDiffTime,
+    batch_every_secs :: Maybe NominalDiffTime,
     batch_at :: Maybe [(Int, Int)]
 } deriving (Eq, Show)
 
@@ -128,7 +128,7 @@ toFeedRef ss
 
 {- User actions, errors -}
 
-type ParsedSettings = Settings
+type KeysParsedSettings = ([T.Text], Settings)
 
 data UserAction
   = About FeedRef
@@ -146,8 +146,8 @@ data UserAction
   | Reset
   | ResetChannel ChatId
   | Search [T.Text]
-  | SetChannelSettings ChatId ParsedSettings
-  | SetSubFeedSettings ParsedSettings
+  | SetChannelSettings ChatId KeysParsedSettings
+  | SetChatSettings KeysParsedSettings
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]

@@ -116,15 +116,15 @@ interpretCmd contents
         let body = tail . T.lines . T.toLower $ contents
         in  case parseSettings body of
             Left err -> Left . BadInput $ err
-            Right settings -> Right $ SetSubFeedSettings . snd $ settings
+            Right settings -> Right $ SetChatSettings settings
     | cmd == "/setchan" =
         if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
         let body = tail . T.lines . T.toLower $ contents
         in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "/settings needs at least 2 arguments, and the first one stands for the id of the target channel. I coulnd't find the first argument."
-            Just n -> case parseSettings body of
+            Just channel_id -> case parseSettings body of
                 Left err -> Left . BadInput $ err
-                Right settings -> Right $ SetChannelSettings n . snd $ settings
+                Right settings -> Right $ SetChannelSettings channel_id settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
     | cmd == "/sub" || cmd == "/s" =
         if null args then Left . BadInput $ "/sub needs at least 1 argument, standing for the url of the feed to subscribe to."
@@ -347,16 +347,16 @@ evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
-            else withChat (SetSubFeedSettings settings) chan_id >>= \case
+            else withChat (SetChatSettings settings) chan_id >>= \case
                 Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
-evalTgAct uid (SetSubFeedSettings settings) cid = ask >>= \env ->
+evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
         Just verdict ->
             if not verdict then exitNotAuth uid
-            else withChat (SetSubFeedSettings settings) cid >>= \case
+            else withChat (SetChatSettings settings) cid >>= \case
                 Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
 evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->

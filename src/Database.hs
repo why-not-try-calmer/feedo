@@ -174,7 +174,7 @@ bsonToChat doc =
         feeds_settings_docs = Settings {
             settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
             settings_batch_interval =
-                let every = M.lookup "settings_batch_every" settings_doc :: Maybe NominalDiffTime
+                let every = M.lookup "settings_batch_every_secs" settings_doc :: Maybe NominalDiffTime
                     hm_docs = M.lookup "settings_batch_at" settings_doc :: Maybe [Document]
                     adjust n
                         | n < 6 && n > 0 = n * 10
@@ -216,8 +216,8 @@ chatToBson SubChat{..} =
             "settings_clean" =: settings_clean sub_settings
             ]
         with_secs = maybe [] 
-            (\secs -> ["settings_batch_secs" =: secs])
-            (batch_secs . settings_batch_interval $ sub_settings)
+            (\secs -> ["settings_batch_every_secs" =: secs])
+            (batch_every_secs . settings_batch_interval $ sub_settings)
         with_at = maybe []
             (\hm -> ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm])
             (batch_at . settings_batch_interval $ sub_settings) 

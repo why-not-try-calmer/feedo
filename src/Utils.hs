@@ -106,7 +106,7 @@ validSettingsKeys = [
     "clean_behind"
     ] 
 
-parseSettings :: [T.Text] -> Either T.Text ([T.Text], ParsedSettings)
+parseSettings :: [T.Text] -> Either T.Text KeysParsedSettings 
 parseSettings [] = Left "Unable to parse from an empty string."
 parseSettings lns = case foldr parsePairs Nothing lns of
     Nothing -> Left "Unable to parse one or more fields/values. Did you forget to use linebreaks after /set or /setchan? Correct format is: /settings\nkey1:val1\nkey2:val2\n..."
@@ -194,9 +194,8 @@ defaultChatSettings = Settings {
         settings_clean = False
     }
 
-mergeSettings :: [T.Text] -> ParsedSettings -> Settings -> Settings
-mergeSettings [] updater _ = updater 
-mergeSettings keys updater orig = orig {
+mergeSettings :: KeysParsedSettings -> Settings -> Settings
+mergeSettings (keys, updater) orig = orig {
     settings_filters = 
         if "blacklist" `elem` keys then settings_filters updater
         else settings_filters orig,

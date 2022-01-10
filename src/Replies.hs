@@ -58,7 +58,7 @@ instance Renderable SubChat where
                         in  s' `T.append` body) mempty ts
             every = maybe
               mempty secsToReadable
-              (batch_secs . settings_batch_interval $ sub_settings)
+              (batch_every_secs . settings_batch_interval $ sub_settings)
             blacklist =
                 let bs = filters_blacklist . settings_filters $ sub_settings
                 in  if null bs then "none" else T.intercalate "," bs
