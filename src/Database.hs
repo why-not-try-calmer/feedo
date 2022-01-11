@@ -48,7 +48,8 @@ withMongo config action = liftIO $ do
     try (runMongo pipe action) >>= \case
         Left (SomeException _) -> openDbHandle config >> runMongo pipe action
         Right res -> pure res
-    where   getPipe = readIORef . db_connector
+    where
+        getPipe = readIORef . db_connector
 
 {- Connection -}
 
@@ -77,7 +78,9 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
     if verdict then pure . Left $ PipeNotAcquired else authWith creds pipe
 
 installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
-installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef (db_connector config) (MongoPipe pipe)
+installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
+    (db_connector config)
+    (MongoPipe pipe)
 installPipe _ _ = undefined
 
 {- Actions -}
