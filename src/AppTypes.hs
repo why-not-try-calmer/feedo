@@ -15,7 +15,7 @@ import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Data.SearchEngine (SearchEngine, NoFeatures)
 import Data.Ix (Ix)
-import Database.MongoDB (Pipe)
+import Database.MongoDB (Pipe, PortID, Host)
 
 {- Replies -}
 
@@ -29,10 +29,6 @@ data Reply =
     deriving Show
 
 {- URLs -}
-
-type Host = T.Text
-
-newtype Rest = Rest [T.Text]
 
 newtype Path = Path T.Text
 
@@ -201,6 +197,30 @@ data ToReply = FromChangelog
 
 {- Database actions, errors -}
 
+data DbCreds
+  = MongoCredsTls
+      { host_name :: String,
+        database_name :: T.Text,
+        user_name :: T.Text,
+        password :: T.Text,
+        db_port :: PortID
+      }
+  | MongoCredsReplicaTls
+      { replicateset :: T.Text,
+        hosts :: [Host],
+        user_name :: T.Text,
+        password :: T.Text
+      }
+  | MongoCredsReplicaSrv
+      { host_name :: String,
+        database_name :: T.Text,
+        user_name :: T.Text,
+        password :: T.Text
+      }
+  deriving (Eq, Show)
+
+data DbConnector = MongoPipe Pipe | SomethingElse
+
 data DbAction
   = UpsertFeeds [Feed]
   | Get100Feeds
@@ -295,13 +315,6 @@ data ServerConfig = ServerConfig
   }
   deriving (Show, Eq)
 
-data DbCreds = MongoCreds
-  { shard :: T.Text,
-    all_shards :: T.Text,
-    user :: T.Text,
-    pwd :: T.Text
-  }
-
 type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
@@ -316,7 +329,7 @@ data Job =
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,
     db_config :: DbCreds,
-    db_connector :: IORef Pipe,
+    db_connector :: IORef DbConnector,
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,

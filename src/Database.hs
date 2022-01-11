@@ -15,7 +15,7 @@ import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
-import qualified Database.MongoDB.Transport.Tls as DbTLS
+import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
 import TgramOutJson (ChatId)
 
@@ -26,11 +26,15 @@ class Db m where
     evalDb :: AppConfig -> DbAction -> m DbRes
 
 instance MonadIO m => Db (App m) where
-    openDbHandle config = getFreshPipe (db_config config) >>= flip installPipe config
+    openDbHandle config = initConnectionMongo (db_config config) >>= \case
+        Left err -> liftIO . print $ renderDbError err
+        Right p -> installPipe p config
     evalDb = evalMongo
 
 instance Db IO where
-    openDbHandle config = getFreshPipe (db_config config) >>= flip installPipe config
+    openDbHandle config = initConnectionMongo (db_config config) >>= \case
+        Left err -> print $ renderDbError err
+        Right p -> installPipe p config
     evalDb = evalMongo
 
 {- Evaluation -}
@@ -40,7 +44,7 @@ runMongo pipe action = access pipe master "feedfarer" $ liftDB action
 
 withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
 withMongo config action = liftIO $ do
-    pipe <- getPipe config
+    MongoPipe pipe <- getPipe config
     try (runMongo pipe action) >>= \case
         Left (SomeException _) -> openDbHandle config >> runMongo pipe action
         Right res -> pure res
@@ -48,44 +52,33 @@ withMongo config action = liftIO $ do
 
 {- Connection -}
 
-initMongoCredsFrom :: T.Text -> T.Text -> DbCreds
-initMongoCredsFrom h whole_line =
-    let [host_name, db_name, password] = T.splitOn ":" h
-    in  MongoCreds host_name whole_line db_name password
+authWith :: MonadIO m => DbCreds -> Pipe -> m (Either DbError DbConnector)
+authWith creds pipe = do
+    liftIO $ putStrLn "Pipe created. Authenticating..."
+    isAuth <- access pipe master "admin" $ auth (user_name creds) (password creds)
+    if isAuth
+        then liftIO (putStrLn "Authenticated now.") >> pure (Right $ MongoPipe pipe)
+        else liftIO (putStrLn "Authentication failed.") >> pure (Left PipeNotAcquired)
 
-getFreshPipe :: MonadIO m => DbCreds -> m Pipe
-getFreshPipe creds = liftIO $ folded >>= \(Just p) -> pure p
-    where
-        folded = foldr check (pure Nothing) (T.splitOn ";" $ all_shards creds)
-        check v acc =
-            let new_creds = initMongoCredsFrom v $ all_shards creds
-            in  connectPipe new_creds >>= \case
-                Left _ -> acc
-                Right pipe -> checkPipe pipe >>= \case
-                    Left _ -> close pipe >> acc
-                    Right _ -> pure $ Just pipe
-        connectPipe new_creds = liftIO $ try (DbTLS.connect (T.unpack $ shard new_creds) (PortNumber 27017)) >>= \case
-            Left (SomeException e) -> do
-                putStrLn ("Error while trying to connect: " ++ show e)
-                pure . Left $ PipeNotAcquired
-            Right pipe -> do
-                authorized <- access pipe UnconfirmedWrites "admin" $ auth (user new_creds) (pwd new_creds)
-                if authorized then pure . Right $ pipe
-                else pure . Left $ DbLoginFailed
-        checkPipe pipe =
-            let ref = "123" :: T.Text
-                sample = ["ref" =: ref]
-                go = runMongo pipe $ do
-                    insert_ "test" sample
-                    findOne (select sample "test") >>= \case
-                        Nothing -> pure . Left $ DbChangedMaster
-                        Just _ -> do
-                            _ <- deleteAll "test" [(sample, [])]
-                            pure . Right $ ()
-            in liftIO $ go `catch` \(SomeException _) -> pure . Left $ DbChangedMaster
+initConnectionMongo :: MonadIO m => DbCreds -> m (Either DbError DbConnector)
+initConnectionMongo creds@MongoCredsTls{..} = liftIO $ do
+    pipe <- Tls.connect host_name db_port
+    verdict <- isClosed pipe
+    if verdict then pure . Left $ PipeNotAcquired else authWith creds pipe
+initConnectionMongo creds@MongoCredsReplicaTls{..} = liftIO $ do
+    repset <- openReplicaSetTLS (replicateset, hosts)
+    pipe <- primary repset
+    verdict <- isClosed pipe
+    if verdict then pure . Left $ PipeNotAcquired else authWith creds pipe
+initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
+    repset <- openReplicaSetSRV' host_name
+    pipe <- primary repset
+    verdict <- isClosed pipe
+    if verdict then pure . Left $ PipeNotAcquired else authWith creds pipe
 
-installPipe :: MonadIO m => Pipe -> AppConfig -> m ()
-installPipe pipe config = void . liftIO $ atomicSwapIORef (db_connector config) pipe
+installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
+installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef (db_connector config) (MongoPipe pipe)
+installPipe _ _ = undefined
 
 {- Actions -}
 
