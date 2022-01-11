@@ -73,8 +73,7 @@ instance Renderable SubChat where
                 ("Batch at", if T.null at then " not defined" else at),
                 ("Batch every", if T.null every then " not defined" else every),
                 ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
-                ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled"),
-                ("Remove bot messages", if settings_pin sub_settings then "enabled" else "disabled")
+                ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled")
             ]
 
 instance Renderable [Item] where
