@@ -72,7 +72,7 @@ makeConfig env = do
         webhook = 
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
             in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
-        connection_string = T.pack . fromJust $ lookup "MONGODB_STRING" env
+        connection_string = T.pack . fromJust $ lookup "MONGODB_CONNECTION_STRING" env
         [hn, db, un, pass] = T.splitOn ":" connection_string
         creds = MongoCredsReplicaSrv {
             host_name = T.unpack hn,
