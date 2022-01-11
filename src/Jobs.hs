@@ -57,7 +57,7 @@ refresher = do
                         in  evalDb env (UpsertChats updated_chats) >> pure updated_chats
                     t2 <- getCurrentTime
                     let diff = diffUTCTime t1 t2
-                        item = LogItem t2 "refresher" "refresher ran successfully" (realToFrac diff)
+                        item = LogItem t2 "refresher" "ran successfully" (realToFrac diff)
                     writeChan (postjobs env) (JobLog item)
                 _ -> liftIO $ writeChan (postjobs env) . JobTgAlert $ "refresher: failed to acquire notification package"
         wait_action = threadDelay interval >> action

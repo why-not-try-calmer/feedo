@@ -10,7 +10,6 @@ import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Database (getFreshPipe, initMongoCredsFrom)
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -21,6 +20,8 @@ import System.Environment (getEnvironment)
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
+import Database (initConnectionMongo)
+import Control.Exception (throwIO)
 
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
@@ -71,9 +72,14 @@ makeConfig env = do
         webhook = 
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
             in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
-        creds_line = T.pack . fromJust $ lookup "MONGODB_SHARDS" env
-        (first_shard:_) = T.splitOn ";" creds_line
-        creds = initMongoCredsFrom first_shard creds_line
+        connection_string = T.pack . fromJust $ lookup "MONGODB_CONNECTION_STRING" env
+        [hn, db, un, pass] = T.splitOn ":" connection_string
+        creds = MongoCredsReplicaSrv {
+            host_name = T.unpack hn,
+            database_name = db,
+            user_name = un,
+            password = pass 
+        }
         port = maybe 80 read $ lookup "PORT" env
         interval = maybe 1200000000 read $ lookup "WORKER_INTERVAL" env
         starting_feeds = (Just . T.splitOn "," . T.pack) =<< lookup "STARTING_FEEDS" env
@@ -81,7 +87,9 @@ makeConfig env = do
     mvar2 <- newMVar HMS.empty
     mvar3 <- newEmptyMVar
     chan <- newChan
-    pipe_ref <- newIORef =<< getFreshPipe creds 
+    pipe_ref <- initConnectionMongo creds >>= \case
+        Left err -> throwIO . userError $ T.unpack $ renderDbError err   
+        Right pipe -> newIORef pipe
     pure (port, AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         last_worker_run = Nothing,
