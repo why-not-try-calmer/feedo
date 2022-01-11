@@ -105,8 +105,7 @@ defaultReply payload = ChatReply {
     reply_contents = payload,
     reply_markdown = True,
     reply_pin_on_send = False,
-    reply_disable_webview = False,
-    reply_clean_behind = False
+    reply_disable_webview = False
     }
 
 toReply :: ToReply -> Maybe Settings -> Reply
@@ -127,7 +126,6 @@ toReply (FromFeedItems f) _ =
             sortBy (comparing $ Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
-
 toReply (FromFeedsItems items) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
             `T.append` (render . sortBy (comparing $ Down . i_pubdate) $ i)
@@ -138,16 +136,15 @@ toReply (FromFeedsItems items) mbs =
             reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
-            reply_disable_webview = settings_disable_web_view s,
-            reply_clean_behind = False
+            reply_disable_webview = settings_disable_web_view s
         }
         Nothing -> ServiceReply payload
 toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-toReply (FromSearchRes items) _ = ChatReply (render items) True True False False
-toReply FromStart _ = ChatReply renderCmds True True False False
+toReply (FromSearchRes items) _ = ChatReply (render items) True True False
+toReply FromStart _ = ChatReply renderCmds True True False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

@@ -24,8 +24,7 @@ data Reply =
         reply_contents :: T.Text,
         reply_markdown :: Bool,
         reply_disable_webview :: Bool,
-        reply_pin_on_send :: Bool,
-        reply_clean_behind :: Bool
+        reply_pin_on_send :: Bool
     } | ServiceReply T.Text
     deriving Show
 
@@ -83,7 +82,6 @@ data BatchInterval = BatchInterval {
 data Settings = Settings {
     settings_batch_interval :: BatchInterval,
     settings_batch_size :: Int,
-    settings_clean :: Bool,
     settings_disable_web_view :: Bool,
     settings_filters :: Filters,
     settings_paused :: Bool,

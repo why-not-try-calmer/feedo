@@ -4,7 +4,7 @@
 
 module Requests where
 
-import AppTypes (BotToken, Job (JobRemoveMsg, JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, reply_clean_behind, ChatReply, ServiceReply))
+import AppTypes (BotToken, Job (JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, ChatReply, ServiceReply))
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad (void)
@@ -70,16 +70,13 @@ reply tok cid rep chan =
         redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing Nothing
         non_empty txt = if T.null txt then "No result for this command." else txt
         triage_replies msg@ChatReply{..}
-            |   reply_pin_on_send = reqSend tok "sendMessage" (fromReply msg) >>= \case
-                    Left err -> redirect err
-                    Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
-            |   reply_clean_behind = reqSend tok "sendMessage" (fromReply msg) >>= \case
-                    Left err -> redirect err
-                    Right resp -> liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
-            |   otherwise = reqSend_ tok "sendMessage" (fromReply msg) >>= \case
-                    Left err -> redirect err
-                    Right _ -> pure ()
-        triage_replies serv_rep = reqSend tok "sendMessage" (fromReply serv_rep) >>= \case
+            | reply_pin_on_send = reqSend tok "sendMessage" (fromReply msg) >>= \case
+                Left err -> redirect err
+                Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
+            | otherwise = reqSend_ tok "sendMessage" (fromReply msg) >>= \case
+                Left err -> redirect err
+                Right _ -> pure ()
+        triage_replies serv_rep = reqSend_ tok "sendMessage" (fromReply serv_rep) >>= \case
             Left err -> redirect err
-            Right resp ->  liftIO . writeChan chan $ JobRemoveMsg cid (mid_from resp) Nothing
+            Right _ ->  pure ()
     in  triage_replies rep

@@ -102,8 +102,7 @@ validSettingsKeys = [
     "batch_every",
     "paused",
     "disable_webview",
-    "pin",
-    "clean_behind"
+    "pin"
     ]
 
 parseSettings :: [T.Text] -> Either T.Text KeysParsedSettings
@@ -127,7 +126,6 @@ parseSettings lns = case foldr parsePairs Nothing lns of
             Right interval -> Right $ Settings {
                 settings_batch_interval = interval,
                 settings_batch_size = s_batch_size ks,
-                settings_clean = s_clean ks,
                 settings_filters = s_filters ks,
                 settings_disable_web_view = s_disable_web_view ks,
                 settings_paused = s_paused ks,
@@ -176,8 +174,6 @@ parseSettings lns = case foldr parsePairs Nothing lns of
             Map.lookup "disable_webview" ks
         s_pin ks = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "pin" ks
-        s_clean ks = maybe False (\t -> "true" `T.isInfixOf` t) $
-            Map.lookup "clean_behind" ks
         collectHM acc val =
             let (hh, mm) = T.splitAt 2 val
                 (m1, m2) = T.splitAt 1 mm
@@ -210,8 +206,7 @@ defaultChatSettings = Settings {
         settings_batch_interval = BatchInterval (Just 86400) Nothing,
         settings_paused = False,
         settings_disable_web_view = False,
-        settings_pin = False,
-        settings_clean = False
+        settings_pin = False
     }
 
 mergeSettings :: KeysParsedSettings -> Settings -> Settings
@@ -233,10 +228,7 @@ mergeSettings (keys, updater) orig = orig {
         else settings_disable_web_view orig,
     settings_pin =
         if "pin" `elem` keys then settings_disable_web_view updater
-        else settings_pin orig,
-    settings_clean =
-        if "clean_behind" `elem` keys
-        then settings_clean updater else settings_clean orig
+        else settings_pin orig
     }
 
 notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)

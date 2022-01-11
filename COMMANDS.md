@@ -57,9 +57,6 @@ __NB__: As of the latest version, this settings _is_ compatible with `batch_at` 
     - allow Telegram to display the last shown items in disable_webview mode
 - `pin: "true" or "false"`,
     - have the bot try to pin every batch message
-- `clean_behind: "true" or "false"`
-    - have the bot try to delete their own messages
-    - does not apply to batch messages
 
 _The user issuing the command must have administrative rights in the chat._
 

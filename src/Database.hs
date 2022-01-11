@@ -193,8 +193,7 @@ bsonToChat doc =
                 (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc),
             settings_paused = fromMaybe False $ M.lookup "settings_paused" doc,
             settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" doc,
-            settings_pin = fromMaybe False $ M.lookup "settings_pin" doc,
-            settings_clean = fromMaybe False $ M.lookup "settings_clean" doc
+            settings_pin = fromMaybe False $ M.lookup "settings_pin" doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -212,8 +211,7 @@ chatToBson SubChat{..} =
             "settings_batch_size" =: settings_batch_size sub_settings,
             "settings_paused" =: settings_paused sub_settings,
             "settings_disable_web_view" =: settings_disable_web_view sub_settings,
-            "settings_pin" =: settings_pin sub_settings,
-            "settings_clean" =: settings_clean sub_settings
+            "settings_pin" =: settings_pin sub_settings
             ]
         with_secs = maybe [] 
             (\secs -> ["settings_batch_every_secs" =: secs])
