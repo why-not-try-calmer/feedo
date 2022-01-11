@@ -148,7 +148,7 @@ interpretCmd contents
                 Right refs -> 
                     if abs n < 10000 then Left . BadInput $ "Are you sure you passed a valid chat_id for the target channel?"
                     else Right $ UnSubChannel n refs
-    | otherwise = Left . BadInput $ "Unable to parse your command. Please try again."
+    | otherwise = Left Ignore
     where
         (cmd, args) =
             let (h':t) = T.words contents

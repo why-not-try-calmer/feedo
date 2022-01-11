@@ -90,9 +90,7 @@ buildFeed ty url = do
                                     f_last_refresh = Just now,
                                     f_reads = 0
                                 }
-                        in  do
-                            liftIO $ print . renderUrl $ url
-                            faultyOrValid url res
+                        in  faultyOrValid url res
                     Atom ->
                         let desc = T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
                             title = T.concat $ child root >>= laxElement "title" >>= child >>= content
