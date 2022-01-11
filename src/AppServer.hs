@@ -49,8 +49,9 @@ server = root :<|> handleWebhook    where
                     in  case reply_to_message msg of
                         Just _ -> pure ()
                         Nothing -> case text msg of
-                            Nothing -> liftIO . putStrLn $ "Suppressed message:" ++ show msg
+                            Nothing -> pure ()
                             Just contents -> case interpretCmd contents of
+                                Left Ignore -> pure ()
                                 Left err -> finishWith env cid err
                                 Right action -> evalTgAct uid action cid >>= \case
                                     Left err -> finishWith env cid err
