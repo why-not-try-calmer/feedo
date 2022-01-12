@@ -51,7 +51,7 @@ server = root :<|> handleWebhook    where
                         Nothing -> case text msg of
                             Nothing -> pure ()
                             Just contents -> case interpretCmd contents of
-                                Left Ignore -> pure ()
+                                Left (Ignore _) -> pure ()
                                 Left err -> finishWith env cid err
                                 Right action -> evalTgAct uid action cid >>= \case
                                     Left err -> finishWith env cid err

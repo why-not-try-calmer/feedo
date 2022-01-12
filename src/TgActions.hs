@@ -76,79 +76,71 @@ interpretCmd contents
         else case toFeedRef args of
             Left err -> Left err
             Right single_ref -> Right . GetItems . head $ single_ref
-    | cmd == "/list" || cmd == "/l" =
-        if not . null $ args then Left . BadInput $ "/list takes no argument."
-        else Right ListSubs
-    | cmd == "/listchan" || cmd == "/lchan" =
-        if length args /= 1 then Left . BadInput $ "/listchan takes exactly one argument, standing for the chat_id of the target channel."
+    | cmd == "/list" =
+        if null args then Right ListSubs
+        else if length args > 1 then Left . BadInput $ "/list cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The first value passed to /listchan could not be parsed into a valid chat_id."
-            Just chan_id -> Right . ListSubsChannel $ chan_id
-    | cmd == "/pause" || cmd == "/p" = Right . Pause $ True
-    | cmd == "/pausechan" =
-        if length args /= 1 then Left . BadInput $ "/pausechan takes exactly one argument, standing for the chat_id of the target channel."
+            Nothing -> Left . BadInput $ "The first value passed to /list could not be parsed into a valid chat_id."
+            Just n -> Right . ListSubsChannel $ n
+    | cmd == "/pause" || cmd == "/p" =
+        if null args then Right . Pause $ True
+        else if length args > 1 then Left . BadInput $ "/pause cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The first value passed to /pausechan could not be parsed into a valid chat_id."
-            Just chan_id -> Right . PauseChannel chan_id $ True
-    | cmd == "/purge" = if not . null $ args then Left . BadInput $ "/purge takes no argument." else Right Purge
-    | cmd == "/purgechan" = 
-        if length args /= 1 then Left . BadInput $ "/purgechan takes exactly one argument, standing for the target channel id."
+            Nothing -> Left . BadInput $ "The first value passed to /pause could not be parsed into a valid chat_id."
+            Just n -> Right . PauseChannel n $ True
+    | cmd == "/purge" = 
+        if null args then Right Purge
+        else if length args > 1 then Left . BadInput $ "/purge cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The first value passed to /purgechan could not be parsed into a valid chat_id."
-            Just chan_id -> Right . PurgeChannel $ chan_id 
-    | cmd == "/resume" = Right . Pause $ False
-    | cmd == "/resumechan" =
-        if length args /= 1 then Left . BadInput $ "/resumechan takes exactly one argument, standing for the chat_id of the target channel."
+            Nothing -> Left . BadInput $ "The first value passed to /purge could not be parsed into a valid chat_id."
+            Just n -> Right . PurgeChannel $ n
+    | cmd == "/resume" = 
+        if null args then Right . Pause $ False
+        else if length args > 1 then Left . BadInput $ "/resume cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The first value passed to /resumechan could not be parsed into a valid chat_id."
-            Just chan_id -> Right . PauseChannel chan_id $ False 
-    | cmd == "/reset" = Right Reset
-    | cmd == "/resetchan" =
-        if length args /= 1 then Left . BadInput $ "/resetchan takes exactly one argument, standing for the target channel id."
+            Nothing -> Left . BadInput $ "The first value passed to /resume could not be parsed into a valid chat_id."
+            Just n -> Right . PauseChannel n $ False
+    | cmd == "/reset" = 
+        if null args then Right Reset
+        else if length args > 1 then Left . BadInput $ "/reset cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The first value passed to /resetchan could not be parsed into a valid chat_id."
-            Just chan_id -> Right . ResetChannel $ chan_id
+            Nothing -> Left . BadInput $ "The first value passed to /reset could not be parsed into a valid chat_id."
+            Just n -> Right . ResetChannel $ n
     | cmd == "/search" || cmd == "/se" =
         if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
         else Right . Search $ args
     | cmd == "/set" =
+        let body = tail . T.lines . T.toLower $ contents in
         if null args then Right GetSubFeedSettings else
-        let body = tail . T.lines . T.toLower $ contents
-        in  case parseSettings body of
-            Left err -> Left . BadInput $ err
-            Right settings -> Right $ SetChatSettings settings
-    | cmd == "/setchan" =
-        if length args < 2 then Left . BadInput $ "/settings_channel takes a string of parameters for connecting the bot to a channel where it was invited." else
-        let body = tail . T.lines . T.toLower $ contents
-        in  case readMaybe . T.unpack $ head args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "/settings needs at least 2 arguments, and the first one stands for the id of the target channel. I coulnd't find the first argument."
-            Just channel_id -> case parseSettings body of
+        case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> case parseSettings body of
                 Left err -> Left . BadInput $ err
-                Right settings -> Right $ SetChannelSettings channel_id settings
+                Right settings -> Right $ SetChatSettings settings
+            Just n -> case parseSettings body of
+                Left err -> Left . BadInput $ err
+                Right settings -> Right $ SetChannelSettings n settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
     | cmd == "/sub" || cmd == "/s" =
-        if null args then Left . BadInput $ "/sub needs at least 1 argument, standing for the url of the feed to subscribe to."
-        else Right . Sub $ args
-    | cmd == "/subchan" =
-        if length args < 2 then Left . BadInput $ "/subchan at least 2 arguments, the first standing for the id of the target channel, and another argument for the target web feed (url)."
-        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "/subchan's first argument must be a valid integer, positive or negative."
-            Just n -> Right $ SubChannel n (tail args)
+        if null args then Left . BadInput $ "/sub <optional: channel id> <mandatory: list of url feeds>" else
+        case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Right . Sub $ args
+            Just n -> 
+                if null $ tail args then Left . BadInput $ "Cannot subscribe to an empty list urls..."
+                else Right . SubChannel n $ tail args
     | cmd == "/unsub" =
-        if null args then Left . BadInput $ "/unsub needs at least 1 argument, standing for the url or # of the feed to unsubscribe from."
-        else case toFeedRef args of
-            Left err -> Left err
-            Right refs -> Right . UnSub $ refs
-    | cmd == "/unsubchan" =
-        if length args < 2 then Left . BadInput $ "/unsubchan takes at least two arguments, the chat_id of the target channel and either a # or full url of the target feed."
-        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-            Nothing -> Left . BadInput $ "The first argument of /unsubchan must be a valid chat_id."
-            Just n -> case toFeedRef . tail $ args of
+        if null args then Left . BadInput $ "/unsub <optional: channel id> <mandatory: list of #s or url feeds>" else
+        case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> case toFeedRef args of
                 Left err -> Left err
-                Right refs -> 
-                    if abs n < 10000 then Left . BadInput $ "Are you sure you passed a valid chat_id for the target channel?"
-                    else Right $ UnSubChannel n refs
-    | otherwise = Left Ignore
+                Right refs -> Right . UnSub $ refs
+            Just n ->
+                if abs n < 10000 then case toFeedRef args of
+                    Left err -> Left err
+                    Right refs -> Right . UnSub $ refs
+                else case toFeedRef $ tail args of
+                    Left err -> Left err
+                    Right refs -> Right . UnSubChannel n $ refs
+    | otherwise = Left $ Ignore contents
     where
         (cmd, args) =
             let (h':t) = T.words contents
@@ -156,7 +148,7 @@ interpretCmd contents
             in  (h, t)
 
 testChannel :: MonadIO m => BotToken -> ChatId -> Chan Job -> m (Either UserError ())
-testChannel tok chan_id jobs = 
+testChannel tok chan_id jobs =
     -- tries sending a message to the given channel
     -- if the response rewards the test with a message_id, it's won.
     reqSend tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing) >>= \case
@@ -273,9 +265,9 @@ evalTgAct _ ListSubs cid = do
                 case traverse (`HMS.lookup` feeds_hmap) subs of
                     Nothing -> pure . Left . NotFoundFeed $
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
-                    Just feeds -> pure . Right $ toReply (FromChatFeeds c feeds) (Just $ sub_settings c) 
+                    Just feeds -> pure . Right $ toReply (FromChatFeeds c feeds) (Just $ sub_settings c)
 evalTgAct uid (ListSubsChannel chan_id) _ = evalTgAct uid ListSubs chan_id
-evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env -> 
+evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case
         Nothing -> pure . Left $ TelegramErr
@@ -285,7 +277,7 @@ evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
                 Left err -> pure . Right . ServiceReply . renderUserError $ err
                 Right _ -> pure . Right . ServiceReply $ succeeded
     where
-        succeeded = 
+        succeeded =
             if pause_or_resume then "All notifications to this chat are now suspended. Use /resume to resume."
             else "Resuming notifications. This chat is receiving messages again."
 evalTgAct uid (PauseChannel chan_id pause_or_resume) _ = evalTgAct uid (Pause pause_or_resume) chan_id
@@ -299,7 +291,7 @@ evalTgAct uid Purge cid = do
             else withChat Purge cid >>= \case
                 Left _ -> pure . Right . ServiceReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
                 Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
-evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id 
+evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
 evalTgAct uid (Sub feeds_urls) cid = do
     env <- ask
     chats <- liftIO . readMVar $ subs_state env

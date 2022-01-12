@@ -2,7 +2,6 @@
 module Utils where
 
 import AppTypes
-import Data.Char (isSpace)
 import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl', sort)
 import qualified Data.Map.Strict as Map
@@ -28,11 +27,11 @@ partitionEither = foldl' step ([],[])
 maybeUserIdx :: [a] -> Int -> Maybe a
 maybeUserIdx [] _ = Nothing
 maybeUserIdx ls i
-    |   i < 1 = Nothing
-    |   i > length ls = Nothing
-    |   i == 1 = Just $ head ls
-    |   i == length ls = Just $ last ls
-    |   otherwise = Just $ ls !! (i-1)
+    | i < 1 = Nothing
+    | i > length ls = Nothing
+    | i == 1 = Just $ head ls
+    | i == length ls = Just $ last ls
+    | otherwise = Just $ ls !! (i-1)
 
 removeByUserIdx :: [a] -> [Int] -> Maybe [a]
 removeByUserIdx [] _ = Nothing
@@ -137,8 +136,8 @@ parseSettings lns = case foldr parsePairs Nothing lns of
                 Left err -> Left err
                 Right every -> Right $ BatchInterval (if every == 0 then Nothing else Just . realToFrac $ every) (if null at then Nothing else Just at)
         s_filters ks =
-            let blacklist = maybe [] (T.splitOn ",") $ Map.lookup "blacklist" ks
-                whitelist = maybe [] (T.splitOn ",") $ Map.lookup "whitelist" ks
+            let blacklist = maybe [] T.words $ Map.lookup "blacklist" ks
+                whitelist = maybe [] T.words $ Map.lookup "whitelist" ks
             in  Filters blacklist whitelist
         s_batch_size ks =
             let mbread = readMaybe . T.unpack =<<
@@ -147,9 +146,9 @@ parseSettings lns = case foldr parsePairs Nothing lns of
         s_batch_at ks = case Map.lookup "batch_at" ks of
             Nothing -> Right []
             Just txt ->
-                let datetimes = T.splitOn "," txt
+                let datetimes = T.words txt
                     collected = foldl' collectHM [] datetimes
-                in if null collected 
+                in if null collected
                     then Left "Unable to parse 'batch_at' values."
                     else Right collected
         s_batch_every ks = case Map.lookup "batch_every" ks of
@@ -187,9 +186,7 @@ parseSettings lns = case foldr parsePairs Nothing lns of
                     let (h, m) = (head parsed, last parsed)
                     in  groupPairs h m acc
         parsePairs l acc =
-            let (k:ss) =
-                    T.splitOn ":" .
-                    T.filter (not . isSpace) $ l
+            let (k:ss) = T.splitOn ":" l
             in  if null ss then Nothing
                 else case acc of
                     Nothing -> Just [(k, last ss)]
