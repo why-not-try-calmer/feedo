@@ -161,7 +161,7 @@ renderCmds = T.intercalate "\n"
         "/search `<term1 term2...>`: search all items across all feeds for the given keywords",
         "/set `<optional: channel_id> <optional: linebreak + key:value pairs>` view or edit this chat's or that channel's settings",
         "/sub `<optional: channel_id> <url1 url2...>`: subscribe this chat or that channel to the target feed(s)",
-        "/unsub `<optional: channel_id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)",
+        "/unsub `<optional: channel_id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
