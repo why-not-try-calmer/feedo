@@ -1,6 +1,6 @@
 module Search where
 
-import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
+import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch, SubChat (sub_settings, sub_feeds_links), Settings (settings_word_matches), match_searchset)
 import Data.List (foldl')
 import Data.SearchEngine
     ( NoFeatures,
@@ -12,6 +12,7 @@ import Data.SearchEngine
       SearchRankParameters(..) )
 import qualified Data.Text as T
 import NLP.Tokenize.Text
+import qualified Data.Set as S
 
 defaultSearchRankParameters :: SearchRankParameters Field NoFeatures
 defaultSearchRankParameters =
@@ -68,3 +69,10 @@ searchWith items q engine =
             | idx == 1 = head is
             | idx == length is = last is
             | otherwise = let idx' = idx-1 in is !! idx'
+
+scheduledSearches :: SubChat -> ([KeyedItem], FeedsSearch) -> [Item]
+scheduledSearches c (keyed, engine) = 
+    let searchset = match_searchset . settings_word_matches $ sub_settings c
+        res = searchWith keyed (S.toList searchset) engine
+        flinks = sub_feeds_links c
+    in  foldl' (\acc (KeyedItem _ item) -> if i_feed_link item `S.member` flinks then item:acc else acc) [] res

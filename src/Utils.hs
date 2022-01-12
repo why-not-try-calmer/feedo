@@ -14,6 +14,7 @@ import Data.Time.Clock.POSIX
   )
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
+import qualified Data.Set as S
 
 {- Data -}
 
@@ -101,7 +102,9 @@ validSettingsKeys = [
     "batch_every",
     "paused",
     "disable_webview",
-    "pin"
+    "pin",
+    "search_keys",
+    "only_search_results"
     ]
 
 parseSettings :: [T.Text] -> Either T.Text KeysParsedSettings
@@ -125,7 +128,7 @@ parseSettings lns = case foldr parsePairs Nothing lns of
             Right interval -> Right $ Settings {
                 settings_batch_interval = interval,
                 settings_batch_size = s_batch_size ks,
-                settings_filters = s_filters ks,
+                settings_word_matches = s_word_matches ks,
                 settings_disable_web_view = s_disable_web_view ks,
                 settings_paused = s_paused ks,
                 settings_pin = s_pin ks
@@ -135,10 +138,11 @@ parseSettings lns = case foldr parsePairs Nothing lns of
             Right at -> case s_batch_every ks of
                 Left err -> Left err
                 Right every -> Right $ BatchInterval (if every == 0 then Nothing else Just . realToFrac $ every) (if null at then Nothing else Just at)
-        s_filters ks =
-            let blacklist = maybe [] T.words $ Map.lookup "blacklist" ks
-                whitelist = maybe [] T.words $ Map.lookup "whitelist" ks
-            in  Filters blacklist whitelist
+        s_word_matches ks =
+            let blacklist = maybe S.empty (S.fromList . T.words) $ Map.lookup "blacklist" ks
+                searches = maybe S.empty (S.fromList . T.words) $ Map.lookup "searches" ks
+                only_results = maybe S.empty (S.fromList . T.words) $ Map.lookup "searches" ks
+            in  WordMatches blacklist searches only_results
         s_batch_size ks =
             let mbread = readMaybe . T.unpack =<<
                     Map.lookup "batch_size" ks
@@ -174,8 +178,8 @@ parseSettings lns = case foldr parsePairs Nothing lns of
         s_pin ks = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "pin" ks
         collectHM acc val =
-            let (hh, mm) = T.splitAt 2 val
-                (m1, m2) = T.splitAt 1 mm
+            let (!hh, !mm) = T.splitAt 2 val
+                (!m1, !m2) = T.splitAt 1 mm
                 mm' =
                     if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
                     else readMaybe . T.unpack $ mm :: Maybe Int
@@ -198,7 +202,7 @@ parseSettings lns = case foldr parsePairs Nothing lns of
 
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {
-        settings_filters = Filters [] [],
+        settings_word_matches = WordMatches S.empty S.empty S.empty,
         settings_batch_size = 10,
         settings_batch_interval = BatchInterval (Just 86400) Nothing,
         settings_paused = False,
@@ -208,9 +212,17 @@ defaultChatSettings = Settings {
 
 mergeSettings :: KeysParsedSettings -> Settings -> Settings
 mergeSettings (keys, updater) orig = orig {
-    settings_filters =
-        if "blacklist" `elem` keys then settings_filters updater
-        else settings_filters orig,
+    settings_word_matches =
+        let blacklist = 
+                if "blacklist" `elem` keys then match_blacklist $ settings_word_matches updater
+                else match_blacklist $ settings_word_matches orig
+            searches = 
+                if "search" `elem` keys then match_searchset $ settings_word_matches updater
+                else match_searchset $ settings_word_matches orig
+            only_search_results = 
+                if "only_search_results" `elem` keys then match_only_search_results $ settings_word_matches updater
+                else match_searchset $ settings_word_matches orig
+        in  WordMatches blacklist searches only_search_results,
     settings_batch_size =
         if "batch_size" `elem` keys then settings_batch_size updater
         else settings_batch_size orig,
@@ -231,21 +243,24 @@ mergeSettings (keys, updater) orig = orig {
 notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds
     where
-        layer acc f = HMS.foldl' (\hmapping c ->
-            if f_link f `notElem` sub_feeds_links c || null (fresh_filtered c f) then hmapping else
-            let v = (f, fresh_filtered c f)
-            in  HMS.alter (\case
-                Nothing -> Just (sub_settings c, [v])
-                Just (s, vs) -> Just (s, v:vs)) (sub_chatid c) hmapping) acc subs
+        layer acc f = HMS.foldl' (\hmapping c -> if 
+                f_link f `notElem` sub_feeds_links c || 
+                null (fresh_filtered c f) || 
+                f_link f `elem` only_on_search c
+            then hmapping else let feed_items = (f, fresh_filtered c f) in
+                HMS.alter (\case
+                    Nothing -> Just (sub_settings c, [feed_items])
+                    Just (s, fits) -> Just (s, feed_items:fits)) (sub_chatid c) hmapping) acc subs
+        only_on_search = match_only_search_results . settings_word_matches . sub_settings
         fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
             (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $ filters
         filterItemsWith Settings{..} Nothing items =
             take settings_batch_size .
-            filter (with_filters [blacklist (filters_blacklist settings_filters)]) $ items
+            filter (with_filters [blacklist (match_blacklist settings_word_matches)]) $ items
         filterItemsWith Settings{..} (Just last_time) items =
             take settings_batch_size .
-            filter (with_filters [blacklist (filters_blacklist settings_filters), fresh]) $ items
+            filter (with_filters [blacklist (match_blacklist settings_word_matches), fresh]) $ items
             where
                 fresh i = last_time < i_pubdate i

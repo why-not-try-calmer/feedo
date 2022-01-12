@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, postjobs, subs_state, tg_config, worker_interval), Settings (settings_batch_interval), DbAction (UpsertChats), DbRes (DbOk), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (JobIncReadsJob, JobLog, JobRemoveMsg, JobTgAlert, JobUpdateSchedules, JobPin), ServerConfig (alert_chat, bot_token), SubChat (sub_chatid, sub_last_notification, sub_next_notification, sub_settings), runApp, LogItem (LogItem), Reply (ServiceReply))
-import Backend (evalFeedsAct)
+import AppTypes (App, AppConfig (last_worker_run, postjobs, search_engine, subs_state, tg_config, worker_interval), DbAction (UpsertChats), DbRes (DbOk), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (JobIncReadsJob, JobLog, JobPin, JobRemoveMsg, JobTgAlert, JobUpdateEngine, JobUpdateSchedules), LogItem (LogItem), Reply (ServiceReply), ServerConfig (alert_chat, bot_token), Settings (settings_batch_interval), SubChat (sub_chatid, sub_last_notification, sub_next_notification, sub_settings), runApp)
+import Backend (evalFeedsAct, updateEngine)
 import Control.Concurrent
   ( modifyMVar_,
     readChan,
@@ -87,6 +87,7 @@ postProcJobs = ask >>= \env ->
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
+            JobUpdateEngine feeds -> fork $ updateEngine (search_engine env) feeds 
             JobUpdateSchedules chat_ids -> fork $ do
                 now <- getCurrentTime
                 modifyMVar_ (subs_state env) $ \chats_hmap ->

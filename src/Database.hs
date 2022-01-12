@@ -175,7 +175,7 @@ bsonToChat doc =
                     adjust n
                         | n < 6 && n > 0 = n * 10
                         | otherwise = n
-                    extract mds = case mds of 
+                    extract mds = case mds of
                         Nothing -> []
                         Just docs -> foldr (\d acc ->
                             let h = M.lookup "hour" d :: Maybe Int
@@ -184,9 +184,10 @@ bsonToChat doc =
                                 Nothing -> []
                                 Just hm -> acc ++ [(head hm, adjust $ last hm)]) [] docs
                 in  BatchInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs),
-            settings_filters = Filters
-                (fromMaybe [] $ M.lookup "settings_blacklist" settings_doc)
-                (fromMaybe [] $ M.lookup "settings_whitelist" settings_doc),
+            settings_word_matches = WordMatches
+                (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
+                (maybe S.empty S.fromList $ M.lookup "settings_SearchSet" settings_doc)
+                (maybe S.empty S.fromList $ M.lookup "settings_only_search_results" settings_doc),
             settings_paused = fromMaybe False $ M.lookup "settings_paused" doc,
             settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" doc,
             settings_pin = fromMaybe False $ M.lookup "settings_pin" doc
@@ -201,20 +202,24 @@ bsonToChat doc =
 
 chatToBson :: SubChat -> Document
 chatToBson SubChat{..} =
-    let settings = [
-            "settings_blacklist" =: (filters_blacklist . settings_filters $ sub_settings),
-            "settings_whitelist" =: (filters_whitelist . settings_filters $ sub_settings),
+    let blacklist = ["settings_blacklist" =: S.toList (match_blacklist (settings_word_matches sub_settings))]
+        searchset = ["settings_searches" =: S.toList (match_searchset (settings_word_matches sub_settings))]
+        only_search_results = ["settings_blacklist" =: S.toList (match_only_search_results (settings_word_matches sub_settings))]
+        settings = [
+            "settings_blacklist" =: blacklist,
+            "settings_SearchSet" =: searchset,
+            "settings_only_search_results" =: only_search_results,
             "settings_batch_size" =: settings_batch_size sub_settings,
             "settings_paused" =: settings_paused sub_settings,
             "settings_disable_web_view" =: settings_disable_web_view sub_settings,
             "settings_pin" =: settings_pin sub_settings
             ]
-        with_secs = maybe [] 
+        with_secs = maybe []
             (\secs -> ["settings_batch_every_secs" =: secs])
             (batch_every_secs . settings_batch_interval $ sub_settings)
         with_at = maybe []
             (\hm -> ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm])
-            (batch_at . settings_batch_interval $ sub_settings) 
+            (batch_at . settings_batch_interval $ sub_settings)
     in  [
             "sub_chatid" =: sub_chatid,
             "sub_last_notification" =: sub_last_notification,
@@ -234,8 +239,8 @@ saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env item = withMongo env $ insert "logs" doc >> pure ()
     where
         doc = [
-            "log_when" =: log_when item, 
-            "log_who" =: log_who item, 
+            "log_when" =: log_when item,
+            "log_who" =: log_who item,
             "log_what" =: log_what item,
             "log_n" =: log_n item
             ]
