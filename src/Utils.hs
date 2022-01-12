@@ -96,23 +96,23 @@ secsToReadable t =
 
 validSettingsKeys :: [T.Text]
 validSettingsKeys = [
-    "blacklist",
     "batch_size",
     "batch_at",
     "batch_every",
-    "paused",
+    "blacklist",
     "disable_webview",
-    "pin",
-    "search_keys",
-    "only_search_results"
+    "search",
+    "only_search_results",
+    "paused",
+    "pin"
     ]
 
 parseSettings :: [T.Text] -> Either T.Text KeysParsedSettings
 parseSettings [] = Left "Unable to parse from an empty string."
 parseSettings lns = case foldr parsePairs Nothing lns of
     Nothing -> Left "Unable to parse one or more fields/values. \
-            \Did you forget to use linebreaks after /set or /setchan? \ 
-            \Correct format is: /set\nkey1:val1\nkey2:val2\n..."
+            \ Did you forget to use linebreaks after /set or /setchan? \ 
+            \ Correct format is: /set\nkey1:val1\nkey2:val2\n..."
     Just l_keyvals ->
         let keys = map fst l_keyvals
             invalid_keys = filter (`notElem` validSettingsKeys) keys
@@ -123,6 +123,9 @@ parseSettings lns = case foldr parsePairs Nothing lns of
             else Left $ "Found invalid keys: " `T.append` T.intercalate ", " invalid_keys
     where
         left_typical_error = Left "'batch_every' needs a number of minutes, hours or days. Example: batch_at: 1d, batch_at: 6h, batch_at: 40m."
+        reset setter resetter ws
+            | "reset" `elem` ws = setter ws
+            | otherwise = resetter
         settings_from ks = case make_interval ks of
             Left err -> Left err
             Right interval -> Right $ Settings {
@@ -139,38 +142,37 @@ parseSettings lns = case foldr parsePairs Nothing lns of
                 Left err -> Left err
                 Right every -> Right $ BatchInterval (if every == 0 then Nothing else Just . realToFrac $ every) (if null at then Nothing else Just at)
         s_word_matches ks =
-            let blacklist = maybe S.empty (S.fromList . T.words) $ Map.lookup "blacklist" ks
-                searches = maybe S.empty (S.fromList . T.words) $ Map.lookup "searches" ks
-                only_results = maybe S.empty (S.fromList . T.words) $ Map.lookup "searches" ks
+            let blacklist = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "blacklist" ks
+                searches = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "search" ks
+                only_results = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "search" ks
             in  WordMatches blacklist searches only_results
-        s_batch_size ks =
-            let mbread = readMaybe . T.unpack =<<
-                    Map.lookup "batch_size" ks
-            in  fromMaybe 10 mbread
+        s_batch_size ks = maybe 10 (\v -> reset (fromMaybe 10 . readMaybe . T.unpack . T.concat) 10 [v]) $ Map.lookup "batch_size" ks
         s_batch_at ks = case Map.lookup "batch_at" ks of
             Nothing -> Right []
             Just txt ->
                 let datetimes = T.words txt
                     collected = foldl' collectHM [] datetimes
-                in if null collected
-                    then Left "Unable to parse 'batch_at' values."
-                    else Right collected
+                in  if "reset" `T.isInfixOf` txt then Right [] else
+                        if null collected
+                        then Left "Unable to parse 'batch_at' values."
+                        else Right collected
         s_batch_every ks = case Map.lookup "batch_every" ks of
             Nothing -> Right 0
             Just every_s ->
                 let int = T.init every_s
                     t_tag = T.singleton . T.last $ every_s
                     triage n t
-                        | n < 1 = Left "n must be larger than 0."
+                        | 1 > n = Left "n must be bigger than 0."
                         | "m" == t = Right $ n * 60
                         | "h" == t = Right $ n * 3600
                         | "d" == t = Right $ n * 86400
                         | otherwise = left_typical_error
-                in  if T.length every_s < 2
-                    then left_typical_error
-                    else case readMaybe . T.unpack $ int :: Maybe Int of
-                        Nothing -> Left "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)"
-                        Just n -> triage n t_tag
+                in  if "reset" `T.isInfixOf` every_s then Right 0 else
+                        if T.length every_s < 2
+                        then left_typical_error
+                        else case readMaybe . T.unpack $ int :: Maybe Int of
+                            Nothing -> Left "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)"
+                            Just n -> triage n t_tag
         s_paused ks = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "paused" ks
         s_disable_web_view ks = maybe False (\t -> "true" `T.isInfixOf` t) $
@@ -213,13 +215,13 @@ defaultChatSettings = Settings {
 mergeSettings :: KeysParsedSettings -> Settings -> Settings
 mergeSettings (keys, updater) orig = orig {
     settings_word_matches =
-        let blacklist = 
+        let blacklist =
                 if "blacklist" `elem` keys then match_blacklist $ settings_word_matches updater
                 else match_blacklist $ settings_word_matches orig
-            searches = 
+            searches =
                 if "search" `elem` keys then match_searchset $ settings_word_matches updater
                 else match_searchset $ settings_word_matches orig
-            only_search_results = 
+            only_search_results =
                 if "only_search_results" `elem` keys then match_only_search_results $ settings_word_matches updater
                 else match_searchset $ settings_word_matches orig
         in  WordMatches blacklist searches only_search_results,
@@ -243,9 +245,9 @@ mergeSettings (keys, updater) orig = orig {
 notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds
     where
-        layer acc f = HMS.foldl' (\hmapping c -> if 
-                f_link f `notElem` sub_feeds_links c || 
-                null (fresh_filtered c f) || 
+        layer acc f = HMS.foldl' (\hmapping c -> if
+                f_link f `notElem` sub_feeds_links c ||
+                null (fresh_filtered c f) ||
                 f_link f `elem` only_on_search c
             then hmapping else let feed_items = (f, fresh_filtered c f) in
                 HMS.alter (\case

@@ -97,8 +97,10 @@ instance Renderable [Item] where
 
 instance Renderable ([T.Text], [Item]) where
     render (keys, items) = "Results from scheduled search with keywords " 
-        `T.append` T.intercalate ", " keys 
+        `T.append` T.intercalate ", " keys
+        `T.append` ":\n" 
         `T.append` render items
+        `T.append` "\nSend '/set search: false' to disable search updates."
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
