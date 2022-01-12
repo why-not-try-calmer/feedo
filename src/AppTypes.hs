@@ -164,7 +164,7 @@ data UserError
   | ParseError T.Text
   | UpdateError T.Text
   | TelegramErr
-  | Ignore
+  | Ignore T.Text
   deriving (Eq, Show)
 
 renderUserError :: UserError -> T.Text
@@ -183,7 +183,7 @@ renderUserError BadFilter = "Filters should be at least 4-character long."
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
 renderUserError NoSettings = "No settings found for the supscription to this feed."
 renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
-renderUserError Ignore = mempty
+renderUserError (Ignore input) = "Ignoring " `T.append` input
 
 {- Replies -}
 
