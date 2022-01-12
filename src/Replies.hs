@@ -95,6 +95,11 @@ instance Renderable [Item] where
                     finish (i_title i) (i_link i), d')
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
+instance Renderable ([T.Text], [Item]) where
+    render (keys, items) = "Results from scheduled search with keywords " 
+        `T.append` T.intercalate ", " keys 
+        `T.append` render items
+
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
     let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
@@ -148,7 +153,7 @@ toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-toReply (FromSearchRes items) _ = ChatReply (render items) True True False
+toReply (FromSearchRes (keys, items)) _ = ChatReply (render (keys, items)) True True False
 toReply FromStart _ = ChatReply renderCmds True True False
 
 renderCmds :: T.Text

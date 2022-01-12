@@ -332,7 +332,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
             let subs = S.toList . sub_feeds_links $ c
             in  if null subs
                 then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
-                else search_from_subs subs >>= \res -> pure . Right $ toReply (FromSearchRes res) Nothing
+                else search_from_subs subs >>= \res -> pure . Right $ toReply (FromSearchRes (keywords, res)) Nothing
 evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid chan_id >>= \case

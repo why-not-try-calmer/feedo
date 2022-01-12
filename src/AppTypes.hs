@@ -194,7 +194,7 @@ data ToReply = FromChangelog
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
     | FromFeedsItems [(Feed, [Item])]
-    | FromSearchRes [Item]
+    | FromSearchRes ([T.Text], [Item])
     | FromStart
     deriving (Eq, Show)
 
@@ -283,7 +283,7 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems))
+    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId ([T.Text], [Item]))
     | FeedLinkBatch [(FeedLink, [Item])]
 
 {- Logs -}

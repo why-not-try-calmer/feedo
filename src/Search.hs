@@ -70,9 +70,11 @@ searchWith items q engine =
             | idx == length is = last is
             | otherwise = let idx' = idx-1 in is !! idx'
 
-scheduledSearches :: SubChat -> ([KeyedItem], FeedsSearch) -> [Item]
-scheduledSearches c (keyed, engine) = 
+scheduledSearch :: SubChat -> [KeyedItem] -> FeedsSearch -> ([T.Text], [Item])
+scheduledSearch c keyed engine = 
     let searchset = match_searchset . settings_word_matches $ sub_settings c
-        res = searchWith keyed (S.toList searchset) engine
+        searchlist = S.toList searchset
+        res = searchWith keyed searchlist engine
         flinks = sub_feeds_links c
-    in  foldl' (\acc (KeyedItem _ item) -> if i_feed_link item `S.member` flinks then item:acc else acc) [] res
+        found = foldl' (\acc (KeyedItem _ item) -> if i_feed_link item `S.member` flinks then item:acc else acc) [] res
+    in  (searchlist, found)

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, postjobs, search_engine, subs_state, tg_config, worker_interval), DbAction (UpsertChats), DbRes (DbOk), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (JobIncReadsJob, JobLog, JobPin, JobRemoveMsg, JobTgAlert, JobUpdateEngine, JobUpdateSchedules), LogItem (LogItem), Reply (ServiceReply), ServerConfig (alert_chat, bot_token), Settings (settings_batch_interval), SubChat (sub_chatid, sub_last_notification, sub_next_notification, sub_settings), runApp)
+import AppTypes (App, AppConfig (last_worker_run, postjobs, search_engine, subs_state, tg_config, worker_interval), DbAction (UpsertChats), DbRes (DbOk), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (JobIncReadsJob, JobLog, JobPin, JobRemoveMsg, JobTgAlert, JobUpdateEngine, JobUpdateSchedules), LogItem (LogItem), Reply (ServiceReply), ServerConfig (alert_chat, bot_token), Settings (settings_batch_interval), SubChat (sub_chatid, sub_last_notification, sub_next_notification, sub_settings), runApp, ToReply (FromSearchRes))
 import Backend (evalFeedsAct, updateEngine)
 import Control.Concurrent
   ( modifyMVar_,
@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, forConcurrently)
+import Control.Concurrent.Async (async, forConcurrently, concurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -37,20 +37,24 @@ refresher = do
     env <- ask
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
-        -- sending alert over Telegram
         onError (SomeException err) = do
             let report = "refresher: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
+        send_payload payload = forConcurrently (HMS.toList payload) $ 
+            \(cid, (settings, feed_items)) ->
+                reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
+                >> pure cid
+        send_search_res payload = forConcurrently_ (HMS.toList payload) $
+            \(cid, keys_items) -> reply tok cid (toReply (FromSearchRes keys_items) Nothing) (postjobs env)
         action = do
             t1 <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
             runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct RefreshNotifyF >>= \case
-                FeedBatches payload -> liftIO $ do
-                    -- sending notifications
-                    notified_chats <- forConcurrently (HMS.toList payload) $ 
-                        \(cid, (settings, feed_items)) ->
-                            reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
-                            >> pure cid
+                FeedBatches notif_payload search_payload -> liftIO $ do
+                    -- sending update & search notifications
+                    (notified_chats, _) <- concurrently
+                        (send_payload notif_payload)
+                        (send_search_res search_payload)
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just t1 } else c) subs
