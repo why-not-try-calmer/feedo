@@ -153,15 +153,15 @@ renderCmds = T.intercalate "\n"
         "/fresh `<n>`: display n-old items, in number of days",
         "/help: show these commands",
         "/items `<# or url>`: display all the items fetched from the referenced feed",
-        "/list `<optional: channel_id`: list all the feeds this chat or that channel is subscribed to",
-        "/pause `<optional: channel_id`: stop posting updates to this chat or to that channel",
-        "/purge `<optional: channel_id>`: delete all data about this chat or that channel",
-        "/reset <optional: channel_id>`: set this chat's (or that channels') settings to their default values",
-        "/resume <optional: channel_id>`: resume updates to this chat or to that channel",
+        "/list `<optional: channel id`: list all the feeds this chat or that channel is subscribed to",
+        "/pause `<optional: channel id`: stop posting updates to this chat or to that channel",
+        "/purge `<optional: channel id>`: delete all data about this chat or that channel",
+        "/reset <optional: channel id>`: set this chat's (or that channels') settings to their default values",
+        "/resume <optional: channel id>`: resume updates to this chat or to that channel",
         "/search `<term1 term2...>`: search all items across all feeds for the given keywords",
-        "/set `<optional: channel_id> <optional: linebreak + key:value pairs>` view or edit this chat's or that channel's settings",
-        "/sub `<optional: channel_id> <url1 url2...>`: subscribe this chat or that channel to the target feed(s)",
-        "/unsub `<optional: channel_id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)"
+        "/set `<optional: channel id> <optional: linebreak + key:value pairs>` view or edit this chat's or that channel's settings",
+        "/sub `<optional: channel id> <url1 url2...>`: subscribe this chat or that channel to the target feed(s)",
+        "/unsub `<optional: channel id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
