@@ -149,27 +149,19 @@ renderCmds :: T.Text
 renderCmds = T.intercalate "\n"
     [
         "/changelog: link to the changelog", 
-        "/feed `<# or url>`: show info about the referenced to feed",
+        "/feed `<# or url>`: show info about the subscribed to feed",
         "/fresh `<n>`: display n-old items, in number of days",
         "/help: show these commands",
         "/items `<# or url>`: display all the items fetched from the referenced feed",
-        "/list: list all the feeds this chat is subscribed to",
-        "/listchan `<channel id>`: list all the feeds that channel is subscribed to",
-        "/pause: stop posting updates to this chat",
-        "/pausechan `<channel id>`: stop posting updates to that channel",
-        "/purge: delete all data about this chat",
-        "/purgechan `<channel id>`: delete all data about that channel",
-        "/reset: set this chat's settings to their default values",
-        "/resetchan `<channel id>`: set this chat's settings to their default values",
-        "/resume: resume updates to this chat",
-        "/resumechan `<channel id>`: resume updates to that channel",
+        "/list `<optional: channel_id`: list all the feeds this chat or that channel is subscribed to",
+        "/pause `<optional: channel_id`: stop posting updates to this chat or to that channel",
+        "/purge `<optional: channel_id>`: delete all data about this chat or that channel",
+        "/reset <optional: channel_id>`: set this chat's (or that channels') settings to their default values",
+        "/resume <optional: channel_id>`: resume updates to this chat or to that channel",
         "/search `<term1 term2...>`: search all items across all feeds for the given keywords",
-        "/set `<linebreak + key:value pairs>` edit this chat's settings",
-        "/setchan `<channel id> <linebreak + key:value pairs>`: edit that channel's settings",
-        "/sub `<url1 url2...>`: subscribe this chat to the target feed(s)",
-        "/subchan `<channel id> <url1 url2...>`: subscribe that channel to the target feeds",
-        "/unsub `<url url2...>`: unsubscribe this chat from the target feed(s)",
-        "/unsubchan `<channel id> <url1 url2...>` unsubscribe that channel from the target feed(s)"
+        "/set `<optional: channel_id> <optional: linebreak + key:value pairs>` view or edit this chat's or that channel's settings",
+        "/sub `<optional: channel_id> <url1 url2...>`: subscribe this chat or that channel to the target feed(s)",
+        "/unsub `<optional: channel_id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)",
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
@@ -178,21 +170,13 @@ feed - <# or url> info about the feed
 fresh - <n> n-old items, in number of days
 help - these commands
 items - <# or url> all the items fetched from the reference feed 
-list - all the feeds this chat is subscribed to 
-listchan - <channel id> all the feeds that channel is subscribed to
-pause - stop posting updates to this chat
-pausechan - <channel id> stop posting updates to that channel
-purge - erase the database from all data about this chat
-purgechan - <channel id> erase the database from all data about that channel
-reset - set this chat's settings to their default values
-resetchan - <channel id> set this chat's settings to their default values
-resume - resume updates to this chat
-resumechan - <channel id> resume updates to that channel
+list - <optional: channel_id> all the feeds the chat/channel is subscribed to 
+pause - <optional: channel_id> stop posting updates to the chat/channel
+purge - <optional: channel_id> erase the database from all data about the chat/channel
+reset - <optional: channel_id> set the chat/channel's settings to their default values
+resume - <optional: channel_id> resume updates to the chat/channel
 search - <term1 term2...> search all items across all feeds for the given keywords 
-set - <linebreak + key:value pairs> edit this chat's settings
-setchan - <channel id> <linebreak + key:value pairs> edit that channel's settings
-sub - <url1 url2...> subscribe this chat to the target feed(s)
-subchan - <channel id> <url1 url2...> subscribe that channel to the target feeds
-unsub - <url url2...> unsubscribe this chat from the target feed(s)
-unsubchan - <channel id> <url1 url2...> unsubscribe that channel from the target feed(s)
+set - <optional: channel_id> <optional: linebreak + key:value pairs> view or edit the chat/channel's settings
+sub - <optional: channel_id> <url1 url2...> subscribe the chat/channel to the target feed(s)
+unsub - <optional: channel_id> <url url2...> unsubscribe the chat/channel from the target feed(s)
 -}
