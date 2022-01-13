@@ -138,15 +138,15 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         reset setter resetter ws
             | "reset" `elem` ws = resetter
             | otherwise = setter ws
-        settings_from ks = case p_interval ks of
+        settings_from kvals = case p_interval kvals of
             Left err -> Left err
             Right interval -> Right $ Settings {
                 settings_batch_interval = interval,
-                settings_batch_size = p_batch_size ks,
-                settings_word_matches = p_word_matches ks,
-                settings_disable_web_view = p_disable_web_view ks,
-                settings_paused = p_paused ks,
-                settings_pin = p_pin ks
+                settings_batch_size = p_batch_size kvals,
+                settings_word_matches = p_word_matches kvals,
+                settings_disable_web_view = p_disable_web_view kvals,
+                settings_paused = p_paused kvals,
+                settings_pin = p_pin kvals
             }
         p_interval ks = case p_batch_at ks of
             Left err -> Left err
