@@ -92,6 +92,18 @@ secsToReadable t =
     let (days, time) = timeToDaysAndTimeOfDay t
     in  (T.pack . show $ days) `T.append` " day(s), " `T.append` (T.pack . show $ time) `T.append` " hour(s)"
 
+sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
+sortTimePairs = go [] 
+    where
+        go sorter [] = sorter
+        go [] (p:ps) = go [p] ps
+        go (s:ss) (p:ps) = 
+            let (h, m) = s
+                (h', m') = p
+            in  if h' < h || (h == h' && m' < m)
+                then go (p:s:ss) ps
+                else go (s:p:ss) ps
+
 {- Update settings -}
 
 validSettingsKeys :: [T.Text]
@@ -109,7 +121,7 @@ validSettingsKeys = [
 
 parseSettings :: [T.Text] -> Either T.Text KeysParsedSettings
 parseSettings [] = Left "Unable to parse from an empty string."
-parseSettings lns = case foldr parsePairs Nothing lns of
+parseSettings lns = case foldr mkPairs Nothing lns of
     Nothing -> Left "Unable to parse one or more fields/values. \
             \ Did you forget to use linebreaks after /set or /setchan? \ 
             \ Correct format is: /set\nkey1:val1\nkey2:val2\n..."
@@ -124,39 +136,42 @@ parseSettings lns = case foldr parsePairs Nothing lns of
     where
         left_typical_error = Left "'batch_every' needs a number of minutes, hours or days. Example: batch_at: 1d, batch_at: 6h, batch_at: 40m."
         reset setter resetter ws
-            | "reset" `elem` ws = setter ws
-            | otherwise = resetter
-        settings_from ks = case make_interval ks of
+            | "reset" `elem` ws = resetter
+            | otherwise = setter ws
+        settings_from ks = case p_interval ks of
             Left err -> Left err
             Right interval -> Right $ Settings {
                 settings_batch_interval = interval,
-                settings_batch_size = s_batch_size ks,
-                settings_word_matches = s_word_matches ks,
-                settings_disable_web_view = s_disable_web_view ks,
-                settings_paused = s_paused ks,
-                settings_pin = s_pin ks
+                settings_batch_size = p_batch_size ks,
+                settings_word_matches = p_word_matches ks,
+                settings_disable_web_view = p_disable_web_view ks,
+                settings_paused = p_paused ks,
+                settings_pin = p_pin ks
             }
-        make_interval ks = case s_batch_at ks of
+        p_interval ks = case p_batch_at ks of
             Left err -> Left err
-            Right at -> case s_batch_every ks of
+            Right at -> case p_batch_every ks of
                 Left err -> Left err
-                Right every -> Right $ BatchInterval (if every == 0 then Nothing else Just . realToFrac $ every) (if null at then Nothing else Just at)
-        s_word_matches ks =
+                Right every -> Right $ BatchInterval
+                    (if every == 0 then Nothing else Just . realToFrac $ every)
+                    (if null at then Nothing else Just at)
+        p_word_matches ks =
             let blacklist = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "blacklist" ks
                 searches = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "search" ks
-                only_results = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "search" ks
+                only_results = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "only_search_results" ks
             in  WordMatches blacklist searches only_results
-        s_batch_size ks = maybe 10 (\v -> reset (fromMaybe 10 . readMaybe . T.unpack . T.concat) 10 [v]) $ Map.lookup "batch_size" ks
-        s_batch_at ks = case Map.lookup "batch_at" ks of
+        p_batch_size ks = maybe 10 (\v -> reset (fromMaybe 10 . readMaybe . T.unpack . T.concat) 10 [v]) $ Map.lookup "batch_size" ks
+        p_batch_at ks = case Map.lookup "batch_at" ks of
             Nothing -> Right []
-            Just txt ->
-                let datetimes = T.words txt
-                    collected = foldl' collectHM [] datetimes
-                in  if "reset" `T.isInfixOf` txt then Right [] else
-                        if null collected
-                        then Left "Unable to parse 'batch_at' values."
-                        else Right collected
-        s_batch_every ks = case Map.lookup "batch_every" ks of
+            Just datetime_strs ->
+                let collected = sortTimePairs . foldr into_hm [] . T.words $ datetime_strs
+                in  if "reset" `T.isInfixOf` datetime_strs then Right [] else
+                    if null collected
+                    then Left "Unable to parse 'batch_at' values. \
+                        \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
+                        \ Use ':' to separate hours from minutes and whitespaces to separate many time values: '00:00 12:00' for midgnight and noon."
+                    else Right collected
+        p_batch_every ks = case Map.lookup "batch_every" ks of
             Nothing -> Right 0
             Just every_s ->
                 let int = T.init every_s
@@ -173,34 +188,33 @@ parseSettings lns = case foldr parsePairs Nothing lns of
                         else case readMaybe . T.unpack $ int :: Maybe Int of
                             Nothing -> Left "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)"
                             Just n -> triage n t_tag
-        s_paused ks = maybe False (\t -> "true" `T.isInfixOf` t) $
+        p_paused ks = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "paused" ks
-        s_disable_web_view ks = maybe False (\t -> "true" `T.isInfixOf` t) $
+        p_disable_web_view ks = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "disable_webview" ks
-        s_pin ks = maybe False (\t -> "true" `T.isInfixOf` t) $
+        p_pin ks = maybe False (\t -> "true" `T.isInfixOf` t) $
             Map.lookup "pin" ks
-        collectHM acc val =
-            let (!hh, !mm) = T.splitAt 2 val
-                (!m1, !m2) = T.splitAt 1 mm
+        mkPairs l acc =
+            let (k, rest) = let (h, r) = T.breakOn ":" l in (h, T.drop 1 r)
+            in  if T.null rest then Nothing else case acc of
+                Nothing -> Just [(k, rest)]
+                Just p -> Just $ (k, rest):p
+        into_hm val acc =
+            let [hh, mm] = T.splitOn ":" val
+                (m1, m2) = T.splitAt 1 mm
                 mm' =
                     if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
                     else readMaybe . T.unpack $ mm :: Maybe Int
                 hh' = readMaybe . T.unpack $ hh :: Maybe Int
-            in  case sequence [hh', mm'] of
+            in  if T.length val /= 5 || not (":" `T.isInfixOf` val) then [] else case sequence [hh', mm'] of
                 Nothing -> []
                 Just parsed -> if length parsed /= 2 then [] else
                     let (h, m) = (head parsed, last parsed)
                     in  groupPairs h m acc
-        parsePairs l acc =
-            let (k:ss) = T.splitOn ":" l
-            in  if null ss then Nothing
-                else case acc of
-                    Nothing -> Just [(k, last ss)]
-                    Just p -> Just $ (k, last ss):p
         groupPairs h m acc
-            |   h < 0 || h > 24 = []
-            |   m < 0 || m > 60 = []
-            |   otherwise = acc ++ [(h, m)]
+            | h < 0 || h > 24 = []
+            | m < 0 || m > 60 = []
+            | otherwise = acc ++ [(h, m)]
 
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {
@@ -229,8 +243,13 @@ mergeSettings (keys, updater) orig = orig {
         if "batch_size" `elem` keys then settings_batch_size updater
         else settings_batch_size orig,
     settings_batch_interval =
-        if any (`elem` keys) ["batch_at", "batch_every"] then settings_batch_interval updater
-        else settings_batch_interval orig,
+        let at =
+                if "batch_at" `elem` keys then batch_at . settings_batch_interval $ updater
+                else batch_at . settings_batch_interval $ orig
+            every =
+                if "batch_every" `elem` keys then batch_every_secs . settings_batch_interval $ updater
+                else batch_every_secs . settings_batch_interval $ orig
+        in  BatchInterval every at,
     settings_paused =
         if "paused" `elem` keys then settings_paused updater
         else settings_paused orig,
@@ -238,7 +257,7 @@ mergeSettings (keys, updater) orig = orig {
         if "disable_webview" `elem` keys then settings_disable_web_view updater
         else settings_disable_web_view orig,
     settings_pin =
-        if "pin" `elem` keys then settings_disable_web_view updater
+        if "pin" `elem` keys then settings_pin updater
         else settings_pin orig
     }
 
