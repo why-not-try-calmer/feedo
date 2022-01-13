@@ -116,7 +116,7 @@ validSettingsKeys = [
     "batch_every",
     "blacklist",
     "disable_webview",
-    "search",
+    "search_then_update",
     "only_search_results",
     "paused",
     "pin"
@@ -174,10 +174,10 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     Just txt -> 
                         if T.length txt < 3 then Left "'blacklist' cannot be shorter than 3 characters."
                         else reset S.fromList S.empty . T.words $ txt
-                search = case Map.lookup "search" ks of
+                searchset = case Map.lookup "search_then_update" ks of
                     Nothing -> Right mempty 
                     Just txt -> 
-                        if T.length txt < 3 then Left "'search' cannot be shorter than 3 characters."
+                        if T.length txt < 3 then Left "'search_then_update' cannot be shorter than 3 characters."
                         else reset S.fromList S.empty . T.words $ txt
                 only_results = case Map.lookup "only_search_results" ks of
                     Nothing -> Right mempty 
@@ -186,7 +186,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                         else reset S.fromList S.empty . T.words $ txt
             in  case blacklist of
                 Left err -> Left err
-                Right bl -> case search of
+                Right bl -> case searchset of
                     Left err -> Left err
                     Right se -> case only_results of
                         Left err -> Left err
@@ -278,13 +278,13 @@ mergeSettings (keys, updater) orig = orig {
         let blacklist =
                 if "blacklist" `elem` keys then match_blacklist $ settings_word_matches updater
                 else match_blacklist $ settings_word_matches orig
-            searches =
-                if "search" `elem` keys then match_searchset $ settings_word_matches updater
+            searchset =
+                if "search_then_update" `elem` keys then match_searchset $ settings_word_matches updater
                 else match_searchset $ settings_word_matches orig
             only_search_results =
                 if "only_search_results" `elem` keys then match_only_search_results $ settings_word_matches updater
                 else match_searchset $ settings_word_matches orig
-        in  WordMatches blacklist searches only_search_results,
+        in  WordMatches blacklist searchset only_search_results,
     settings_batch_size =
         if "batch_size" `elem` keys then settings_batch_size updater
         else settings_batch_size orig,

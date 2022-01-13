@@ -56,7 +56,7 @@ returns  | error or success message
 - `blacklist: term term, ...`
     - excludes feed items where a term is found in either their url or description
     - example: `blacklist: itsmycode, butIamproudofit`
-- `batch_at: HHMM HHMM, ...`
+- `batch_at: HH:MM HH:MM, ...`
     - batch all updates and post them at the given times
     - example: `batch_at: 0800 1200 1800`
 - `batch_every: <integer><m | h | d>`
@@ -68,12 +68,20 @@ returns  | error or success message
 
 _Notice_: As of the latest version, this settings _is_ compatible with `batch_at` provided that the value of `batch_every` is 1 or more __days__. If the value of `batch_every` is expressed in minutes or hours and `batch_at` is defined in the settings, the application will ignore `batch_every` and use only `batch_at`.
 
+- `batch_size: <integer>`
+    - the number of items to fetch for any single feed
 - `paused: "true" or "false"`
     - suspend all notifications to the chat
 - `disable_webview: "true" or "false"`
     - allow Telegram to display the last shown items in disable_webview mode
 - `pin: "true" or "false"`,
     - have the bot try to pin every batch message
+- `search_then_update: <list of space-separated keywords>`
+    - have the bot send an extra notification whenever a feed to which the current chat is subscribed has items in which the keywords are found
+- `only_search_results: <list of urls>`
+    - ignore the feeds matching the urls when sending regular updates
+
+_Notice_: The last two settings allow to completely ignore certain feeds from the regular updates, while still getting notifications on matches.
 
 ### List subscribed to web feeds
 

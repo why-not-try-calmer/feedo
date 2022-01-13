@@ -186,7 +186,7 @@ bsonToChat doc =
                 in  BatchInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs),
             settings_word_matches = WordMatches
                 (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
-                (maybe S.empty S.fromList $ M.lookup "settings_SearchSet" settings_doc)
+                (maybe S.empty S.fromList $ M.lookup "settings_searchset" settings_doc)
                 (maybe S.empty S.fromList $ M.lookup "settings_only_search_results" settings_doc),
             settings_paused = fromMaybe False $ M.lookup "settings_paused" doc,
             settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" doc,
@@ -203,11 +203,11 @@ bsonToChat doc =
 chatToBson :: SubChat -> Document
 chatToBson SubChat{..} =
     let blacklist = ["settings_blacklist" =: S.toList (match_blacklist (settings_word_matches sub_settings))]
-        searchset = ["settings_searches" =: S.toList (match_searchset (settings_word_matches sub_settings))]
+        searchset = ["settings_searchset" =: S.toList (match_searchset (settings_word_matches sub_settings))]
         only_search_results = ["settings_blacklist" =: S.toList (match_only_search_results (settings_word_matches sub_settings))]
         settings = [
             "settings_blacklist" =: blacklist,
-            "settings_SearchSet" =: searchset,
+            "settings_searchset" =: searchset,
             "settings_only_search_results" =: only_search_results,
             "settings_batch_size" =: settings_batch_size sub_settings,
             "settings_paused" =: settings_paused sub_settings,

@@ -15,7 +15,6 @@ import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Time (diffUTCTime, getCurrentTime)
 import Database (evalDb, saveToLog)
