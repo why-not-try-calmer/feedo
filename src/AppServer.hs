@@ -66,7 +66,7 @@ initServer config = hoistServer botApi (runApp config) server
 withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
 
-makeConfig :: [(String, String)] -> IO (Int, AppConfig, Maybe [T.Text])
+makeConfig :: [(String, String)] -> IO (AppConfig, Int, Maybe [T.Text])
 makeConfig env = do
     let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
         alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
@@ -91,7 +91,7 @@ makeConfig env = do
     pipe_ref <- initConnectionMongo creds >>= \case
         Left err -> throwIO . userError $ T.unpack $ renderDbError err   
         Right pipe -> newIORef pipe
-    pure (port, AppConfig {
+    pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         last_worker_run = Nothing,
         feeds_state = mvar1,
@@ -101,7 +101,7 @@ makeConfig env = do
         db_config = creds,
         db_connector = pipe_ref,
         search_engine = mvar3
-        }, starting_feeds)
+        }, port, starting_feeds)
 
 initStart :: AppConfig -> Maybe [T.Text] -> IO ()
 initStart config mb_urls = case mb_urls of
@@ -115,7 +115,7 @@ initStart config mb_urls = case mb_urls of
 startApp :: IO ()
 startApp = do
     env <- getEnvironment
-    (port, config, feeds_urls) <- makeConfig env
+    (config, port, feeds_urls) <- makeConfig env
     registerWebhook config
     initStart config feeds_urls
     print $ "Server now istening to port " `T.append`(T.pack . show $ port)

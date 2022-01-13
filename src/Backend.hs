@@ -8,14 +8,14 @@ import Control.Concurrent
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.List (foldl', sortBy)
-import Data.Ord (Down (Down), comparing)
+import Data.List (foldl', sortOn)
+import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
-import Search (initSearchWith)
+import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, freshLastXDays, mergeSettings, notifFor, partitionEither, removeByUserIdx)
 
@@ -131,6 +131,7 @@ evalFeedsAct (RemoveF links) = ask >>= \env -> do
     pure FeedsOk
 evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
+    (idx, engine) <- readMVar $ search_engine env
     modifyMVar (feeds_state env) $ \feeds_hmap -> do
         -- update chats MVar just in case we were able to produce an interesting result
         now <- getCurrentTime
@@ -145,27 +146,29 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
                 (not . settings_paused . sub_settings $ c) &&
                 maybe True (< now) (sub_next_notification c)) chats
             notif = notifFor updated_feeds relevant_chats
+            -- scheduled searches
+            scheduled_searches = HMS.map (\chat -> scheduledSearch chat idx engine) relevant_chats
             -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
             to_keep_in_memory = HMS.filter (\f -> f_link f `elem` within_top100_reads succeeded) updated_feeds
-        unless (null failed) (writeChan (postjobs env) $ JobTgAlert $
+        unless (null failed) (writeChan (postjobs env) . JobTgAlert $ 
             "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
         -- saving to memory & db
         evalDb env (UpsertFeeds succeeded) >>= \case
             DbOk -> do
-                -- updating search engine on successful save to database.
-                updateEngine (search_engine env) (HMS.elems to_keep_in_memory)
-                -- increasing reads count
-                writeChan (postjobs env) . JobIncReadsJob $ relevant_feedlinks
                 -- computing next run
-                writeChan (postjobs env) . JobUpdateSchedules $ HMS.keys relevant_chats
+                writeChan (postjobs env) $ JobUpdateSchedules . HMS.keys  $ relevant_chats
+                -- increasing reads count
+                writeChan (postjobs env) $ JobIncReadsJob relevant_feedlinks
+                -- updating search engine
+                writeChan (postjobs env) $ JobUpdateEngine . HMS.elems $ to_keep_in_memory
                 -- refreshing feeds mvar
-                pure (to_keep_in_memory, FeedBatches notif)
+                pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
             _ -> pure (feeds_hmap, FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF")
     where
         within_top100_reads succeeded =
             take 100 .
             map f_link .
-            sortBy (comparing $ Down . f_reads) $ succeeded
+            sortOn (Down . f_reads) $ succeeded
         collect_subscribed_to_feeds chats =
             HMS.keys $
             HMS.foldl' (\hmap sub ->

@@ -59,29 +59,30 @@ data FeedType = Rss | Atom deriving (Eq, Show)
 
 {- Chat -}
 
-type BlackList = [T.Text]
-
-type WhiteList = [T.Text]
-
-type FeedLink = T.Text
-
-data Filters = Filters { 
-    filters_blacklist :: [T.Text],
-    filters_whitelist :: [T.Text] 
-} deriving (Show, Eq)
-
 data BatchInterval = BatchInterval {
     batch_every_secs :: Maybe NominalDiffTime,
     batch_at :: Maybe [(Int, Int)]
 } deriving (Eq, Show)
 
+type FeedLink = T.Text
+
+type BlackList = S.Set T.Text
+
+type SearchSet = S.Set T.Text
+
+data WordMatches = WordMatches { 
+    match_blacklist :: BlackList,
+    match_searchset :: SearchSet,
+    match_only_search_results :: S.Set FeedLink 
+} deriving (Show, Eq)
+
 data Settings = Settings {
     settings_batch_interval :: BatchInterval,
     settings_batch_size :: Int,
     settings_disable_web_view :: Bool,
-    settings_filters :: Filters,
     settings_paused :: Bool,
-    settings_pin :: Bool
+    settings_pin :: Bool,
+    settings_word_matches :: WordMatches
 } deriving (Show, Eq)
 
 data SubChat = SubChat
@@ -193,7 +194,7 @@ data ToReply = FromChangelog
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
     | FromFeedsItems [(Feed, [Item])]
-    | FromSearchRes [Item]
+    | FromSearchRes ([T.Text], [Item])
     | FromStart
     deriving (Eq, Show)
 
@@ -282,7 +283,7 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems))
+    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId ([T.Text], [Item]))
     | FeedLinkBatch [(FeedLink, [Item])]
 
 {- Logs -}
@@ -321,10 +322,11 @@ type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
     JobIncReadsJob [FeedLink] |
-    JobRemoveMsg ChatId Int (Maybe Int) |
+    JobRemoveMsg ChatId Int Int |
     JobLog LogItem |
     JobPin ChatId Int |
     JobTgAlert T.Text |
+    JobUpdateEngine [Feed] |
     JobUpdateSchedules [ChatId]
     deriving (Eq, Show)
 

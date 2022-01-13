@@ -5,8 +5,8 @@ module Replies (render, Reply(..), toReply, ToReply(..)) where
 
 import AppTypes
 import Data.Foldable (foldl')
-import Data.List (sortBy)
-import Data.Ord (Down (Down), comparing)
+import Data.List (sortOn)
+import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
@@ -56,24 +56,30 @@ instance Renderable SubChat where
                         let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
                             s' = if s == mempty then s else s `T.append` ", "
                         in  s' `T.append` body) mempty ts
-            every = maybe
-              mempty secsToReadable
-              (batch_every_secs . settings_batch_interval $ sub_settings)
+            every = maybe mempty secsToReadable (batch_every_secs . settings_batch_interval $ sub_settings)
             blacklist =
-                let bs = filters_blacklist . settings_filters $ sub_settings
-                in  if null bs then "none" else T.intercalate "," bs
+                let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
+                in  if null bl then "none" else T.intercalate "," bl
+            searches =
+                let se = S.toList $ match_searchset . settings_word_matches $ sub_settings
+                in  if null se then "none" else T.intercalate "," se
+            only_search_results = 
+                let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
+                in  if null sr then "none" else T.intercalate "," sr
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
             [   ("Chat id", T.pack . show $ sub_chatid),
                 ("Status", if settings_paused sub_settings then "paused" else "active"),
-                ("Last notification", maybe "none" (T.pack . show) sub_last_notification),
-                ("Next notication", maybe "none scheduled" (T.pack . show) sub_next_notification),
                 ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
-                ("Blacklist", blacklist),
-                ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
-                ("Batch at", if T.null at then " not defined" else at),
                 ("Batch every", if T.null every then " not defined" else every),
-                ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
-                ("Pin new update", if settings_pin sub_settings then "enabled" else "disabled")
+                ("Batch at", if T.null at then " not defined" else at),
+                ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
+                ("Last notification", maybe " none" (T.pack . show) sub_last_notification),
+                ("Next notication", maybe " none scheduled" (T.pack . show) sub_next_notification),
+                ("Blacklist", blacklist),
+                ("Searches", searches),
+                ("Ignore unless search results", only_search_results),
+                ("Webview", if settings_disable_web_view sub_settings then " disabled" else " enabled"),
+                ("Pin new updates", if settings_pin sub_settings then " enabled" else " disabled")
             ]
 
 instance Renderable [Item] where
@@ -88,6 +94,13 @@ instance Renderable [Item] where
                 else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
                     finish (i_title i) (i_link i), d')
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
+
+instance Renderable ([T.Text], [Item]) where
+    render (keys, items) = "Results from scheduled search with keywords " 
+        `T.append` T.intercalate ", " keys
+        `T.append` ":\n" 
+        `T.append` render items
+        `T.append` "\nSend '/set search: false' to disable search updates."
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
@@ -122,12 +135,12 @@ toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =
             render .
-            sortBy (comparing $ Down . i_pubdate) .
+            sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
 toReply (FromFeedsItems items) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
-            `T.append` (render . sortBy (comparing $ Down . i_pubdate) $ i)
+            `T.append` (render . sortOn (Down . i_pubdate) $ i)
             `T.append` "\n")
         payload = foldl' step mempty items
     in  case mbs of
@@ -142,7 +155,7 @@ toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-toReply (FromSearchRes items) _ = ChatReply (render items) True True False
+toReply (FromSearchRes (keys, items)) _ = ChatReply (render (keys, items)) True True False
 toReply FromStart _ = ChatReply renderCmds True True False
 
 renderCmds :: T.Text
