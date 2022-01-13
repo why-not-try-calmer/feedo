@@ -8,8 +8,8 @@ import Control.Concurrent
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.List (foldl', sortBy)
-import Data.Ord (Down (Down), comparing)
+import Data.List (foldl', sortOn)
+import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
@@ -168,7 +168,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         within_top100_reads succeeded =
             take 100 .
             map f_link .
-            sortBy (comparing $ Down . f_reads) $ succeeded
+            sortOn (Down . f_reads) $ succeeded
         collect_subscribed_to_feeds chats =
             HMS.keys $
             HMS.foldl' (\hmap sub ->

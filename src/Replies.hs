@@ -5,8 +5,8 @@ module Replies (render, Reply(..), toReply, ToReply(..)) where
 
 import AppTypes
 import Data.Foldable (foldl')
-import Data.List (sortBy)
-import Data.Ord (Down (Down), comparing)
+import Data.List (sortOn)
+import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
@@ -135,12 +135,12 @@ toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =
             render .
-            sortBy (comparing $ Down . i_pubdate) .
+            sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
 toReply (FromFeedsItems items) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
-            `T.append` (render . sortBy (comparing $ Down . i_pubdate) $ i)
+            `T.append` (render . sortOn (Down . i_pubdate) $ i)
             `T.append` "\n")
         payload = foldl' step mempty items
     in  case mbs of
