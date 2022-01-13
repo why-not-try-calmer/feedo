@@ -164,7 +164,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 Left err -> Left err
                 Right every -> Right $ BatchInterval
                     (if every == 0 then Nothing else Just . realToFrac $ every)
-                    (if null at then Nothing else at)
+                    (if null at then Nothing else Just at)
         p_word_matches ks =
             let reset setter resetter ws
                     | "reset" `elem` ws = Right resetter
@@ -199,15 +199,15 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     Nothing -> Left "Invalid value for 'batch_size'"
                     Just n -> Right n
         p_batch_at ks = case Map.lookup "batch_at" ks of
-            Nothing -> Right Nothing
+            Nothing -> Right []
             Just datetime_strs ->
                 let collected = sortTimePairs . foldr into_hm [] . T.words $ datetime_strs
-                in  if "reset" `T.isInfixOf` datetime_strs then Right $ batch_at $ settings_batch_interval defaultChatSettings else
+                in  if "reset" `T.isInfixOf` datetime_strs then Right [] else
                     if null collected
                     then Left "Unable to parse 'batch_at' values. \
                         \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
                         \ Use ':' to separate hours from minutes and whitespaces to separate many time values: '00:00 12:00' for midgnight and noon."
-                    else Right . Just $ collected
+                    else Right collected
         p_batch_every ks = case Map.lookup "batch_every" ks of
             Nothing -> Right 0
             Just every_s ->

@@ -147,7 +147,11 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
                 maybe True (< now) (sub_next_notification c)) chats
             notif = notifFor updated_feeds relevant_chats
             -- scheduled searches
-            scheduled_searches = HMS.map (\chat -> scheduledSearch chat idx engine) relevant_chats
+            scheduled_searches = HMS.foldlWithKey' (\hmap cid chat -> 
+                let searchset = match_searchset . settings_word_matches . sub_settings $ chat
+                    lks = match_only_search_results . settings_word_matches . sub_settings $ chat
+                    res = scheduledSearch searchset lks idx engine
+                in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty relevant_chats
             -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
             to_keep_in_memory = HMS.filter (\f -> f_link f `elem` within_top100_reads succeeded) updated_feeds
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $ 
