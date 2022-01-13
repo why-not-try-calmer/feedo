@@ -88,19 +88,19 @@ interpretCmd contents
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The first value passed to /pause could not be parsed into a valid chat_id."
             Just n -> Right . PauseChannel n $ True
-    | cmd == "/purge" = 
+    | cmd == "/purge" =
         if null args then Right Purge
         else if length args > 1 then Left . BadInput $ "/purge cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The first value passed to /purge could not be parsed into a valid chat_id."
             Just n -> Right . PurgeChannel $ n
-    | cmd == "/resume" = 
+    | cmd == "/resume" =
         if null args then Right . Pause $ False
         else if length args > 1 then Left . BadInput $ "/resume cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The first value passed to /resume could not be parsed into a valid chat_id."
             Just n -> Right . PauseChannel n $ False
-    | cmd == "/reset" = 
+    | cmd == "/reset" =
         if null args then Right Reset
         else if length args > 1 then Left . BadInput $ "/reset cannot take more than one (optional) argument (channel_id)."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
@@ -124,7 +124,7 @@ interpretCmd contents
         if null args then Left . BadInput $ "/sub <optional: channel id> <mandatory: list of url feeds>" else
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Right . Sub $ args
-            Just n -> 
+            Just n ->
                 if null $ tail args then Left . BadInput $ "Cannot subscribe to an empty list urls..."
                 else Right . SubChannel n $ tail args
     | cmd == "/unsub" =
@@ -156,11 +156,11 @@ testChannel tok chan_id jobs =
     Right resp ->
         let res = responseBody resp :: TgGetMessageResponse
             mid = message_id . resp_msg_result $ res
-        in  if not (resp_msg_ok res) then pure $ Left TelegramErr
+        in  if not $ resp_msg_ok res then pure $ Left TelegramErr
+            -- tries removing the test message
             else do
-                -- tries to remove the test message
-                liftIO $ writeChan jobs . JobRemoveMsg chan_id mid $ Nothing
-                pure $ Right ()
+                liftIO $ writeChan jobs . JobRemoveMsg chan_id mid $ 9
+                pure (Right ())
 
 subFeed :: MonadIO m => AppConfig -> ChatId -> [T.Text] -> App m (Either UserError Reply)
 subFeed env cid feeds_urls = liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->

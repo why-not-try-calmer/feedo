@@ -72,7 +72,6 @@ postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
-        with_cid_txt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
         action = readChan (postjobs env) >>= \case
             JobIncReadsJob links -> fork $ runApp env $ evalFeedsAct (IncReadsF links)
             JobLog item -> fork $ saveToLog env item
@@ -81,12 +80,15 @@ postProcJobs = ask >>= \env ->
                     Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to pin a message in (chat_id) " cid $
                         " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
                     Right _ -> pure ()
-            JobRemoveMsg cid mid delay -> fork $ do
-                threadDelay $ fromMaybe 30000000 delay
-                reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
-                    Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
-                        " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
-                    Right _ -> pure ()
+            JobRemoveMsg cid mid delay -> do
+                let (msg, checked_delay) = check_delay delay
+                putStrLn ("Removing message in " ++ msg)
+                fork $ do
+                    threadDelay checked_delay 
+                    reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
+                        Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
+                            " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
+                        Right _ -> pure ()
             JobTgAlert contents -> fork $ do
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
@@ -108,5 +110,13 @@ postProcJobs = ask >>= \env ->
             writeChan (postjobs env) . JobTgAlert $ report
             print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
     in  liftIO $ runForever_ action handler
-    where fork = void . async
+    where 
+        fork = void . async
+        check_delay delay
+            | delay < 10 = ("10 secs", 10000000) 
+            | delay > 30 = ("30 secs", 30000000)
+            | otherwise = (show delay, delay)
+        with_cid_txt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
+        
+        
         

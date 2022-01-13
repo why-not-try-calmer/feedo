@@ -322,7 +322,7 @@ type KnownFeeds = HMS.HashMap T.Text Feed
 
 data Job = 
     JobIncReadsJob [FeedLink] |
-    JobRemoveMsg ChatId Int (Maybe Int) |
+    JobRemoveMsg ChatId Int Int |
     JobLog LogItem |
     JobPin ChatId Int |
     JobTgAlert T.Text |
