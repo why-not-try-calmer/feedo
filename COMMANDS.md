@@ -13,7 +13,8 @@ _Both the user performing this command and the bot must be admin in the target c
 ```
 command  | argument
 ---------+--------------------------------------------------------
-/sub     | <optional: chat_id> <mandadory: space-separated list of urls>                                 
+/sub     | <optional: chat_id> <mandadory: space-separated list of
+            urls>                               
 ---------+--------------------------------------------------------
 examples | /sub https://rest.of.url1 https://www.rest.of.url2 
          | /sub -25154554 https://www.reddit.com/r/pop_os.rss  
@@ -38,7 +39,7 @@ command  | argument
          |   ":"-separated key-value pairs 
 ---------+-----------------------------------------------
 examples | /set
-         | batch_at: 0800 1200 1900
+         | batch_at: 08:00 12:00 19:00
          | pin: true
          | disable_webview: true 
          |
@@ -86,7 +87,7 @@ command   | argument
 example   | /lchan -25154554
 ----------+----------------------------------
 response  | list of #s associated with   
-          | each subscripbed to web feed 
+          | each subscribed to web feed 
 ---------------------------------------------
 ```
 
