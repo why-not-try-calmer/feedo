@@ -1,11 +1,11 @@
 {-# LANGUAGE RecordWildCards #-}
-module Utils where
 
+module Utils where
 import AppTypes
 import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl', sort)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
+import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, timeToDaysAndTimeOfDay)
 import Data.Time.Clock.POSIX
@@ -14,7 +14,6 @@ import Data.Time.Clock.POSIX
   )
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import qualified Data.Set as S
 
 {- Data -}
 
@@ -24,6 +23,10 @@ partitionEither = foldl' step ([],[])
         step (!ls, !rs) val = case val of
             Left l -> (ls++[l], rs)
             Right r -> (ls, rs++[r])
+
+fromEither :: b -> Either a b -> b
+fromEither def (Left _) = def
+fromEither _ (Right v) = v
 
 maybeUserIdx :: [a] -> Int -> Maybe a
 maybeUserIdx [] _ = Nothing
@@ -93,11 +96,11 @@ secsToReadable t =
     in  (T.pack . show $ days) `T.append` " day(s), " `T.append` (T.pack . show $ time) `T.append` " hour(s)"
 
 sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
-sortTimePairs = go [] 
+sortTimePairs = go []
     where
         go sorter [] = sorter
         go [] (p:ps) = go [p] ps
-        go (s:ss) (p:ps) = 
+        go (s:ss) (p:ps) =
             let (h, m) = s
                 (h', m') = p
             in  if h' < h || (h == h' && m' < m)
@@ -128,49 +131,83 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     Just l_keyvals ->
         let keys = map fst l_keyvals
             invalid_keys = filter (`notElem` validSettingsKeys) keys
-            settings = settings_from . Map.fromList $ l_keyvals
-        in  if null invalid_keys then case settings of
+        in  if null invalid_keys then case validate_settings_from . Map.fromList $ l_keyvals of
                 Left err -> Left err
                 Right ss -> Right (keys, ss)
             else Left $ "Found invalid keys: " `T.append` T.intercalate ", " invalid_keys
     where
         left_typical_error = Left "'batch_every' needs a number of minutes, hours or days. Example: batch_at: 1d, batch_at: 6h, batch_at: 40m."
-        reset setter resetter ws
-            | "reset" `elem` ws = resetter
-            | otherwise = setter ws
-        settings_from kvals = case p_interval kvals of
-            Left err -> Left err
-            Right interval -> Right $ Settings {
-                settings_batch_interval = interval,
-                settings_batch_size = p_batch_size kvals,
-                settings_word_matches = p_word_matches kvals,
-                settings_disable_web_view = p_disable_web_view kvals,
-                settings_paused = p_paused kvals,
-                settings_pin = p_pin kvals
-            }
+        validate_settings_from kvals =
+            case p_interval kvals of
+                Left err -> Left err
+                Right interval -> case p_batch_size kvals of
+                    Left err -> Left err
+                    Right batch_size -> case p_paused kvals of
+                        Left err -> Left err
+                        Right paused -> case p_pin kvals of
+                            Left err -> Left err
+                            Right pin -> case p_disable_web_view kvals of
+                                Left err -> Left err
+                                Right web_view -> case p_word_matches kvals of
+                                    Left err -> Left err
+                                    Right word_matches -> Right $ Settings {
+                                        settings_batch_interval = interval,
+                                        settings_batch_size = batch_size,
+                                        settings_word_matches = word_matches,
+                                        settings_disable_web_view = web_view,
+                                        settings_paused = paused,
+                                        settings_pin = pin
+                                    }
         p_interval ks = case p_batch_at ks of
             Left err -> Left err
             Right at -> case p_batch_every ks of
                 Left err -> Left err
                 Right every -> Right $ BatchInterval
                     (if every == 0 then Nothing else Just . realToFrac $ every)
-                    (if null at then Nothing else Just at)
+                    (if null at then Nothing else at)
         p_word_matches ks =
-            let blacklist = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "blacklist" ks
-                searches = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "search" ks
-                only_results = maybe S.empty (reset S.fromList S.empty . T.words) $ Map.lookup "only_search_results" ks
-            in  WordMatches blacklist searches only_results
-        p_batch_size ks = maybe 10 (\v -> reset (fromMaybe 10 . readMaybe . T.unpack . T.concat) 10 [v]) $ Map.lookup "batch_size" ks
+            let reset setter resetter ws
+                    | "reset" `elem` ws = Right resetter
+                    | otherwise = Right $ setter ws
+                blacklist = case Map.lookup "blacklist" ks of
+                    Nothing -> Right mempty
+                    Just txt -> 
+                        if T.length txt < 3 then Left "'blacklist' cannot be shorter than 3 characters."
+                        else reset S.fromList S.empty . T.words $ txt
+                search = case Map.lookup "search" ks of
+                    Nothing -> Right mempty 
+                    Just txt -> 
+                        if T.length txt < 3 then Left "'search' cannot be shorter than 3 characters."
+                        else reset S.fromList S.empty . T.words $ txt
+                only_results = case Map.lookup "only_search_results" ks of
+                    Nothing -> Right mempty 
+                    Just txt -> 
+                        if T.length txt < 3 then Left "'only_search_results' cannot be shorter than 3 characters."
+                        else reset S.fromList S.empty . T.words $ txt
+            in  case blacklist of
+                Left err -> Left err
+                Right bl -> case search of
+                    Left err -> Left err
+                    Right se -> case only_results of
+                        Left err -> Left err
+                        Right only_res -> Right $ WordMatches bl se only_res
+        p_batch_size ks = case Map.lookup "batch_size" ks of
+            Nothing -> Right 0
+            Just txt -> 
+                if "reset" `T.isInfixOf` txt then Right 10
+                else case readMaybe . T.unpack $ txt of
+                    Nothing -> Left "Invalid value for 'batch_size'"
+                    Just n -> Right n
         p_batch_at ks = case Map.lookup "batch_at" ks of
-            Nothing -> Right []
+            Nothing -> Right Nothing
             Just datetime_strs ->
                 let collected = sortTimePairs . foldr into_hm [] . T.words $ datetime_strs
-                in  if "reset" `T.isInfixOf` datetime_strs then Right [] else
+                in  if "reset" `T.isInfixOf` datetime_strs then Right $ batch_at $ settings_batch_interval defaultChatSettings else
                     if null collected
                     then Left "Unable to parse 'batch_at' values. \
                         \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
                         \ Use ':' to separate hours from minutes and whitespaces to separate many time values: '00:00 12:00' for midgnight and noon."
-                    else Right collected
+                    else Right . Just $ collected
         p_batch_every ks = case Map.lookup "batch_every" ks of
             Nothing -> Right 0
             Just every_s ->
@@ -182,18 +219,27 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                         | "h" == t = Right $ n * 3600
                         | "d" == t = Right $ n * 86400
                         | otherwise = left_typical_error
-                in  if "reset" `T.isInfixOf` every_s then Right 0 else
+                in  if "reset" `T.isInfixOf` every_s then Right 86400 else
                         if T.length every_s < 2
                         then left_typical_error
                         else case readMaybe . T.unpack $ int :: Maybe Int of
                             Nothing -> Left "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)"
-                            Just n -> triage n t_tag
-        p_paused ks = maybe False (\t -> "true" `T.isInfixOf` t) $
-            Map.lookup "paused" ks
-        p_disable_web_view ks = maybe False (\t -> "true" `T.isInfixOf` t) $
-            Map.lookup "disable_webview" ks
-        p_pin ks = maybe False (\t -> "true" `T.isInfixOf` t) $
-            Map.lookup "pin" ks
+                            Just n ->  triage n t_tag
+        p_paused ks = case Map.lookup "paused" ks of
+            Nothing -> Right False
+            Just t -> 
+                if "true" `T.isInfixOf` t then Right True else if "false" `T.isInfixOf`t then Right False
+                else Left "'paused' takes only 'true' or 'false' as values."
+        p_disable_web_view ks = case Map.lookup "disable_webview" ks of
+            Nothing -> Right False
+            Just t -> 
+                if "true" `T.isInfixOf` t then Right True else if "false" `T.isInfixOf`t then Right False
+                else Left "'disable_webview' takes only 'true' or 'false' as values."
+        p_pin ks = case Map.lookup "pin" ks of
+            Nothing -> Right False
+            Just t -> 
+                if "true" `T.isInfixOf` t then Right True else if "false" `T.isInfixOf`t then Right False
+                else Left "'pin' takes only 'true' or 'false' as values."
         mkPairs l acc =
             let (k, rest) = let (h, r) = T.breakOn ":" l in (h, T.drop 1 r)
             in  if T.null rest then Nothing else case acc of
