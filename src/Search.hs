@@ -1,6 +1,6 @@
 module Search where
 
-import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch, SubChat (sub_settings, sub_feeds_links), Settings (settings_word_matches), match_searchset)
+import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
 import Data.List (foldl')
 import Data.SearchEngine
     ( NoFeatures,
