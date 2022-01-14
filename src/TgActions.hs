@@ -184,7 +184,7 @@ subFeed env cid feeds_urls =
         -- , and subscribe chat to them
         let urls = map renderUrl valid_urls
             old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) known_feeds
-            new_url_schemes = filter (\u -> renderUrl u `notElem` HMS.keys known_feeds) valid_urls
+            new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
         unless (null old_keys) (void $ withChat (Sub old_keys) cid)
         if null new_url_schemes then pure . Right . ServiceReply $ 
             "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
