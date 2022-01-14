@@ -62,20 +62,30 @@ interpretCmd :: T.Text -> Either UserError UserAction
 interpretCmd contents
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
-        if length args /= 1 then Left . BadInput $ "/about takes exactly 1 argument, standing for the url or # of the feed to get information about."
-        else case toFeedRef args of
+        if length args == 1 then case toFeedRef args of
             Left err -> Left err
-            Right ref -> Right . About $ head ref
+            Right single_ref -> Right . About . head $ single_ref
+        else if length args == 2 then case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /feed (with 2 arguments) could not be parsed into a valid chat_id."
+            Just channel_id -> case toFeedRef . tail $ args of
+                Left err -> Left err
+                Right single_ref -> Right . AboutChannel channel_id . head $ single_ref
+        else Left . BadInput $ "/feed must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
     | cmd == "/fresh" =
         if length args /= 1 then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
             Nothing -> Left . BadInput $ "/fresh's argument must be a valid integer."
             Just i -> Right $ GetLastXDaysItems i
     | cmd == "/items" || cmd == "/i" =
-        if length args /= 1 then Left . BadInput $ "/items needs exactly 1 argument, standing for the url or # of the feed to get items from."
-        else case toFeedRef args of
+        if length args == 1 then case toFeedRef args of
             Left err -> Left err
             Right single_ref -> Right . GetItems . head $ single_ref
+        else if length args == 2 then case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /items (with 2 arguments) could not be parsed into a valid chat_id."
+            Just channel_id -> case toFeedRef . tail $ args of
+                Left err -> Left err
+                Right single_ref -> Right . GetChannelItems channel_id . head $ single_ref
+        else Left . BadInput $ "/items must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
     | cmd == "/list" =
         if null args then Right ListSubs
         else if length args > 1 then Left . BadInput $ "/list cannot take more than one (optional) argument (channel_id)."
@@ -209,7 +219,9 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
                             Just f -> pure . Right $ toReply (FromFeedDetails f) (Just $ sub_settings c)
+evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id 
 evalTgAct _ Changelog _ =  pure . Right $ toReply FromChangelog Nothing
+evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
 evalTgAct _ (GetItems ref) cid = do
     env <- ask
     let feeds_mvar = feeds_state env
