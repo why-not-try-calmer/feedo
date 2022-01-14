@@ -1,11 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 
 module TgActions where
-
 import AppTypes
 import Backend (evalFeedsAct, withChat)
-import Control.Concurrent (readMVar, writeChan, Chan)
-import Control.Concurrent.Async (mapConcurrently, concurrently)
+import Control.Concurrent (Chan, readMVar, writeChan)
+import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
