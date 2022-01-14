@@ -17,7 +17,7 @@ import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
 import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, freshLastXDays, mergeSettings, notifFor, partitionEither, removeByUserIdx)
+import Utils (defaultChatSettings, freshLastXDays, updateSettings, notifFor, partitionEither, removeByUserIdx)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid = ask >>= \env -> liftIO $ do
@@ -64,7 +64,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetChatSettings parsed ->
-                let updated_settings = mergeSettings parsed $ sub_settings c
+                let updated_settings = updateSettings parsed $ sub_settings c
                     updated_c = c { sub_settings = updated_settings }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case

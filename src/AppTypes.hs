@@ -123,7 +123,17 @@ toFeedRef ss
 
 {- User actions, errors -}
 
-type KeysParsedSettings = ([T.Text], Settings)
+data ParsingSettings = 
+    PBatchAt [(Int, Int)] |
+    PBatchEvery NominalDiffTime |
+    PBatchSize Int |
+    PBlacklist (S.Set T.Text) |
+    PDisableWebview Bool |
+    PPaused Bool |
+    PPin Bool |
+    PSearchKws (S.Set T.Text) |
+    PSearchLinks (S.Set T.Text)
+    deriving (Show, Eq)
 
 data UserAction
   = About FeedRef
@@ -141,8 +151,8 @@ data UserAction
   | Reset
   | ResetChannel ChatId
   | Search [T.Text]
-  | SetChannelSettings ChatId KeysParsedSettings
-  | SetChatSettings KeysParsedSettings
+  | SetChannelSettings ChatId [ParsingSettings]
+  | SetChatSettings [ParsingSettings]
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]
