@@ -124,7 +124,7 @@ validSettingsKeys = [
 parseSettings :: [T.Text] -> Either T.Text [ParsingSettings]
 parseSettings [] = Left "Unable to parse from an empty list of strings."
 parseSettings lns = case foldr mkPairs Nothing lns of
-    Nothing -> Left "Unable to parsed, please respect the format: \
+    Nothing -> Left "Unable to parse the settings you've sent, please respect the format: \
         \ /set <optional: chat_id>\nkey: val val\nkey:val val"
     Just pairs ->
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
@@ -222,14 +222,12 @@ defaultChatSettings = Settings {
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
 updateSettings [] orig = orig
-updateSettings parsed orig = go parsed orig
+updateSettings parsed orig = foldl' (flip inject) orig parsed
     where
-        go [] !updater = updater
-        go (p:ps) !updater = go ps (inject p updater)
-        inject !p !o = case p of
+        inject p o = case p of
             PBatchAt v ->
                 let bi = settings_batch_interval o
-                    bi' = bi { batch_at = Just v}
+                    bi' = bi { batch_at = Just v }
                 in  o { settings_batch_interval = bi' }
             PBatchEvery v ->
                 let bi = settings_batch_interval o
