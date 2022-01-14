@@ -147,7 +147,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
                 maybe True (< now) (sub_next_notification c)) chats
             notif = notifFor updated_feeds relevant_chats
             -- scheduled searches
-            scheduled_searches = HMS.foldlWithKey' (\hmap cid chat -> 
+            scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
                 let searchset = match_searchset . settings_word_matches . sub_settings $ chat
                     lks = match_only_search_results . settings_word_matches . sub_settings $ chat
                     res = scheduledSearch searchset lks idx engine
@@ -157,17 +157,18 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $ 
             "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
         -- saving to memory & db
-        evalDb env (UpsertFeeds succeeded) >>= \case
-            DbOk -> do
+        dbres <- evalDb env (UpsertFeeds succeeded)
+        case dbres of
+            DbErr err -> pure (feeds_hmap, FeedsError err)
+            _ -> do
                 -- computing next run
-                writeChan (postjobs env) $ JobUpdateSchedules . HMS.keys  $ relevant_chats
+                writeChan (postjobs env) $ JobUpdateSchedules . HMS.keys $ relevant_chats
                 -- increasing reads count
                 writeChan (postjobs env) $ JobIncReadsJob relevant_feedlinks
                 -- updating search engine
                 writeChan (postjobs env) $ JobUpdateEngine . HMS.elems $ to_keep_in_memory
                 -- refreshing feeds mvar
                 pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
-            _ -> pure (feeds_hmap, FeedsError . FailedToUpdate $ " at evalFeedsAct.RefreshNotifyF")
     where
         within_top100_reads succeeded =
             take 100 .
