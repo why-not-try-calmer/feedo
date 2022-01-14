@@ -110,7 +110,7 @@ toHrefEntities mbcounter tag link =
         Nothing -> tag' `T.append` link'
         Just c ->
             let counter = T.pack . show $ c
-            in  counter `T.append` tag' `T.append` link'
+            in  counter `T.append` ") " `T.append` tag' `T.append` link'
 
 defaultReply :: T.Text -> Reply
 defaultReply payload = ChatReply {
