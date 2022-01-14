@@ -121,12 +121,14 @@ interpretCmd contents
         else Right . Search $ args
     | cmd == "/set" =
         let body = tail . T.lines . T.toLower $ contents in
-        if null args then Right GetSubFeedSettings else
+        if null args then Right GetSubchatSettings else
+        --if length args == 1 then case Right GetSubchannelSettings
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> case parseSettings body of
                 Left err -> Left . BadInput $ err
                 Right settings -> Right $ SetChatSettings settings
-            Just n -> case parseSettings body of
+            Just n -> if null $ tail args then Right $ GetSubchannelSettings n else
+                case parseSettings body of
                 Left err -> Left . BadInput $ err
                 Right settings -> Right $ SetChannelSettings n settings
     | cmd == "/start" || cmd == "/help" = Right RenderCmds
@@ -260,7 +262,8 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
                     liftIO $ writeChan (postjobs env) (JobIncReadsJob $ map fst feeds)
                     pure . Right $ toReply (FromFeedLinkItems feeds) (Just $ sub_settings c)
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
-evalTgAct _ GetSubFeedSettings cid = ask >>= liftIO . readMVar . subs_state >>= \hmap ->
+evalTgAct uid (GetSubchannelSettings channel_id) _ = evalTgAct uid GetSubchatSettings channel_id
+evalTgAct _ GetSubchatSettings cid = ask >>= liftIO . readMVar . subs_state >>= \hmap ->
     case HMS.lookup cid hmap of
         Nothing -> pure . Left $ NotFoundChat
         Just ch -> pure . Right . ServiceReply . render $ ch

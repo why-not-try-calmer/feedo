@@ -139,7 +139,8 @@ data UserAction
   | GetChannelItems ChatId FeedRef
   | GetItems FeedRef
   | GetLastXDaysItems Int
-  | GetSubFeedSettings
+  | GetSubchannelSettings ChatId
+  | GetSubchatSettings
   | ListSubs
   | ListSubsChannel ChatId
   | Pause Bool
