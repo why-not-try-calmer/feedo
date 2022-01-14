@@ -13,7 +13,7 @@ import Data.List (foldl', sort)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Network.HTTP.Req (renderUrl, responseBody)
-import Parser (eitherUrlScheme, getFeedFromHref)
+import Parser (eitherUrlScheme, getFeedFromUrlScheme)
 import Replies (render, toReply)
 import Requests (reqSend, setWebhook)
 import Search (searchWith)
@@ -174,34 +174,36 @@ testChannel tok chan_id jobs =
                 pure (Right ())
 
 subFeed :: MonadIO m => AppConfig -> ChatId -> [T.Text] -> App m (Either UserError Reply)
-subFeed env cid feeds_urls = liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->
+subFeed env cid feeds_urls = 
+    liftIO (readMVar . feeds_state $ env) >>= \known_feeds -> 
     -- check url scheme
     case traverse eitherUrlScheme feeds_urls of
     Left err -> pure . Left $ err
-    Right valid_urls ->
+    Right valid_urls -> do
         -- sort out already existent feeds to minimize network call
-        -- and subscribe chat to them
+        -- , and subscribe chat to them
         let urls = map renderUrl valid_urls
             old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) known_feeds
-            new_keys = filter (`notElem` old_keys) urls
-        in  unless (null old_keys) (void $ withChat (Sub old_keys) cid) >>
-            if null new_keys
-            then pure . Right . ServiceReply $ "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
-            -- fetches feeds at remaining urls
-            else liftIO (mapConcurrently getFeedFromHref new_keys) >>= \res ->
-                -- add feeds
-                let (failed, built_feeds) = partitionEither res
-                in  evalFeedsAct (AddF built_feeds) >>= \case
-                    FeedsOk ->
-                        -- subscribes chat to newly added feeds, returning result to caller
-                        let to_sub_to = map f_link built_feeds
-                        in  withChat (Sub to_sub_to) cid >>= \case
-                        Left err -> pure . Right . ServiceReply $ renderUserError err
-                        Right _ ->
-                            let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate " " failed
-                                ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate " " (map f_link built_feeds)
-                            in  pure . Right . ServiceReply $ (if null failed then ok_text else T.append ok_text failed_text)
-                    _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
+            new_url_schemes = filter (\u -> renderUrl u `notElem` HMS.keys known_feeds) valid_urls
+        unless (null old_keys) (void $ withChat (Sub old_keys) cid)
+        if null new_url_schemes then pure . Right . ServiceReply $ 
+            "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
+        -- fetches feeds at remaining urls
+        else liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \res ->
+            -- add feeds
+            let (failed, built_feeds) = partitionEither res
+                all_links = old_keys ++ map f_link built_feeds
+            in  evalFeedsAct (AddF built_feeds) >>= \case
+                FeedsOk ->
+                    -- subscribes chat to newly added feeds, returning result to caller
+                    let to_sub_to = map f_link built_feeds
+                    in  withChat (Sub to_sub_to) cid >>= \case
+                    Left err -> pure . Right . ServiceReply $ renderUserError err
+                    Right _ ->
+                        let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
+                            ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
+                        in  pure . Right . ServiceReply $ (if null failed then ok_text else T.append ok_text failed_text)
+                _ -> pure . Left $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
 
 evalTgAct :: MonadIO m => UserId -> UserAction -> ChatId -> App m (Either UserError Reply)
 evalTgAct _ (About ref) cid = ask >>= \env -> do
