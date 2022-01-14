@@ -110,7 +110,7 @@ WEBHOOK_URL=<webhook url>
 Example:
 ```
 ALERT_CHATID=1234567890
-MONGODB_CONNECTION_STRING=zzzz:zzzz:zzzz:zzzz
+MONGODB_CONNECTION_STRING=<host_name:db_name:user_name:password>
 STARTING_FEEDS=https://blog.system76.com/rss,https://www.reddit.com/r/pop_os.rss
 TELEGRAM_TOKEN=1202309djkj@@kskdjkcjkjxkj
 WEBHOOK_URL=https://mydomain.org/path/to/wehbook

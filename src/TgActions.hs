@@ -5,7 +5,7 @@ module TgActions where
 import AppTypes
 import Backend (evalFeedsAct, withChat)
 import Control.Concurrent (readMVar, writeChan, Chan)
-import Control.Concurrent.Async (mapConcurrently)
+import Control.Concurrent.Async (mapConcurrently, concurrently)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
@@ -31,21 +31,21 @@ registerWebhook config =
             print ("Webhook successfully set at " `T.append` webhook)
 
 checkIfAdmin :: MonadIO m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
-checkIfAdmin tok uid cid = do
-    resp_chat_admins <- getChatAdmins
-    case resp_chat_admins of
-        Left _ -> pure Nothing
-        Right res ->
-            let chat_resp = responseBody res :: TgGetChatResponse
-                c = resp_result chat_resp :: Chat
-            in  if chat_type c == Private then pure. Just $ True else do
-                resp_chat_type <- getChatType
-                case resp_chat_type of
-                    Left _ -> pure Nothing
-                    Right res_chat_admins ->
-                        let res_cms = responseBody res_chat_admins :: TgGetChatMembersResponse
-                            chat_members = resp_cm_result res_cms :: [ChatMember]
-                        in  pure . Just . if_admin $ chat_members
+checkIfAdmin tok uid cid = liftIO $ concurrently getChatAdmins getChatType >>= 
+    \(resp_chat_admins, resp_chat_type) -> 
+    let mb_private = case resp_chat_admins of
+            Right res_chat ->
+                let chat_resp = responseBody res_chat :: TgGetChatResponse
+                    c = resp_result chat_resp :: Chat
+                in  Just $ chat_type c == Private
+            _ -> Nothing
+        mb_admin = case resp_chat_type of
+            Right res_chat_type ->
+                let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
+                    chat_members = resp_cm_result res_cms :: [ChatMember]
+                in  Just $ if_admin chat_members
+            _ -> Nothing
+    in  pure $ (||) <$> mb_private <*> mb_admin
     where
         getChatType = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
         getChatAdmins = reqSend tok "getChat" $ GetChatAdministrators cid
@@ -159,7 +159,7 @@ testChannel tok chan_id jobs =
         in  if not $ resp_msg_ok res then pure $ Left TelegramErr
             -- tries removing the test message
             else do
-                liftIO $ writeChan jobs . JobRemoveMsg chan_id mid $ 9
+                liftIO $ writeChan jobs . JobRemoveMsg chan_id mid $ 30
                 pure (Right ())
 
 subFeed :: MonadIO m => AppConfig -> ChatId -> [T.Text] -> App m (Either UserError Reply)
@@ -289,7 +289,7 @@ evalTgAct uid Purge cid = do
         Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat Purge cid >>= \case
-                Left _ -> pure . Right . ServiceReply $ "Unable to purge this chat. It seems like there's no trace of it in the database."
+                Left err -> pure . Right . ServiceReply $ "Unable to purge this chat"  `T.append` renderUserError err
                 Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
 evalTgAct uid (Sub feeds_urls) cid = do
@@ -340,7 +340,7 @@ evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->
         Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat (SetChatSettings settings) chan_id >>= \case
-                Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
+                Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
 evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
@@ -349,7 +349,7 @@ evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
         Just verdict ->
             if not verdict then exitNotAuth uid
             else withChat (SetChatSettings settings) cid >>= \case
-                Left _ -> pure . Right . ServiceReply $ "Unable to udpate this chat settings"
+                Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
                 Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
 evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env
