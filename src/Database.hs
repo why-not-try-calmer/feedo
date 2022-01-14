@@ -247,9 +247,9 @@ saveToLog env item = withMongo env $ insert "logs" doc >> pure ()
 
 {- Cleanup -}
 
-purgeCollections :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
-purgeCollections env =
-    let collections = ["feeds", "chats", "logs", "test"]
-    in  withMongo env $ traverse (`deleteAll` [([],[])]) collections >>= \res ->
-        if any failed res then pure . Left $ "Failed to purge collections " ++ show collections
+purgeCollections :: (Db m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
+purgeCollections _ [] = pure . Left $ "Empty list of collection names!" 
+purgeCollections env colls = 
+    withMongo env $ traverse (`deleteAll` [([],[])]) colls >>= \res ->
+        if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
         else pure $ Right ()
