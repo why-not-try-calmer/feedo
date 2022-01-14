@@ -7,7 +7,6 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
-import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
@@ -19,7 +18,7 @@ import Database.MongoDB (Pipe, PortID, Host)
 
 {- Replies -}
 
-data Reply = 
+data Reply =
     ChatReply {
         reply_contents :: T.Text,
         reply_markdown :: Bool,
@@ -70,10 +69,10 @@ type BlackList = S.Set T.Text
 
 type SearchSet = S.Set T.Text
 
-data WordMatches = WordMatches { 
+data WordMatches = WordMatches {
     match_blacklist :: BlackList,
     match_searchset :: SearchSet,
-    match_only_search_results :: S.Set FeedLink 
+    match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
 
 data Settings = Settings {
@@ -114,16 +113,14 @@ toFeedRef ss
   where
     all_valid_urls = all (== "https://") (first8 ss)
     first8 = map (T.take 8)
-    all_ints = isJust maybeInts
+    all_ints = maybe False (all (\n -> n >= 1 && n < 100)) maybeInts
     maybeInts = traverse (readMaybe . T.unpack) ss :: Maybe [Int]
     intoUrls = map ByUrl ss
     intoIds = maybe [] (map ById) (traverse (readMaybe . T.unpack) ss)
 
--- -- Business logic -- --
-
 {- User actions, errors -}
 
-data ParsingSettings = 
+data ParsingSettings =
     PBatchAt [(Int, Int)] |
     PBatchEvery NominalDiffTime |
     PBatchSize Int |
@@ -137,7 +134,9 @@ data ParsingSettings =
 
 data UserAction
   = About FeedRef
+  | AboutChannel ChatId FeedRef
   | Changelog
+  | GetChannelItems ChatId FeedRef
   | GetItems FeedRef
   | GetLastXDaysItems Int
   | GetSubFeedSettings
@@ -330,7 +329,7 @@ data ServerConfig = ServerConfig
 
 type KnownFeeds = HMS.HashMap T.Text Feed
 
-data Job = 
+data Job =
     JobIncReadsJob [FeedLink] |
     JobRemoveMsg ChatId Int Int |
     JobLog LogItem |
