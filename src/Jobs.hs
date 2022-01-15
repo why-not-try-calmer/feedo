@@ -52,9 +52,9 @@ notifier = do
                 sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)
             } else c) chats
         notify = do
-            t1 <- getCurrentTime
+            now <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
-            res <- runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct Refresh
+            res <- runApp (env { last_worker_run = Just now }) $ evalFeedsAct Refresh
             case res of
                 FeedBatches update_notif search_notif -> do
                     -- sending update & search notifications
@@ -62,9 +62,11 @@ notifier = do
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
                         read_feeds = S.toList . S.fromList . foldMap snd $ notified_chats_feeds
+                    -- increasing reads count
+                    writeChan (postjobs env) $ JobIncReadsJob read_feeds
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
-                        let updated_chats = updated_notified_chats notified_chats subs t1
+                        let updated_chats = updated_notified_chats notified_chats subs now
                         in  evalDb env (UpsertChats updated_chats) >>= \case
                             DbErr err -> do
                                 writeChan (postjobs env) $ JobTgAlert $ "notifier: failed to \
@@ -72,11 +74,9 @@ notifier = do
                                 pure subs
                             DbOk -> pure updated_chats
                             _ -> pure subs
-                    -- increasing reads count
-                    writeChan (postjobs env) $ JobIncReadsJob read_feeds
                     -- logging
-                    t2 <- getCurrentTime
-                    let item = LogItem t2 "notifier" "ran successfully" . realToFrac $ diffUTCTime t1 t2
+                    later <- getCurrentTime
+                    let item = LogItem later "notifier" "ran successfully" . realToFrac $ diffUTCTime now later
                     writeChan (postjobs env) $ JobLog item
                 FeedsError err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \
