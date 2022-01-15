@@ -51,20 +51,22 @@ notifier = do
         notify = do
             t1 <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
-            runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct Refresh >>= \case
-                FeedBatches update_notif search_notif -> liftIO $ do
+            res <- runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct Refresh
+            case res of
+                FeedBatches update_notif search_notif -> do
                     -- sending update & search notifications
                     notified_chats <- send_notifs update_notif search_notif
                     -- updating chats
-                    modifyMVar_ (subs_state env) $ \subs ->
-                        evalDb env (UpsertChats $ updated_chats t1 notified_chats subs) >> 
-                            pure (updated_chats t1 notified_chats subs)
+                    modifyMVar_ (subs_state env) $ \subs -> do
+                        void $ evalDb env (UpsertChats $ updated_chats t1 notified_chats subs)
+                        pure (updated_chats t1 notified_chats subs)
                     t2 <- getCurrentTime
-                    let diff = diffUTCTime t1 t2
-                        item = LogItem t2 "notifier" "ran successfully" $ realToFrac diff
+                    let item = LogItem t2 "notifier" "ran successfully" . realToFrac $ diffUTCTime t1 t2
                     writeChan (postjobs env) (JobLog item)
-                FeedsError err -> liftIO $ writeChan (postjobs env) . JobTgAlert $
-                    "notifier: failed to acquire notification package and got this error" `T.append` renderDbError err
+                FeedsError err -> 
+                    writeChan (postjobs env) . JobTgAlert $ "notifier: \
+                        \ failed to acquire notification package and got this error"
+                        `T.append` renderDbError err
                 -- probably pulled a 'FeedsOk'
                 _ -> pure ()
         wait_action = threadDelay interval >> notify
