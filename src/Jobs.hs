@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogItem), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), runApp, renderDbError)
-import Backend (evalFeedsAct, updateEngine)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogItem), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), runApp, renderDbError, Feed (f_link))
+import Backend (evalFeedsAct)
 import Control.Concurrent
   ( modifyMVar_,
     readChan,
@@ -24,6 +24,7 @@ import Replies
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
 import Utils (findNextTime)
+import qualified Data.Set as S
 
 {- Background tasks -}
 
@@ -41,30 +42,44 @@ notifier = do
         send_tg_notif payload = forConcurrently (HMS.toList payload) $
             \(cid, (settings, feed_items)) ->
                 reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
-                >> pure cid
+                >> pure (cid, map (f_link . fst) feed_items)
         send_tg_search payload = forConcurrently_ (HMS.toList payload) $
             \(cid, keys_items) -> reply tok cid (toReply (FromSearchRes keys_items) Nothing) (postjobs env)
         send_notifs update search = fst <$> concurrently (send_tg_notif update) (send_tg_search search)
-        updated_chats now notified_chats subs =
-            HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
-            else c) subs
+        updated_notified_chats notified_chats chats now =
+            HMS.map (\c -> if sub_chatid c `elem` notified_chats then c {
+                sub_last_notification = Just now,
+                sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)
+            } else c) chats
         notify = do
-            t1 <- getCurrentTime
+            now <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
-            res <- runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct Refresh
+            res <- runApp (env { last_worker_run = Just now }) $ evalFeedsAct Refresh
             case res of
                 FeedBatches update_notif search_notif -> do
                     -- sending update & search notifications
-                    notified_chats <- send_notifs update_notif search_notif
+                    notified_chats_feeds <- send_notifs update_notif search_notif
+                    -- preparing updates
+                    let notified_chats = map fst notified_chats_feeds
+                        read_feeds = S.toList . S.fromList . foldMap snd $ notified_chats_feeds
+                    -- increasing reads count
+                    writeChan (postjobs env) $ JobIncReadsJob read_feeds
                     -- updating chats
-                    modifyMVar_ (subs_state env) $ \subs -> do
-                        void $ evalDb env (UpsertChats $ updated_chats t1 notified_chats subs)
-                        pure (updated_chats t1 notified_chats subs)
-                    t2 <- getCurrentTime
-                    let item = LogItem t2 "notifier" "ran successfully" . realToFrac $ diffUTCTime t1 t2
-                    writeChan (postjobs env) (JobLog item)
-                FeedsError err -> 
-                    writeChan (postjobs env) . JobTgAlert $ "notifier: \
+                    modifyMVar_ (subs_state env) $ \subs ->
+                        let updated_chats = updated_notified_chats notified_chats subs now
+                        in  evalDb env (UpsertChats updated_chats) >>= \case
+                            DbErr err -> do
+                                writeChan (postjobs env) $ JobTgAlert $ "notifier: failed to \
+                                    \ save updated chats to db because of this error" `T.append` renderDbError err
+                                pure subs
+                            DbOk -> pure updated_chats
+                            _ -> pure subs
+                    -- logging
+                    later <- getCurrentTime
+                    let item = LogItem later "notifier" "ran successfully" . realToFrac $ diffUTCTime now later
+                    writeChan (postjobs env) $ JobLog item
+                FeedsError err ->
+                    writeChan (postjobs env) $ JobTgAlert $ "notifier: \
                         \ failed to acquire notification package and got this error: "
                         `T.append` renderDbError err
                 -- probably pulled a 'FeedsOk'
@@ -98,18 +113,6 @@ postProcJobs = ask >>= \env ->
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
-            JobUpdateEngine feeds -> fork $ updateEngine (search_engine env) feeds
-            JobUpdateSchedules chat_ids -> fork $ do
-                now <- getCurrentTime
-                modifyMVar_ (subs_state env) $ \chats_hmap ->
-                    let relevant = HMS.filter (\c -> sub_chatid c `elem` chat_ids) chats_hmap
-                        updated_chats = HMS.map (\c -> c {
-                            sub_last_notification = Just now,
-                            sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)}
-                            ) relevant
-                    in  evalDb env (UpsertChats updated_chats) >>= \case
-                        DbOk -> pure $ HMS.union updated_chats chats_hmap
-                        _ -> pure chats_hmap
         handler (SomeException e) = do
             let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (postjobs env) . JobTgAlert $ report

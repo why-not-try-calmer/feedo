@@ -8,8 +8,7 @@ import Control.Concurrent
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.List (foldl', sortOn)
-import Data.Ord (Down (Down))
+import Data.List (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
@@ -17,7 +16,7 @@ import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
 import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, freshLastXDays, updateSettings, notifFor, partitionEither, removeByUserIdx, findNextTime)
+import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid = ask >>= \env -> liftIO $ do
@@ -160,52 +159,40 @@ evalFeedsAct (IncReadsF links) = ask >>= \env -> do
 evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     now <- getCurrentTime
+    let due_chats = due chats now 
     -- stop here if no chat is due
-    let due_chats = due chats now in
-        if null due_chats then pure FeedsOk else 
-        modifyMVar (feeds_state env) $ \feeds_hmap -> do
-        -- collecting hmap of feeds with relevantly related chats
+    if null due_chats then pure FeedsOk else do
+        -- else collecting hmap of feeds with relevantly related chats
         let relevant_feedlinks = collect_subscribed_to_feeds due_chats
         -- rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed relevant_feedlinks
         let (failed, succeeded) = partitionEither eitherUpdated
             updated_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
             notif = notifFor updated_feeds due_chats
-            -- scheduled searches
-        (idx, engine) <- readMVar $ search_engine env
-        let scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
-                let searchset = match_searchset . settings_word_matches . sub_settings $ chat
-                    lks = match_only_search_results . settings_word_matches . sub_settings $ chat
-                    res = scheduledSearch searchset lks idx engine
-                in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty due_chats
-            -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
-            to_keep_in_memory = HMS.filter (\f -> f_link f `elem` within_top100_reads succeeded) updated_feeds
+        -- handling case of some feeds not rebuilding
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $ 
             "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
         -- saving to memory & db
-        dbres <- evalDb env (UpsertFeeds succeeded)
-        case dbres of
-            DbErr err -> pure (feeds_hmap, FeedsError err)
-            _ -> do
-                -- computing next run
-                writeChan (postjobs env) $ JobUpdateSchedules . HMS.keys $ due_chats
-                -- increasing reads count
-                writeChan (postjobs env) $ JobIncReadsJob relevant_feedlinks
-                -- updating search engine
-                writeChan (postjobs env) $ JobUpdateEngine . HMS.elems $ to_keep_in_memory
-                -- refreshing feeds mvar
-                pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
+        modifyMVar (feeds_state env) $ \feeds_hmap -> evalDb env (UpsertFeeds succeeded) >>= \case
+            DbErr _ -> pure (feeds_hmap, FeedsError $ 
+                FailedToUpdate "Database failed to update the feeds in evalFeedsAct Refresh")
+            _ -> 
+                let to_keep_in_memory = HMS.union updated_feeds feeds_hmap
+                    -- updating search index
+                    (idx, engine) = initSearchWith $ HMS.elems to_keep_in_memory
+                    scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
+                        let searchset = match_searchset . settings_word_matches . sub_settings $ chat
+                            lks = match_only_search_results . settings_word_matches . sub_settings $ chat
+                            res = scheduledSearch searchset lks idx engine
+                        in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty due_chats
+                in  modifyMVar_ (search_engine env) (\_ -> pure (idx, engine)) >>
+                        pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
     where
         due chats now = HMS.filter (\c ->
             (not . settings_paused . sub_settings $ c) &&
             maybe True (< now) (sub_next_notification c)) chats
-        within_top100_reads succeeded =
-            take 100 .
-            map f_link .
-            sortOn (Down . f_reads) $ succeeded
         collect_subscribed_to_feeds chats =
-            HMS.keys $
-            HMS.foldl' (\hmap sub ->
+            HMS.keys $ HMS.foldl' (\hmap sub ->
                 let links = S.toList $ sub_feeds_links sub
                     cid = sub_chatid sub
                 in  if null links
