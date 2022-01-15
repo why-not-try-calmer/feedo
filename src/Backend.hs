@@ -144,18 +144,14 @@ evalFeedsAct (IncReadsF links) = ask >>= \env -> do
             DbOk -> pure $ HMS.map (\f -> f { f_reads = 1 + f_reads f }) hmap
             _ -> pure hmap
     pure FeedsOk
-evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
+evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
-    (idx, engine) <- readMVar $ search_engine env
-    modifyMVar (feeds_state env) $ \feeds_hmap -> do
-        -- update chats MVar just in case we were able to produce an interesting result
-        now <- getCurrentTime
+    now <- getCurrentTime
+    -- stop here if no chat is due
+    let due_chats = due chats now in
+        if null due_chats then pure FeedsOk else 
+        modifyMVar (feeds_state env) $ \feeds_hmap -> do
         -- collecting hmap of feeds with relevantly related chats
-        let due_chats = HMS.filter (\c ->
-                (not . settings_paused . sub_settings $ c) &&
-                maybe True (< now) (sub_next_notification c)) chats
-        -- stop here if no chat is due
-        if null due_chats then pure (feeds_hmap, FeedsOk) else do
         let relevant_feedlinks = collect_subscribed_to_feeds due_chats
         -- rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed relevant_feedlinks
@@ -163,7 +159,8 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
             updated_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
             notif = notifFor updated_feeds due_chats
             -- scheduled searches
-            scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
+        (idx, engine) <- readMVar $ search_engine env
+        let scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
                 let searchset = match_searchset . settings_word_matches . sub_settings $ chat
                     lks = match_only_search_results . settings_word_matches . sub_settings $ chat
                     res = scheduledSearch searchset lks idx engine
@@ -186,6 +183,9 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
                 -- refreshing feeds mvar
                 pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
     where
+        due chats now = HMS.filter (\c ->
+            (not . settings_paused . sub_settings $ c) &&
+            maybe True (< now) (sub_next_notification c)) chats
         within_top100_reads succeeded =
             take 100 .
             map f_link .

@@ -284,7 +284,7 @@ data FeedsAction
   | AddF [Feed]
   | RemoveF [FeedLink]
   | GetAllXDays [FeedLink] Int
-  | RefreshNotifyF
+  | Refresh
   | IncReadsF [FeedLink]
   | LoadF
   deriving (Eq, Show)

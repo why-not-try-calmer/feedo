@@ -30,41 +30,45 @@ import Utils (findNextTime)
 runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
 runForever_ action handler = void . async . forever $ catch action handler
 
-refresher :: MonadIO m => App m ()
-refresher = do
+notifier :: MonadIO m => App m ()
+notifier = do
     env <- ask
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
         onError (SomeException err) = do
-            let report = "refresher: exception met : " `T.append` (T.pack . show $ err)
+            let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
-        send_payload payload = forConcurrently (HMS.toList payload) $
+        send_tg_notif payload = forConcurrently (HMS.toList payload) $
             \(cid, (settings, feed_items)) ->
                 reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
                 >> pure cid
-        send_search_res payload = forConcurrently_ (HMS.toList payload) $
+        send_tg_search payload = forConcurrently_ (HMS.toList payload) $
             \(cid, keys_items) -> reply tok cid (toReply (FromSearchRes keys_items) Nothing) (postjobs env)
-        action = do
+        send_notifs update search = fst <$> concurrently (send_tg_notif update) (send_tg_search search)
+        updated_chats now notified_chats subs =
+            HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just now }
+            else c) subs
+        notify = do
             t1 <- getCurrentTime
             -- rebuilding feeds and dispatching notifications
-            runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct RefreshNotifyF >>= \case
-                FeedBatches notif_payload search_payload -> liftIO $ do
+            runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct Refresh >>= \case
+                FeedBatches update_notif search_notif -> liftIO $ do
                     -- sending update & search notifications
-                    (notified_chats, _) <- concurrently (send_payload notif_payload) (send_search_res search_payload)
+                    notified_chats <- send_notifs update_notif search_notif
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
-                        let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just t1 } else c) subs
-                        in  evalDb env (UpsertChats updated_chats) >> pure updated_chats
+                        evalDb env (UpsertChats $ updated_chats t1 notified_chats subs) >> 
+                            pure (updated_chats t1 notified_chats subs)
                     t2 <- getCurrentTime
                     let diff = diffUTCTime t1 t2
-                        item = LogItem t2 "refresher" "ran successfully" (realToFrac diff)
+                        item = LogItem t2 "notifier" "ran successfully" $ realToFrac diff
                     writeChan (postjobs env) (JobLog item)
                 FeedsError err -> liftIO $ writeChan (postjobs env) . JobTgAlert $
-                    "refresher: failed to acquire notification package and got this error" `T.append` renderDbError err
+                    "notifier: failed to acquire notification package and got this error" `T.append` renderDbError err
                 -- probably pulled a 'FeedsOk'
                 _ -> pure ()
-        wait_action = threadDelay interval >> action
-        handler e = onError e >> action
+        wait_action = threadDelay interval >> notify
+        handler e = onError e >> notify
     liftIO $ runForever_ wait_action handler
 
 postProcJobs :: MonadIO m => App m ()
