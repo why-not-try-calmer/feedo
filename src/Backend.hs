@@ -27,10 +27,14 @@ withChat action cid = ask >>= \env -> liftIO $ do
         Nothing -> case action of
             Sub links ->
                 let created_c = SubChat cid Nothing Nothing (S.fromList links) defaultChatSettings
-                    inserted_m = HMS.insert cid created_c hmap
-                in  evalDb env (UpsertChat created_c) >>= \case
-                        DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                        _ -> pure (inserted_m, Right ())
+                in  getCurrentTime >>= \now ->
+                        let updated_c = created_c { sub_next_notification = 
+                                Just $ findNextTime now (settings_batch_interval . sub_settings $ created_c) 
+                            }
+                            inserted_m = HMS.insert cid updated_c hmap
+                        in  evalDb env (UpsertChat updated_c) >>= \case
+                            DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                            _ -> pure (inserted_m, Right ())
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
         Just c -> case action of
             Reset ->
