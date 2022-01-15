@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App, AppConfig (last_worker_run, postjobs, search_engine, subs_state, tg_config, worker_interval), DbAction (UpsertChats), DbRes (DbOk), FeedsAction (IncReadsF, RefreshNotifyF), FeedsRes (FeedBatches), Job (JobIncReadsJob, JobLog, JobPin, JobRemoveMsg, JobTgAlert, JobUpdateEngine, JobUpdateSchedules), LogItem (LogItem), Reply (ServiceReply), ServerConfig (alert_chat, bot_token), Settings (settings_batch_interval), SubChat (sub_chatid, sub_last_notification, sub_next_notification, sub_settings), runApp, ToReply (FromSearchRes))
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogItem), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), runApp, renderDbError)
 import Backend (evalFeedsAct, updateEngine)
 import Control.Concurrent
   ( modifyMVar_,
@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, forConcurrently, concurrently, forConcurrently_)
+import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -19,8 +19,7 @@ import qualified Data.Text as T
 import Data.Time (diffUTCTime, getCurrentTime)
 import Database (evalDb, saveToLog)
 import Replies
-  ( ToReply (FromFeedsItems),
-    toReply,
+  ( toReply,
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
@@ -39,7 +38,7 @@ refresher = do
         onError (SomeException err) = do
             let report = "refresher: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
-        send_payload payload = forConcurrently (HMS.toList payload) $ 
+        send_payload payload = forConcurrently (HMS.toList payload) $
             \(cid, (settings, feed_items)) ->
                 reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
                 >> pure cid
@@ -51,9 +50,7 @@ refresher = do
             runApp (env { last_worker_run = Just t1 }) $ evalFeedsAct RefreshNotifyF >>= \case
                 FeedBatches notif_payload search_payload -> liftIO $ do
                     -- sending update & search notifications
-                    (notified_chats, _) <- concurrently
-                        (send_payload notif_payload)
-                        (send_search_res search_payload)
+                    (notified_chats, _) <- concurrently (send_payload notif_payload) (send_search_res search_payload)
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = HMS.map (\c -> if sub_chatid c `elem` notified_chats then c { sub_last_notification = Just t1 } else c) subs
@@ -62,7 +59,10 @@ refresher = do
                     let diff = diffUTCTime t1 t2
                         item = LogItem t2 "refresher" "ran successfully" (realToFrac diff)
                     writeChan (postjobs env) (JobLog item)
-                _ -> liftIO $ writeChan (postjobs env) . JobTgAlert $ "refresher: failed to acquire notification package"
+                FeedsError err -> liftIO $ writeChan (postjobs env) . JobTgAlert $
+                    "refresher: failed to acquire notification package and got this error" `T.append` renderDbError err
+                -- probably pulled a 'FeedsOk'
+                _ -> pure ()
         wait_action = threadDelay interval >> action
         handler e = onError e >> action
     liftIO $ runForever_ wait_action handler
@@ -83,7 +83,7 @@ postProcJobs = ask >>= \env ->
                 let (msg, checked_delay) = check_delay delay
                 putStrLn ("Removing message in " ++ msg)
                 fork $ do
-                    threadDelay checked_delay 
+                    threadDelay checked_delay
                     reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
                         Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
                             " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
@@ -92,7 +92,7 @@ postProcJobs = ask >>= \env ->
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
-            JobUpdateEngine feeds -> fork $ updateEngine (search_engine env) feeds 
+            JobUpdateEngine feeds -> fork $ updateEngine (search_engine env) feeds
             JobUpdateSchedules chat_ids -> fork $ do
                 now <- getCurrentTime
                 modifyMVar_ (subs_state env) $ \chats_hmap ->
@@ -109,13 +109,13 @@ postProcJobs = ask >>= \env ->
             writeChan (postjobs env) . JobTgAlert $ report
             print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
     in  liftIO $ runForever_ action handler
-    where 
+    where
         fork = void . async
         check_delay delay
-            | delay < 10 = ("10 secs", 10000000) 
+            | delay < 10 = ("10 secs", 10000000)
             | delay > 30 = ("30 secs", 30000000)
             | otherwise = (show delay, delay)
         with_cid_txt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
-        
-        
-        
+
+
+

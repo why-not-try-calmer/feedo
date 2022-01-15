@@ -129,6 +129,21 @@ evalFeedsAct (RemoveF links) = ask >>= \env -> do
         let deleted = HMS.filter (\f -> f_link f `notElem` links) app_hmap
         in  pure deleted
     pure FeedsOk
+evalFeedsAct (GetAllXDays links days) = do
+    env <- ask
+    (feeds, now) <- liftIO $ (,) <$> (readMVar . feeds_state $ env) <*> getCurrentTime
+    pure . FeedLinkBatch . foldFeeds feeds $ now
+    where
+        foldFeeds feeds now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect now f acc) [] feeds
+        collect now f acc =
+            let fresh = freshLastXDays days now $ f_items f
+            in  if null fresh then acc else (f_link f, fresh):acc
+evalFeedsAct (IncReadsF links) = ask >>= \env -> do
+    liftIO $ modifyMVar_ (feeds_state env) $ \hmap ->
+        evalDb env (IncReads links) >>= \case
+            DbOk -> pure $ HMS.map (\f -> f { f_reads = 1 + f_reads f }) hmap
+            _ -> pure hmap
+    pure FeedsOk
 evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     (idx, engine) <- readMVar $ search_engine env
@@ -136,22 +151,23 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
         -- update chats MVar just in case we were able to produce an interesting result
         now <- getCurrentTime
         -- collecting hmap of feeds with relevantly related chats
-        let relevant_feedlinks = collect_subscribed_to_feeds chats
+        let due_chats = HMS.filter (\c ->
+                (not . settings_paused . sub_settings $ c) &&
+                maybe True (< now) (sub_next_notification c)) chats
+        -- stop here if no chat is due
+        if null due_chats then pure (feeds_hmap, FeedsOk) else do
+        let relevant_feedlinks = collect_subscribed_to_feeds due_chats
         -- rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed relevant_feedlinks
         let (failed, succeeded) = partitionEither eitherUpdated
             updated_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-            -- notifying only non paused && due for notification
-            relevant_chats = HMS.filter (\c ->
-                (not . settings_paused . sub_settings $ c) &&
-                maybe True (< now) (sub_next_notification c)) chats
-            notif = notifFor updated_feeds relevant_chats
+            notif = notifFor updated_feeds due_chats
             -- scheduled searches
             scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
                 let searchset = match_searchset . settings_word_matches . sub_settings $ chat
                     lks = match_only_search_results . settings_word_matches . sub_settings $ chat
                     res = scheduledSearch searchset lks idx engine
-                in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty relevant_chats
+                in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty due_chats
             -- keeping only top 100 most read with feeds in memory from thee rebuilt ones that have any subscribers
             to_keep_in_memory = HMS.filter (\f -> f_link f `elem` within_top100_reads succeeded) updated_feeds
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $ 
@@ -162,7 +178,7 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
             DbErr err -> pure (feeds_hmap, FeedsError err)
             _ -> do
                 -- computing next run
-                writeChan (postjobs env) $ JobUpdateSchedules . HMS.keys $ relevant_chats
+                writeChan (postjobs env) $ JobUpdateSchedules . HMS.keys $ due_chats
                 -- increasing reads count
                 writeChan (postjobs env) $ JobIncReadsJob relevant_feedlinks
                 -- updating search engine
@@ -187,18 +203,3 @@ evalFeedsAct RefreshNotifyF = ask >>= \env -> liftIO $ do
             HMS.alter (\case
                 Nothing -> Just $ S.singleton cid
                 Just cids -> Just $ S.insert cid cids) f hmap
-evalFeedsAct (GetAllXDays links days) = do
-    env <- ask
-    (feeds, now) <- liftIO $ (,) <$> (readMVar . feeds_state $ env) <*> getCurrentTime
-    pure . FeedLinkBatch . foldFeeds feeds $ now
-    where
-        foldFeeds feeds now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect now f acc) [] feeds
-        collect now f acc =
-            let fresh = freshLastXDays days now $ f_items f
-            in  if null fresh then acc else (f_link f, fresh):acc
-evalFeedsAct (IncReadsF links) = ask >>= \env -> do
-    liftIO $ modifyMVar_ (feeds_state env) $ \hmap ->
-        evalDb env (IncReads links) >>= \case
-            DbOk -> pure $ HMS.map (\f -> f { f_reads = 1 + f_reads f }) hmap
-            _ -> pure hmap
-    pure FeedsOk
