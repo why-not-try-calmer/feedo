@@ -65,7 +65,7 @@ notifier = do
                     writeChan (postjobs env) (JobLog item)
                 FeedsError err -> 
                     writeChan (postjobs env) . JobTgAlert $ "notifier: \
-                        \ failed to acquire notification package and got this error"
+                        \ failed to acquire notification package and got this error: "
                         `T.append` renderDbError err
                 -- probably pulled a 'FeedsOk'
                 _ -> pure ()
