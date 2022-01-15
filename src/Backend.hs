@@ -17,7 +17,7 @@ import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
 import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, freshLastXDays, updateSettings, notifFor, partitionEither, removeByUserIdx)
+import Utils (defaultChatSettings, freshLastXDays, updateSettings, notifFor, partitionEither, removeByUserIdx, findNextTime)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid = ask >>= \env -> liftIO $ do
@@ -65,11 +65,15 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
-                    updated_c = c { sub_settings = updated_settings }
-                    updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                in  evalDb env (UpsertChat updated_c) >>= \case
-                    DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
-                    _ -> pure (updated_cs, Right ())
+                in  getCurrentTime >>= \now ->
+                        let updated_c = c { 
+                                sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c),
+                                sub_settings = updated_settings 
+                            }
+                            updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
+                        in  evalDb env (UpsertChat updated_c) >>= \case
+                            DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
+                            _ -> pure (updated_cs, Right ())
             Pause pause_or_resume ->
                 let updated_sets = (sub_settings c) { settings_paused = pause_or_resume }
                     updated_c = c { sub_settings = updated_sets }
@@ -80,11 +84,16 @@ withChat action cid = ask >>= \env -> liftIO $ do
             _ -> pure (hmap, Right ())
 
 loadChats :: MonadIO m => App m ()
-loadChats =
-    ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $ \chats_hmap ->
-    evalDb env GetAllChats >>= \case
-        DbChats chats -> pure . HMS.fromList . map (\c -> (sub_chatid c, c)) $ chats
-        _ -> pure chats_hmap
+loadChats = ask >>= \env -> 
+    liftIO $ modifyMVar_ (subs_state env) $ \chats_hmap -> do
+        now <- getCurrentTime
+        evalDb env GetAllChats >>= \case
+            DbChats chats -> pure $ update_chats chats now
+            _ -> pure chats_hmap
+    where
+        update_chats chats now = HMS.fromList $ map (\c -> 
+            let c' = c { sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c) } 
+            in  (sub_chatid c, c')) chats
 
 updateEngine :: MVar ([KeyedItem], FeedsSearch)-> [Feed] -> IO ()
 updateEngine mvar items =
