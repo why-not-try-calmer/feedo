@@ -82,7 +82,7 @@ makeConfig env = do
             password = pass 
         }
         port = maybe 80 read $ lookup "PORT" env
-        interval = maybe 1200000000 read $ lookup "WORKER_INTERVAL" env
+        interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
         starting_feeds = (Just . T.splitOn "," . T.pack) =<< lookup "STARTING_FEEDS" env
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
