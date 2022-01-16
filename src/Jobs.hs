@@ -47,7 +47,7 @@ notifier = do
             \(cid, keys_items) -> reply tok cid (toReply (FromSearchRes keys_items) Nothing) (postjobs env)
         send_notifs update search = fst <$> concurrently (send_tg_notif update) (send_tg_search search)
         updated_notified_chats notified_chats chats now =
-            HMS.map (\c -> if sub_chatid c `elem` notified_chats then c {
+            HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
                 sub_last_notification = Just now,
                 sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)
             } else c) chats
@@ -74,7 +74,7 @@ notifier = do
                                 pure subs
                             DbOk -> pure updated_chats
                             _ -> pure subs
-                    -- logging
+                    -- logging performance
                     later <- getCurrentTime
                     let item = LogItem later "notifier" "ran successfully" . realToFrac $ diffUTCTime now later
                     writeChan (postjobs env) $ JobLog item
