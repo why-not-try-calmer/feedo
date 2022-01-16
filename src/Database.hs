@@ -201,31 +201,31 @@ bsonToChat doc =
         }
 
 chatToBson :: SubChat -> Document
-chatToBson SubChat{..} =
-    let blacklist = ["settings_blacklist" =: S.toList (match_blacklist (settings_word_matches sub_settings))]
-        searchset = ["settings_searchset" =: S.toList (match_searchset (settings_word_matches sub_settings))]
-        only_search_results = ["settings_blacklist" =: S.toList (match_only_search_results (settings_word_matches sub_settings))]
-        settings = [
+chatToBson (SubChat chat_id last_notification next_notification flinks settings) =
+    let blacklist = S.toList (match_blacklist (settings_word_matches settings))
+        searchset = S.toList (match_searchset (settings_word_matches settings))
+        only_search_results = S.toList (match_only_search_results (settings_word_matches settings))
+        settings' = [
             "settings_blacklist" =: blacklist,
             "settings_searchset" =: searchset,
             "settings_only_search_results" =: only_search_results,
-            "settings_batch_size" =: settings_batch_size sub_settings,
-            "settings_paused" =: settings_paused sub_settings,
-            "settings_disable_web_view" =: settings_disable_web_view sub_settings,
-            "settings_pin" =: settings_pin sub_settings
+            "settings_batch_size" =: settings_batch_size settings,
+            "settings_paused" =: settings_paused settings,
+            "settings_disable_web_view" =: settings_disable_web_view settings,
+            "settings_pin" =: settings_pin settings
             ]
         with_secs = maybe []
             (\secs -> ["settings_batch_every_secs" =: secs])
-            (batch_every_secs . settings_batch_interval $ sub_settings)
+            (batch_every_secs . settings_batch_interval $ settings)
         with_at = maybe []
             (\hm -> ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm])
-            (batch_at . settings_batch_interval $ sub_settings)
+            (batch_at . settings_batch_interval $ settings)
     in  [
-            "sub_chatid" =: sub_chatid,
-            "sub_last_notification" =: sub_last_notification,
-            "sub_feeds_links" =: (S.toList sub_feeds_links :: [T.Text]),
-            "sub_settings" =: settings ++ with_secs ++ with_at,
-            "sub_next_notification" =: sub_next_notification
+            "sub_chatid" =: chat_id,
+            "sub_last_notification" =: last_notification,
+            "sub_next_notification" =: next_notification,
+            "sub_feeds_links" =: S.toList flinks,
+            "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
 
 {- Batches -}
@@ -248,8 +248,8 @@ saveToLog env item = withMongo env $ insert "logs" doc >> pure ()
 {- Cleanup -}
 
 purgeCollections :: (Db m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
-purgeCollections _ [] = pure . Left $ "Empty list of collection names!" 
-purgeCollections env colls = 
+purgeCollections _ [] = pure . Left $ "Empty list of collection names!"
+purgeCollections env colls =
     withMongo env $ traverse (`deleteAll` [([],[])]) colls >>= \res ->
         if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
         else pure $ Right ()
