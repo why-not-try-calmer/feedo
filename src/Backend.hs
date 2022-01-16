@@ -88,8 +88,8 @@ withChat action cid = ask >>= \env -> liftIO $ do
             _ -> pure (hmap, Right ())
 
 loadChats :: MonadIO m => App m ()
-loadChats = ask >>= \env -> 
-    liftIO $ modifyMVar_ (subs_state env) $ \chats_hmap -> do
+loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $ 
+    \chats_hmap -> do
         now <- getCurrentTime
         evalDb env GetAllChats >>= \case
             DbChats chats -> pure $ update_chats chats now
