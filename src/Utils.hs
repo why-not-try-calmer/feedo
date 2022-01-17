@@ -13,6 +13,7 @@ import Data.Time.Clock.POSIX
   )
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
+import Data.Int (Int64)
 
 {- Data -}
 
@@ -105,6 +106,20 @@ sortTimePairs = go []
             in  if h' < h || h == h' && m' < m
                 then go (p:s:ss) ps
                 else go (s:p:ss) ps
+
+renderTimeSlices :: [Int64] -> [T.Text] -> T.Text
+renderTimeSlices slices labels
+    | null slices = "Null slices!"
+    | length slices /= length labels + 1 = T.intercalate ", " $ map (T.pack . show) [length slices, length labels]
+    | otherwise =
+        T.intercalate ", " . 
+        zipWith (\label val -> 
+            label `T.append` ":" `T.append` (T.pack . show $ val)) labels .
+        go [] $ slices
+    where
+        go done [] = done
+        go acc [x] = go (acc ++ [x - last acc]) []
+        go acc (x:y:vs) = go (acc ++ [y-x]) (y:vs)
 
 {- Settings -}
 

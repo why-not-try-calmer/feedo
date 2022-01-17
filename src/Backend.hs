@@ -166,17 +166,18 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
         -- else rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed flinks
         let (failed, succeeded) = partitionEither eitherUpdated
-            fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-            notif = notifFor fresh_feeds due_chats
         -- handling case of some feeds not rebuilding
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $ 
             "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
-        -- saving to memory on successful db write
+        -- updating memory on successful db write
         modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
             DbErr _ -> pure (old_feeds, FeedsError $ 
                 FailedToUpdate "Database failed to update the feeds in evalFeedsAct Refresh")
-            _ ->    let to_keep_in_memory = HMS.union fresh_feeds old_feeds
-                        -- rebuilding search index
+            _ ->    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
+                        to_keep_in_memory = HMS.union fresh_feeds old_feeds
+                        -- creating update notification payload
+                        notif = notifFor to_keep_in_memory due_chats
+                        -- rebuilding search index & search notification payload
                         (idx, engine) = initSearchWith $ HMS.elems to_keep_in_memory
                         scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
                             let searchset = match_searchset . settings_word_matches . sub_settings $ chat

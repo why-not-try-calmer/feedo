@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogItem), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), runApp, renderDbError, Feed (f_link))
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogItem), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
 import Backend (evalFeedsAct)
 import Control.Concurrent
   ( modifyMVar_,
@@ -15,16 +15,17 @@ import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
+import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (diffUTCTime, getCurrentTime)
+import Data.Time (getCurrentTime)
+import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
   ( toReply,
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Utils (findNextTime)
-import qualified Data.Set as S
+import Utils (findNextTime, renderTimeSlices)
 
 {- Background tasks -}
 
@@ -53,12 +54,15 @@ notifier = do
             } else c) chats
         notify = do
             now <- getCurrentTime
+            t1 <- systemSeconds <$> getSystemTime
             -- rebuilding feeds and dispatching notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeedsAct Refresh
             case res of
                 FeedBatches update_notif search_notif -> do
+                    t2 <- systemSeconds <$> getSystemTime
                     -- sending update & search notifications
                     notified_chats_feeds <- send_notifs update_notif search_notif
+                    t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
                         read_feeds = S.toList . S.fromList . foldMap snd $ notified_chats_feeds
@@ -74,9 +78,13 @@ notifier = do
                                 pure subs
                             DbOk -> pure updated_chats
                             _ -> pure subs
-                    -- logging performance
-                    later <- getCurrentTime
-                    let item = LogItem later "notifier" "ran successfully" . realToFrac $ diffUTCTime now later
+                    (t4, later) <- (\t -> (systemSeconds t, systemToUTCTime t)) <$> getSystemTime
+                    let item = LogItem
+                            later
+                            "notifier"
+                            ("ran successfully" `T.append` renderTimeSlices [t1, t2, t3, t4]
+                                ["running Refresh", "sending notification messages", "updating db & memory"])
+                            (realToFrac $ t4 - t1)
                     writeChan (postjobs env) $ JobLog item
                 FeedsError err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \
