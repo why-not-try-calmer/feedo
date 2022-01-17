@@ -69,10 +69,11 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
+                    updated_next_notification now = Just . findNextTime now . settings_batch_interval $ updated_settings
                 in  getCurrentTime >>= \now ->
                         let updated_c = c { 
-                                sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c),
-                                sub_settings = updated_settings 
+                                sub_next_notification = updated_next_notification now,
+                                sub_settings = updated_settings
                             }
                             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
