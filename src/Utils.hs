@@ -111,8 +111,9 @@ scanTimeSlices :: [Int64] -> [Int64]
 scanTimeSlices = go []
     where
         go done [] = done
-        go acc [x] = go (acc ++ [x - last acc]) []
-        go acc (x:y:vs) = go (acc ++ [y-x]) (y:vs)
+        go !acc [x] = go (acc ++ [x - last acc]) []
+        go !acc [x, y] = go (acc ++ [y-x]) []
+        go !acc (x:y:vs) = go (acc ++ [y-x]) (y:vs)
 
 {- Settings -}
 
