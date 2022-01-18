@@ -202,9 +202,9 @@ bsonToChat doc =
 
 chatToBson :: SubChat -> Document
 chatToBson (SubChat chat_id last_notification next_notification flinks settings) =
-    let blacklist = S.toList (match_blacklist (settings_word_matches settings))
-        searchset = S.toList (match_searchset (settings_word_matches settings))
-        only_search_results = S.toList (match_only_search_results (settings_word_matches settings))
+    let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
+        searchset = S.toList . match_searchset . settings_word_matches $ settings
+        only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
         settings' = [
             "settings_blacklist" =: blacklist,
             "settings_searchset" =: searchset,

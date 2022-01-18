@@ -108,12 +108,10 @@ sortTimePairs = go []
                 else go (s:p:ss) ps
 
 scanTimeSlices :: [Int64] -> [Int64]
-scanTimeSlices = go []
+scanTimeSlices [] = []
+scanTimeSlices (x:xs) = fst $ foldl' step ([], x) xs
     where
-        go done [] = done
-        go !acc [x] = go (acc ++ [x - last acc]) []
-        go !acc [x, y] = go (acc ++ [y-x]) []
-        go !acc (x:y:vs) = go (acc ++ [y-x]) (y:vs)
+        step (!acc, !x') y = (acc ++ [y-x'], y)
 
 {- Settings -}
 
