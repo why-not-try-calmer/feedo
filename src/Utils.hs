@@ -107,15 +107,8 @@ sortTimePairs = go []
                 then go (p:s:ss) ps
                 else go (s:p:ss) ps
 
-renderTimeSlices :: [Int64] -> [T.Text] -> T.Text
-renderTimeSlices slices labels
-    | null slices = "Null slices!"
-    | length slices /= length labels + 1 = T.intercalate ", " $ map (T.pack . show) [length slices, length labels]
-    | otherwise =
-        T.intercalate ", " . 
-        zipWith (\label val -> 
-            label `T.append` ":" `T.append` (T.pack . show $ val)) labels .
-        go [] $ slices
+scanTimeSlices :: [Int64] -> [Int64]
+scanTimeSlices = go []
     where
         go done [] = done
         go acc [x] = go (acc ++ [x - last acc]) []

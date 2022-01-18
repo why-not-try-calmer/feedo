@@ -7,14 +7,15 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
+import Data.Int (Int64)
+import Data.Ix (Ix)
+import Data.SearchEngine (NoFeatures, SearchEngine)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
+import Database.MongoDB (Host, Pipe, PortID)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
-import Data.SearchEngine (SearchEngine, NoFeatures)
-import Data.Ix (Ix)
-import Database.MongoDB (Pipe, PortID, Host)
 
 {- Replies -}
 
@@ -298,11 +299,13 @@ data FeedsRes = FeedsOk
 
 {- Logs -}
 
-data LogItem = LogItem
-  { log_when :: UTCTime,
-    log_who :: T.Text,
-    log_what :: T.Text,
-    log_n :: Double
+data LogItem = LogPerf 
+  { log_message :: T.Text,
+    log_at :: UTCTime,
+    log_refresh :: Int64,
+    log_sending_notif :: Int64,
+    log_updating :: Int64,
+    log_total :: Int64
   }
   deriving (Eq, Show)
 

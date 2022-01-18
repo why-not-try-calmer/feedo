@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogItem), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
 import Backend (evalFeedsAct)
 import Control.Concurrent
   ( modifyMVar_,
@@ -11,7 +11,7 @@ import Control.Concurrent
   )
 import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
@@ -25,7 +25,7 @@ import Replies
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Utils (findNextTime, renderTimeSlices)
+import Utils (findNextTime, scanTimeSlices)
 
 {- Background tasks -}
 
@@ -79,13 +79,17 @@ notifier = do
                             DbOk -> pure updated_chats
                             _ -> pure subs
                     (t4, later) <- (\t -> (systemSeconds t, systemToUTCTime t)) <$> getSystemTime
-                    let item = LogItem
-                            later
-                            "notifier"
-                            ("ran successfully" `T.append` renderTimeSlices [t1, t2, t3, t4]
-                                ["running Refresh", "sending notification messages", "updating db & memory"])
-                            (realToFrac $ t4 - t1)
-                    writeChan (postjobs env) $ JobLog item
+                    let perf = scanTimeSlices [t1, t2, t3, t4]
+                    when (length perf == 3) $ do
+                        let item = LogPerf {
+                            log_message = "notifier just ran",
+                            log_at = later,
+                            log_refresh = head perf,
+                            log_sending_notif = perf !! 1,
+                            log_updating = perf !! 2,
+                            log_total = sum perf
+                            }
+                        writeChan (postjobs env) $ JobLog item
                 FeedsError err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \
                         \ failed to acquire notification package and got this error: "

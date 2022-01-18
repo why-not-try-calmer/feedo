@@ -236,13 +236,14 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 {- Logs -}
 
 saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env item = withMongo env $ insert "logs" doc >> pure ()
+saveToLog env LogPerf{..} = withMongo env $ insert "logs" doc >> pure ()
     where
         doc = [
-            "log_when" =: log_when item,
-            "log_who" =: log_who item,
-            "log_what" =: log_what item,
-            "log_n" =: log_n item
+            "log_at" =: log_at,
+            "log_refresh" =: log_refresh,
+            "log_sending_notif" =: log_sending_notif,
+            "log_update" =: log_updating,
+            "log_total" =: log_total
             ]
 
 {- Cleanup -}
