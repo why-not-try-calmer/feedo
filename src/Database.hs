@@ -260,13 +260,17 @@ saveToLog env LogPerf{..} = withMongo env $ insert "logs" doc >> pure ()
             ]
 
 cleanLogs :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
-cleanLogs env = withMongo env $ deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])] >>= \res ->
-    if failed res then pure $ Left (show res) else pure $ Right ()
+cleanLogs env = withMongo env $ do
+    res_delete <- deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])]
+    res_found <- find (select ["log_at" =: ["$exists" =: False]] "logs") >>= rest
+    if failed res_delete then pure . Left . show $ res_delete else
+        if not $ null res_found then pure . Left . show $ res_found else
+        pure $ Right ()
 
 collectLogStats :: (Db m, MonadIO m) => AppConfig -> m T.Text
-collectLogStats env = withMongo env $ find (select [] "logs") >>= rest >>= \docs ->
-    let logs = sortOn log_at . filter (\l -> log_total l > 0) . map bsonToLog $ docs
-    in  pure . mkStats $ logs
+collectLogStats env = withMongo env $ find (select ["log_total" =: ["$gte" =: (0.5 :: Double)]] "logs") >>= rest >>= \docs ->
+    let logs = sortOn log_at . filter (not . T.null . log_message) . map bsonToLog $ docs
+    in  liftIO $ print logs >> (pure . mkStats $ logs)
     where
         mkStats logs =
             let values =
@@ -275,8 +279,8 @@ collectLogStats env = withMongo env $ find (select [] "logs") >>= rest >>= \docs
                     in  [a,b,c,d]
                 keys = ["refreshing", "sending", "updating", "total"]
             in  showLength logs `T.append`
-                " logs. Averages for: " `T.append`
-                T.intercalate ", " (zipWith (\k v -> k `T.append` ": " `T.append`
+                    " logs. Averages for: " `T.append`
+                    T.intercalate ", " (zipWith (\k v -> k `T.append` ": " `T.append`
                     showAvgLength v logs) keys values)
         showLength = T.pack . show . length
         showAvgLength a l = T.pack . show $ fromIntegral a `div` length l
