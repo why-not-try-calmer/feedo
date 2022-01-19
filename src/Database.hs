@@ -269,10 +269,14 @@ collectLogStats env = withMongo env $ find (select [] "logs") >>= rest >>= \docs
     in  pure . mkStats $ logs
     where
         mkStats logs =
-            let (a,b,c,d) = foldl' (\(r, s, u, t) (LogPerf _ _ r' s' u' t') -> (r'+r,s+s',u+u',t+t')) (0,0,0,0) logs
+            let values = 
+                    let (a,b,c,d) = foldl' (\(!r, !s, !u, !t) (LogPerf _ _ r' s' u' t') -> 
+                            (r'+r, s+s', u+u', t+t')) (0,0,0,0) logs
+                    in  [a,b,c,d]
+                keys = ["refreshing", "sending", "updating", "total"]
             in  (T.pack . show . length $ logs) `T.append` " logs. Averages for: " `T.append`
                     T.intercalate ", " (zipWith (\k v -> k `T.append` ": " `T.append`
-                    (T.pack . show $ fromIntegral v `div` length logs)) ["refreshing", "sending", "updating", "total"] [a,b,c,d])
+                        (T.pack . show $ fromIntegral v `div` length logs)) keys values)
 
 {- Cleanup -}
 
