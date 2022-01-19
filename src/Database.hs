@@ -2,13 +2,15 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Database where
+
 import AppTypes
 import Control.Exception
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Foldable (traverse_)
+import Data.Foldable (traverse_, Foldable (foldl'))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
+import Data.List (sortOn)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -235,16 +237,42 @@ toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: ma
 
 {- Logs -}
 
+bsonToLog :: Document -> LogItem
+bsonToLog doc = LogPerf {
+    log_message = fromMaybe mempty $ M.lookup "log_message" doc,
+    log_at = fromMaybe undefined $ M.lookup "log_at" doc,
+    log_refresh = fromMaybe 0 $ M.lookup "log_refresh" doc,
+    log_sending_notif = fromMaybe 0 $ M.lookup "log_sending_notif" doc,
+    log_updating = fromMaybe 0 $ M.lookup "log_update" doc,
+    log_total = fromMaybe 0 $ M.lookup "log_total" doc
+    }
+
 saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env LogPerf{..} = withMongo env $ insert "logs" doc >> pure ()
     where
         doc = [
+            "log_message" =: log_message,
             "log_at" =: log_at,
             "log_refresh" =: log_refresh,
             "log_sending_notif" =: log_sending_notif,
             "log_update" =: log_updating,
             "log_total" =: log_total
             ]
+
+cleanLogs :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
+cleanLogs env = withMongo env $ deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])] >>= \res ->
+    if failed res then pure $ Left (show res) else pure $ Right ()
+
+collectLogStats :: (Db m, MonadIO m) => AppConfig -> m T.Text
+collectLogStats env = withMongo env $ find (select [] "logs") >>= rest >>= \docs ->
+    let logs = sortOn log_at . filter (\l -> log_total l > 0) . map bsonToLog $ docs
+    in  pure . mkStats $ logs
+    where
+        mkStats logs =
+            let (a,b,c,d) = foldl' (\(r, s, u, t) (LogPerf _ _ r' s' u' t') -> (r'+r,s+s',u+u',t+t')) (0,0,0,0) logs
+            in  (T.pack . show . length $ logs) `T.append` " logs. Averages for: " `T.append`
+                    T.intercalate ", " (zipWith (\k v -> k `T.append` ": " `T.append`
+                    (T.pack . show $ fromIntegral v `div` length logs)) ["refreshing", "sending", "updating", "total"] [a,b,c,d])
 
 {- Cleanup -}
 
