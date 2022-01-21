@@ -4,7 +4,7 @@ module TgActions where
 import AppTypes
 import Backend (evalFeedsAct, withChat)
 import Control.Concurrent (Chan, readMVar, writeChan)
-import Control.Concurrent.Async (concurrently, mapConcurrently)
+import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
@@ -30,24 +30,20 @@ registerWebhook config =
             print ("Webhook successfully set at " `T.append` webhook)
 
 checkIfAdmin :: MonadIO m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
-checkIfAdmin tok uid cid = liftIO $ concurrently getChatAdmins getChatType >>= 
-    \(resp_chat_admins, resp_chat_type) -> 
-    let mb_private = case resp_chat_admins of
-            Right res_chat ->
-                let chat_resp = responseBody res_chat :: TgGetChatResponse
-                    c = resp_result chat_resp :: Chat
-                in  Just $ chat_type c == Private
-            _ -> Nothing
-        mb_admin = case resp_chat_type of
+checkIfAdmin tok uid cid = liftIO $ getChatType >>= \case
+    Left _ -> pure Nothing
+    Right res_chat ->
+        let chat_resp = responseBody res_chat :: TgGetChatResponse
+            c = resp_result chat_resp :: Chat
+        in  if chat_type c == Private then pure . Just $ True else getChatAdmins >>= \case
+            Left _ -> pure Nothing
             Right res_chat_type ->
                 let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
                     chat_members = resp_cm_result res_cms :: [ChatMember]
-                in  Just $ if_admin chat_members
-            _ -> Nothing
-    in  pure $ (||) <$> mb_private <*> mb_admin
+                in  pure . Just $ if_admin chat_members
     where
-        getChatType = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
-        getChatAdmins = reqSend tok "getChat" $ GetChatAdministrators cid
+        getChatAdmins = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
+        getChatType = reqSend tok "getChat" $ GetChatAdministrators cid
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
