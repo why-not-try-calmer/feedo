@@ -167,6 +167,7 @@ renderCmds = T.intercalate "\n"
         "/help: show these commands",
         "/items `<# or url>`: display all the items fetched from the referenced feed",
         "/list `<optional: channel id`: list all the feeds this chat or that channel is subscribed to",
+        "/migrate `<optional: chat_id of the origin> <chat_id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination.",
         "/pause `<optional: channel id>`: stop posting updates to this chat or to that channel",
         "/purge `<optional: channel id>`: delete all data about this chat or that channel",
         "/reset `<optional: channel id>`: set this chat's (or that channels') settings to their default values",
@@ -183,7 +184,8 @@ feed - <# or url> info about the feed
 fresh - <n> n-old items, in number of days
 help - these commands
 items - <# or url> all the items fetched from the reference feed 
-list - <optional: channel_id> all the feeds the chat/channel is subscribed to 
+list - <optional: channel_id> all the feeds the chat/channel is subscribed to
+migrate - <optional: chat_id of the origin> <chat_id of the destination>: migrate this chat's settings, or the settings of the channel at the origin, to the destination.
 pause - <optional: channel_id> stop posting updates to the chat/channel
 purge - <optional: channel_id> erase the database from all data about the chat/channel
 reset - <optional: channel_id> set the chat/channel's settings to their default values

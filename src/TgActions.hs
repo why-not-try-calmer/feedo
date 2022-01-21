@@ -4,7 +4,7 @@ module TgActions where
 import AppTypes
 import Backend (evalFeedsAct, withChat)
 import Control.Concurrent (Chan, readMVar, writeChan)
-import Control.Concurrent.Async (mapConcurrently)
+import Control.Concurrent.Async (mapConcurrently, concurrently)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
@@ -87,6 +87,16 @@ interpretCmd contents
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The first value passed to /list could not be parsed into a valid chat_id."
             Just n -> Right . ListSubsChannel $ n
+    | cmd == "/migrate" =
+        if null args then Left . BadInput $ 
+            "/migrate takes at least one argument, standing for the chat_id of the destination you want to migrate this chat's settings to. \
+            \ If you call /migrate with 2 arguments, the first should be the chat_id of the origin and the second the chat_id of the destination."
+        else
+            let (x:xs) = args in case readMaybe . T.unpack $ x :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /migrate could not be parsed into a valid chat_id."
+            Just n -> if null xs then Right $ Migrate n else case readMaybe . T.unpack . head $ xs :: Maybe ChatId of
+                Nothing -> Left . BadInput $ "The second value passed to /migrate could not be parsed into a valid chat_id."
+                Just m -> Right $ MigrateChannel n m
     | cmd == "/pause" || cmd == "/p" =
         if null args then Right . Pause $ True
         else if length args > 1 then Left . BadInput $ "/pause cannot take more than one (optional) argument (channel_id)."
@@ -170,8 +180,8 @@ testChannel tok chan_id jobs =
                 pure (Right ())
 
 subFeed :: MonadIO m => AppConfig -> ChatId -> [T.Text] -> App m (Either UserError Reply)
-subFeed env cid feeds_urls = 
-    liftIO (readMVar . feeds_state $ env) >>= \known_feeds -> 
+subFeed env cid feeds_urls =
+    liftIO (readMVar . feeds_state $ env) >>= \known_feeds ->
     -- check url scheme
     case traverse eitherUrlScheme feeds_urls of
     Left err -> pure . Left $ err
@@ -182,7 +192,7 @@ subFeed env cid feeds_urls =
             old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) known_feeds
             new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
         unless (null old_keys) (void $ withChat (Sub old_keys) cid)
-        if null new_url_schemes then pure . Right . ServiceReply $ 
+        if null new_url_schemes then pure . Right . ServiceReply $
             "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
         -- fetches feeds at remaining urls
         else liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \res ->
@@ -218,7 +228,7 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
                             Just f -> pure . Right $ toReply (FromFeedDetails f) (Just $ sub_settings c)
-evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id 
+evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ =  pure . Right $ toReply FromChangelog Nothing
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
 evalTgAct _ (GetItems ref) cid = do
@@ -279,6 +289,24 @@ evalTgAct _ ListSubs cid = do
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right $ toReply (FromChatFeeds c feeds) (Just $ sub_settings c)
 evalTgAct uid (ListSubsChannel chan_id) _ = evalTgAct uid ListSubs chan_id
+evalTgAct uid (Migrate to) cid = do
+    env <- ask
+    let tok = bot_token . tg_config $ env
+    mb_ok <- liftIO $ do
+        (one, two) <- liftIO $ concurrently (checkIfAdmin tok uid cid) (checkIfAdmin tok uid to)
+        pure $ (&&) <$> one <*> two
+    case mb_ok of
+        Nothing -> pure . Left $ TelegramErr
+        Just ok ->
+            if not ok then pure . Right . ServiceReply $ 
+                "Not authorized. Make sure you have admin permissions in both the origin and the destination."
+            else withChat (Migrate to) cid >>= \case
+                Left err -> pure . Right . ServiceReply $ renderUserError err
+                Right _ -> pure . Right . ServiceReply $
+                    "Successfully migrated " `T.append`
+                    (T.pack . show $ cid) `T.append`
+                    " to " `T.append` (T.pack . show $ to)
+evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
 evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case

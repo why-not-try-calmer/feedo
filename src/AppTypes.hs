@@ -144,6 +144,8 @@ data UserAction
   | GetSubchatSettings
   | ListSubs
   | ListSubsChannel ChatId
+  | Migrate ChatId
+  | MigrateChannel ChatId ChatId
   | Pause Bool
   | PauseChannel ChatId Bool
   | Purge

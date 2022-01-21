@@ -37,6 +37,12 @@ withChat action cid = ask >>= \env -> liftIO $ do
                             _ -> pure (inserted_m, Right ())
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
         Just c -> case action of
+            Migrate to -> 
+                let updated_c = c { sub_chatid = to }
+                    update_m = HMS.update(\_ -> Just updated_c) cid hmap
+                in  evalDb env (UpsertChat updated_c) >>= \case
+                        DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
+                        _ -> pure (update_m, Right ())
             Reset ->
                 let updated_c = c { sub_settings = defaultChatSettings }
                     update_m = HMS.update (\_ -> Just updated_c) cid hmap
