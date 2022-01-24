@@ -179,10 +179,7 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
         -- updating memory on successful db write
         modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
             DbErr e ->
-                let err = 
-                        FeedsError . FailedToUpdate $ 
-                        "evalFeedsAct Refresh: Database failed to update these feeds: " `T.append`
-                        T.intercalate ", " (map f_link succeeded) `T.append` ", resulting to this error: " `T.append` renderDbError e
+                let err = FeedsError e 
                 in  pure (old_feeds, err)
             _ ->    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                         to_keep_in_memory = HMS.union fresh_feeds old_feeds

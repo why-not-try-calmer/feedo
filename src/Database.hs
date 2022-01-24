@@ -93,7 +93,7 @@ evalMongo env (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
     in  withMongo env $ updateAll "feeds" selector >>= \res ->
         let titles = T.intercalate ", " $ map f_link feeds
-        in  if failed res then pure . DbErr . FailedToUpdate $ titles
+        in  if failed res then pure . DbErr . FailedToUpdate titles $ T.pack . show $ res
             else pure DbOk
 evalMongo env (GetFeed link) =
     withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
@@ -123,7 +123,7 @@ evalMongo env (UpsertChats chatshmap) =
         selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
     in  withMongo env $ updateAll "chats" selector >>= \res ->
             let chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
-            in  if failed res then pure . DbErr . FailedToUpdate $ chatids
+            in  if failed res then pure . DbErr . FailedToUpdate chatids $ T.pack . show $ res
                 else pure DbOk
 evalMongo env (DeleteChat cid) = do
     withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
