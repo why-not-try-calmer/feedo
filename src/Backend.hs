@@ -5,7 +5,7 @@ module Backend where
 
 import AppTypes
 import Control.Concurrent
-import Control.Concurrent.Async (mapConcurrently)
+import Control.Concurrent.Async (mapConcurrently, forConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl')
@@ -212,3 +212,12 @@ dueChatsFeeds chats now =
             then (HMS.insert chat_id c hmap, S.union c_links links)
             else (hmap, links)) (HMS.empty, S.empty) chats
     in  (chats', S.toList links')
+
+regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
+regenFeeds chats = ask >>= \env ->
+    let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
+    in  liftIO $ forConcurrently urls rebuildFeed >>= \res -> case sequence res of
+        Left err -> pure . Left $ err
+        Right feeds -> evalDb env (UpsertFeeds feeds) >>= \case
+            DbErr err -> pure . Left . renderDbError $ err
+            _ -> pure . Right $ ()
