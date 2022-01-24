@@ -272,7 +272,7 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
         fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
-            (\bw -> T.toCaseFold bw `T.isInfixOf` i_link i || T.toCaseFold bw `T.isInfixOf` i_desc i) $ filters
+            (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters
         filterItemsWith Settings{..} Nothing items =
             take settings_batch_size .
             filter (with_filters [blacklist (match_blacklist settings_word_matches)]) $ items
