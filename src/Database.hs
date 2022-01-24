@@ -7,11 +7,12 @@ import AppTypes
 import Control.Exception
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Foldable (traverse_, Foldable (foldl'))
+import Data.Foldable (Foldable (foldl'), traverse_)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
 import Data.List (sortOn)
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
@@ -142,7 +143,7 @@ feedToBson Feed {..} =
         "f_desc" =: f_desc,
         "f_title" =: f_title,
         "f_link" =: f_link,
-        "f_items" =: take 30 (map itemToBson f_items),
+        "f_items" =: map itemToBson (take 30 . sortOn (Down . i_pubdate) $ f_items),
         "f_avg_interval" =: (realToFrac <$> f_avg_interval :: Maybe Double),
         "f_last_refresh" =: f_last_refresh,
         "f_reads" =: f_reads
