@@ -269,9 +269,14 @@ cleanLogs env = withMongo env $ do
         pure $ Right ()
 
 collectLogStats :: (Db m, MonadIO m) => AppConfig -> m T.Text
-collectLogStats env = withMongo env $ find (select ["log_total" =: ["$gte" =: (0.5 :: Double)]] "logs") >>= rest >>= \docs ->
-    let logs = sortOn log_at . filter (not . T.null . log_message) . map bsonToLog $ docs
-    in  liftIO $ print logs >> (pure . mkStats $ logs)
+collectLogStats env = do
+    (docs_logs, feeds_docs) <- withMongo env $ do
+        logs <- rest =<< find (select ["log_total" =: ["$gte" =: (0.5 :: Double)]] "logs")
+        counts <- rest =<< find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
+        pure (logs, counts)
+    let logs = sortOn log_at . filter (not . T.null . log_message) . map bsonToLog $ docs_logs
+        feeds_counts = map (\d -> let f = bsonToFeed d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
+    pure $ foldl' (\acc (k, v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
     where
         mkStats logs =
             let values =
