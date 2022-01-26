@@ -47,12 +47,12 @@ runMongo pipe action = access pipe master "feedfarer" $ liftDB action
 
 withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
 withMongo config action = liftIO $ do
-    MongoPipe pipe <- getPipe config
+    MongoPipe pipe <- readIORef . db_connector $ config
     try (runMongo pipe action) >>= \case
-        Left (SomeException _) -> openDbHandle config >> runMongo pipe action
-        Right res -> pure res
-    where
-        getPipe = readIORef . db_connector
+        Left (SomeException _) -> do
+            openDbHandle config
+            withMongo config action  
+        Right r -> pure r    
 
 {- Connection -}
 
@@ -90,11 +90,14 @@ installPipe _ _ = undefined
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (UpsertFeeds feeds) =
-    let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
-    in  withMongo env $ updateAll "feeds" selector >>= \res ->
-        let titles = T.intercalate ", " $ map f_link feeds
-        in  if failed res then pure . DbErr . FailedToUpdate titles $ T.pack . show $ res
-            else pure DbOk
+    let titles = T.intercalate ", " $ map f_link feeds
+        selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
+        action = withMongo env $ updateAll "feeds" selector
+    in  action >>= \res ->
+        if not $ failed res then pure DbOk else
+        openDbHandle env >> action >>= \retried -> 
+            if not $ failed retried then pure DbOk
+            else pure . DbErr $ FailedToUpdate "Failed to update these titles" titles
 evalMongo env (GetFeed link) =
     withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
         Just doc -> pure $ DbFeeds [bsonToFeed doc]
@@ -121,10 +124,12 @@ evalMongo env (UpsertChat chat) = do
 evalMongo env (UpsertChats chatshmap) =
     let chats = HMS.elems chatshmap
         selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
-    in  withMongo env $ updateAll "chats" selector >>= \res ->
-            let chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
-            in  if failed res then pure . DbErr . FailedToUpdate chatids $ T.pack . show $ res
-                else pure DbOk
+        action = withMongo env $ updateAll "chats" selector
+        chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
+    in  action >>= \res -> if not $ failed res then pure DbOk else
+        openDbHandle env >> action >>= \retried -> 
+            if not $ failed retried then pure DbOk 
+            else pure . DbErr . FailedToUpdate chatids $ T.pack . show $ res
 evalMongo env (DeleteChat cid) = do
     withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
     pure DbOk
