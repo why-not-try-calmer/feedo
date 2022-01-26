@@ -203,10 +203,11 @@ dueChatsFeeds chats now =
     let (chats', links') = foldl' (\(!hmap, !links) c ->
             let chat_id = sub_chatid c
                 settings = sub_settings c
+                next_notif = sub_next_notification c
                 last_notif = sub_last_notification c
                 c_links = sub_feeds_links c
             in  if (not . settings_paused $ settings) &&
-                maybe True (< now) last_notif || maybe True (`checkMissedBefore` settings) last_notif
+                maybe True (< now) next_notif || maybe True (`checkMissedBefore` settings) last_notif
             then (HMS.insert chat_id c hmap, S.union c_links links)
             else (hmap, links)) (HMS.empty, S.empty) chats
     in  (chats', S.toList links')
