@@ -216,7 +216,7 @@ dueChatsFeeds chats now =
             let mb_every_secs = batch_every_secs . settings_batch_interval $ settings
             in  case mb_every_secs of
                 Nothing -> diffUTCTime now last_t > 86400
-                Just every_secs -> diffUTCTime now last_t > 86400 + every_secs
+                Just every_secs -> diffUTCTime now last_t > every_secs
 
 regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
 regenFeeds chats = ask >>= \env ->
