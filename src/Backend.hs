@@ -17,7 +17,7 @@ import Parser (getFeedFromHref, rebuildFeed)
 import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
-import Data.Time (UTCTime)
+import Data.Time (UTCTime, diffUTCTime)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid = ask >>= \env -> liftIO $ do
@@ -37,7 +37,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                             _ -> pure (inserted_m, Right ())
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
         Just c -> case action of
-            Migrate to -> 
+            Migrate to ->
                 let updated_c = c { sub_chatid = to }
                     update_m = HMS.update(\_ -> Just updated_c) cid hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case
@@ -179,7 +179,7 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
         -- updating memory on successful db write
         modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
             DbErr e ->
-                let err = FeedsError e 
+                let err = FeedsError e
                 in  pure (old_feeds, err)
             _ ->    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                         to_keep_in_memory = HMS.union fresh_feeds old_feeds
@@ -203,12 +203,19 @@ dueChatsFeeds chats now =
     let (chats', links') = foldl' (\(!hmap, !links) c ->
             let chat_id = sub_chatid c
                 settings = sub_settings c
+                last_notif = sub_last_notification c
                 c_links = sub_feeds_links c
             in  if (not . settings_paused $ settings) &&
-                maybe True (< now) (sub_next_notification c)
+                maybe True (< now) last_notif || maybe True (`checkMissedBefore` settings) last_notif
             then (HMS.insert chat_id c hmap, S.union c_links links)
             else (hmap, links)) (HMS.empty, S.empty) chats
     in  (chats', S.toList links')
+    where
+        checkMissedBefore last_t settings = 
+            let mb_every_secs = batch_every_secs . settings_batch_interval $ settings
+            in  case mb_every_secs of
+                Nothing -> diffUTCTime now last_t > 86400
+                Just every_secs -> diffUTCTime now last_t > 86400 + every_secs
 
 regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
 regenFeeds chats = ask >>= \env ->
