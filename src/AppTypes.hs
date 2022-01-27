@@ -342,7 +342,8 @@ data Job =
     JobRemoveMsg ChatId Int Int |
     JobLog LogItem |
     JobPin ChatId Int |
-    JobTgAlert T.Text
+    JobTgAlert T.Text |
+    JobArchive [Feed]
     deriving (Eq, Show)
 
 data AppConfig = AppConfig

@@ -17,7 +17,7 @@ import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (getCurrentTime)
+import Data.Time (getCurrentTime, addUTCTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
@@ -105,6 +105,18 @@ postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
         action = readChan (postjobs env) >>= \case
+            JobArchive feeds -> fork $ do
+                now <- getCurrentTime 
+                -- archiving items
+                evalDb env (ArchiveItems feeds) >>= \case
+                    DbErr err -> writeChan (postjobs env) . JobTgAlert $
+                        "Failed to upsert these feeds: " 
+                        `T.append` T.intercalate ", " (map f_link feeds) 
+                        `T.append` " because of " 
+                        `T.append` renderDbError err
+                    _ -> pure ()
+                -- cleaning archives
+                void $ evalDb env (PruneOldItems $ addUTCTime (-2592000) now)
             JobIncReadsJob links -> fork $ runApp env $ evalFeedsAct (IncReadsF links)
             JobLog item -> fork $ saveToLog env item
             JobPin cid mid -> fork $ do

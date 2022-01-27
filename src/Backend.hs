@@ -10,7 +10,7 @@ import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (UTCTime, addUTCTime, diffUTCTime)
+import Data.Time (UTCTime, diffUTCTime)
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
@@ -188,16 +188,8 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
                 in do
                 -- performing db search
                 dbres <- forM scheduled_searches $ \(sset, lks) -> evalDb env $ DbSearch sset lks
-                -- archiving items
-                evalDb env (ArchiveItems succeeded) >>= \case
-                    DbErr err -> writeChan (postjobs env) . JobTgAlert $
-                        "Failed to upsert these feeds: " 
-                        `T.append` T.intercalate ", " (map f_link succeeded) 
-                        `T.append` " because of " 
-                        `T.append` renderDbError err
-                    _ -> pure ()
-                -- cleaning archives
-                void $ evalDb env (PruneOldItems $ addUTCTime (-2592000) now)
+                -- archiving
+                writeChan (postjobs env) $ JobArchive succeeded
                 -- returning to calling thread
                 pure (to_keep_in_memory, FeedBatches notif dbres)
 
