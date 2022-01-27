@@ -117,11 +117,15 @@ evalFeedsAct (InitF start_urls) = do
                 DbErr err -> liftIO $ print $ renderDbError err
                 _ -> pure ()
             pure FeedsOk
-evalFeedsAct LoadF = do
-    env <- ask
+evalFeedsAct LoadF = 
+    ask >>= \env ->
     evalDb env Get100Feeds >>= \case
-        DbFeeds feeds -> evalDb env (CopyFeeds feeds) >>= \case
-            _ -> pure FeedsOk
+        DbFeeds feeds -> do
+            liftIO $ modifyMVar_ (feeds_state env) $ \_ ->
+                pure $ HMS.fromList $ map (\f -> (f_link f, f)) feeds
+            evalDb env (CopyFeeds feeds) >>= \case
+                DbOk -> pure FeedsOk
+                _ -> liftIO (putStrLn "Failed to copy feeds!") >> pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
 evalFeedsAct (AddF feeds) = do
     env <- ask
@@ -172,22 +176,21 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
             DbErr e ->
                 let err = FeedsError e
                 in  pure (old_feeds, err)
-            _ ->    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-                        to_keep_in_memory = HMS.union fresh_feeds old_feeds
-                        -- creating update notification payload
-                        notif = notifFor to_keep_in_memory due_chats
-                        -- rebuilding search index & search notification payload
-                        scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
-                            let searchset = match_searchset . settings_word_matches . sub_settings $ chat
-                                lks = match_only_search_results . settings_word_matches . sub_settings $ chat
-                            in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
-                    -- finally saving feeds and search index to memory
-                    -- returning notification payloads to caller thread
-                    in  do
-                        dbres <- forM scheduled_searches $ \(sset, lks) -> 
-                            let (keywords, scope) = (S.toList sset, S.toList lks)
-                            in  evalDb env $ DbSearch keywords scope
-                        pure (to_keep_in_memory, FeedBatches notif dbres)
+            _ -> 
+                do
+                let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
+                    to_keep_in_memory = HMS.union fresh_feeds old_feeds
+                    -- creating update notification payload
+                    notif = notifFor to_keep_in_memory due_chats
+                    -- preparing search notification payload
+                    scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
+                        let searchset = match_searchset . settings_word_matches . sub_settings $ chat
+                            lks = match_only_search_results . settings_word_matches . sub_settings $ chat
+                        in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
+                -- finally saving feeds and search index to memory
+                dbres <- forM scheduled_searches $ \(sset, lks) -> evalDb env $ DbSearch sset lks
+                void $ evalDb env (CopyFeeds succeeded)
+                pure (to_keep_in_memory, FeedBatches notif dbres)
 
 dueChatsFeeds :: SubChats -> UTCTime -> (SubChats, [FeedLink])
 dueChatsFeeds chats now =

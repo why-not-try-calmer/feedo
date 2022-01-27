@@ -50,10 +50,11 @@ withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
 withMongo config action = liftIO $ do
     MongoPipe pipe <- readIORef . db_connector $ config
     try (runMongo pipe action) >>= \case
-        Left (SomeException err) -> do
+        Left (ConnectionFailure err) -> do
             print err
             openDbHandle config
             withMongo config action
+        Left err -> print err >> withMongo config action 
         Right r -> pure r
 
 {- Connection -}
@@ -92,8 +93,8 @@ installPipe _ _ = undefined
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (CopyFeeds feeds) =
-    let items = foldMap f_items feeds
-        selector = map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) items
+    let (link, items) = foldMap (\f -> (f_link f, f_items f)) feeds
+        selector = map (\i -> (["i_link" =: i_link i], itemToBson i ++ ["i_feed_link" =: link], [Upsert])) items
         action = withMongo env $ updateAll "items" selector 
     in  action >>= \res ->
         if not $ failed res then pure DbOk
@@ -104,29 +105,31 @@ evalMongo env (DbSearch keywords scope) =
     let stage1 = ["$search" =: [
             "index" =: ("default" :: T.Text),
             "text" =: [
-                "query" =: keywords,
+                "query" =: S.toList keywords,
                 "fuzzy" =: ([] :: Document),
                 "path" =: (["i_desc", "i_title"] :: [T.Text])
             ]]]
         stage2 = ["$project" =: [
             "_id" =: (0 :: Int),
             "i_title" =: (1 :: Int),
-            "i_feedlink" =: (1 :: Int),
+            "i_feed_link" =: (1 :: Int),
             "i_link"=: (1 :: Int),
-            "i_pubdate" =: (0 :: Int),
-            "i_desc" =: (0 :: Int),
             "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
         action = aggregate "items" [stage1, stage2]
     in  withMongo env action >>= \res ->
         let mkSearchRes doc = SearchResult 
                 (fromJust $ M.lookup "i_title" doc)
-                (fromJust $ M.lookup "i_feedlink" doc)
                 (fromJust $ M.lookup "i_link" doc)
-                (fromJust $ M.lookup "i_pubdate" doc)
+                (fromJust $ M.lookup "i_feed_link" doc)
                 (fromJust $ M.lookup "score" doc)
-            post_proc = filter (\sr -> sr_feedlink sr `elem` scope) . take 10 . sortOn (Down . sr_score)
-        in  pure $ DbSearchRes (keywords, post_proc . map mkSearchRes $ res)
+            search_res = map mkSearchRes res
+            sort_limit = take 10 . sortOn (Down . sr_score)
+            rescind = filter (\sr -> sr_feedlink sr `elem` scope)
+            payload = 
+                if null scope then sort_limit search_res
+                else rescind . sort_limit $ search_res
+        in  pure $ DbSearchRes keywords payload
 evalMongo env (DeleteChat cid) = do
     withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
     pure DbOk

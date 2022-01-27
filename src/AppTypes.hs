@@ -66,19 +66,20 @@ type FeedLink = T.Text
 
 type BlackList = S.Set T.Text
 
-type SearchSet = S.Set T.Text
+type Scope = S.Set T.Text
+
+type Keywords = S.Set T.Text
 
 data SearchResult = SearchResult {
     sr_title :: T.Text,
     sr_link :: T.Text,
     sr_feedlink :: T.Text,
-    sr_pubdate :: UTCTime,
     sr_score :: Double
 } deriving (Show, Eq)
 
 data WordMatches = WordMatches {
     match_blacklist :: BlackList,
-    match_searchset :: SearchSet,
+    match_searchset :: Scope,
     match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
 
@@ -213,7 +214,7 @@ data ToReply = FromChangelog
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
     | FromFeedsItems [(Feed, [Item])]
-    | FromSearchRes ([T.Text], [SearchResult])
+    | FromSearchRes Keywords [SearchResult]
     | FromStart
     deriving (Eq, Show)
 
@@ -254,7 +255,7 @@ data DbAction
   | GetChat ChatId
   | DeleteChat ChatId
   | IncReads [FeedLink]
-  | DbSearch [T.Text] [T.Text]
+  | DbSearch Keywords Scope
   | CopyFeeds [Feed]
   deriving (Show, Eq)
 
@@ -264,7 +265,7 @@ data DbRes = DbFeeds [Feed]
   | DbNoFeed
   | DbErr DbError
   | DbOk
-  | DbSearchRes ([T.Text], [SearchResult])
+  | DbSearchRes Keywords [SearchResult]
 
 data DbError
   = PipeNotAcquired

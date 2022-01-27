@@ -95,11 +95,11 @@ instance Renderable [Item] where
                     finish (i_title i) (i_link i), d')
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
-instance Renderable ([T.Text], [SearchResult]) where
+instance Renderable (S.Set T.Text, [SearchResult]) where
     render (keys, items) =
         let body t = toHrefEntities Nothing (sr_title t) (sr_link t)
         in  "Results from your search with keywords "
-                `T.append` T.intercalate ", " keys
+                `T.append` T.intercalate ", " (S.toList keys)
                 `T.append` ":\n"
                 `T.append` foldl' (\acc t -> acc `T.append` " " `T.append` body t `T.append` "\n") mempty items
 
@@ -156,7 +156,7 @@ toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-toReply (FromSearchRes (keys, sr_res)) _ = ChatReply (render (keys, sr_res)) True True False
+toReply (FromSearchRes keys sr_res) _ = ChatReply (render (keys, sr_res)) True True False
 toReply FromStart _ = ChatReply renderCmds True True False
 
 renderCmds :: T.Text
