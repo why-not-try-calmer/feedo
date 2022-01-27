@@ -99,9 +99,9 @@ instance Renderable ([T.Text], [SearchResult]) where
     render (keys, items) =
         let body t = toHrefEntities Nothing (sr_title t) (sr_link t)
         in  "Results from your search with keywords "
-            `T.append` T.intercalate ", " keys
-            `T.append` ":\n"
-            `T.append` foldl' (\acc t -> acc `T.append` " " `T.append` body t `T.append` "\n") mempty items
+                `T.append` T.intercalate ", " keys
+                `T.append` ":\n"
+                `T.append` foldl' (\acc t -> acc `T.append` " " `T.append` body t `T.append` "\n") mempty items
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =

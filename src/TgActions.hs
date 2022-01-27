@@ -362,10 +362,10 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
         Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
         Just c ->
-            let subs = S.toList . sub_feeds_links $ c
-            in  if null subs
-                then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
-                else evalDb env (DbSearch keywords subs) >>= \case
+            let scope = S.toList . sub_feeds_links $ c
+            in  if null scope
+                then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
+                else evalDb env (DbSearch keywords scope) >>= \case
                     DbSearchRes res -> pure . Right $ toReply (FromSearchRes res) Nothing
                     _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->

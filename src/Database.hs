@@ -113,7 +113,7 @@ evalMongo env (DbSearch keywords scope) =
             "i_title" =: (1 :: Int),
             "i_feedlink" =: (1 :: Int),
             "i_link"=: (1 :: Int),
-            "i_pubdate" =: (1 :: Int),
+            "i_pubdate" =: (0 :: Int),
             "i_desc" =: (0 :: Int),
             "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
