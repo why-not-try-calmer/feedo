@@ -1,6 +1,6 @@
 module Search where
 
-import AppTypes (Feed (f_items), Item (..), Field, KeyedItem (KeyedItem, key), FeedsSearch)
+import AppTypes (Feed (f_items), Item (..), Field, IdxItems (IdxItems, key), FeedsSearch)
 import Data.List (foldl')
 import Data.SearchEngine
     ( NoFeatures,
@@ -28,7 +28,7 @@ defaultSearchRankParameters =
         paramAutosuggestPostfilterLimit = 500
     }
 
-defaultSearchConfig :: SearchConfig KeyedItem Int Field NoFeatures
+defaultSearchConfig :: SearchConfig IdxItems Int Field NoFeatures
 defaultSearchConfig =
     SearchConfig    {
         documentKey = key,
@@ -37,28 +37,28 @@ defaultSearchConfig =
         documentFeatureValue = const noFeatures
     }
     where
-        xtract (KeyedItem _ i) _ = tokenize (i_title i) ++ tokenize (i_desc i)
+        xtract (IdxItems _ i) _ = tokenize (i_title i) ++ tokenize (i_desc i)
         xform t _ = T.toCaseFold t
 
-initSearchWith :: [Feed] -> ([KeyedItem], FeedsSearch)
+initSearchWith :: [Feed] -> ([IdxItems], FeedsSearch)
 initSearchWith feeds =
     let kitems = extractKItems feeds
     in (kitems, makeSearch kitems)
     where
-        extractKItems :: [Feed] -> [KeyedItem]
+        extractKItems :: [Feed] -> [IdxItems]
         extractKItems fs = mapCount fs 0 []
         mapCount [] _ kitems = kitems
         mapCount (f:fs) !n !kitems =
             let items' = f_items f
-                (!new_counter, !kitems') = foldl' (\(!c, !is) i -> (c+1, is ++ [KeyedItem (c+1) i])) (n, []) items'
+                (!new_counter, !kitems') = foldl' (\(!c, !is) i -> (c+1, is ++ [IdxItems (c+1) i])) (n, []) items'
             in  mapCount fs new_counter $ kitems ++ kitems'
-        makeSearch :: [KeyedItem] -> FeedsSearch
+        makeSearch :: [IdxItems] -> FeedsSearch
         makeSearch items = insertDocs items $
             initSearchEngine
             defaultSearchConfig
             defaultSearchRankParameters
 
-searchWith :: [KeyedItem] -> [T.Text] -> FeedsSearch -> [KeyedItem]
+searchWith :: [IdxItems] -> [T.Text] -> FeedsSearch -> [IdxItems]
 searchWith items q engine =
     let res = query engine q
     in  extractResults res items
@@ -70,9 +70,9 @@ searchWith items q engine =
             | idx == length is = last is
             | otherwise = let idx' = idx-1 in is !! idx'
 
-scheduledSearch :: S.Set T.Text -> S.Set T.Text -> [KeyedItem] -> FeedsSearch -> ([T.Text], [Item])
+scheduledSearch :: S.Set T.Text -> S.Set T.Text -> [IdxItems] -> FeedsSearch -> ([T.Text], [Item])
 scheduledSearch searchset flinks keyed engine = 
     let searchlist = S.toList searchset
         res = searchWith keyed searchlist engine
-        found = foldl' (\acc (KeyedItem _ item) -> if i_feed_link item `S.member` flinks then item:acc else acc) [] res
+        found = foldl' (\acc (IdxItems _ item) -> if i_feed_link item `S.member` flinks then item:acc else acc) [] res
     in  (searchlist, found)

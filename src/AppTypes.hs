@@ -41,7 +41,7 @@ data Item = Item
     i_feed_link :: T.Text,
     i_pubdate :: UTCTime
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 data Feed = Feed
   { f_type :: FeedType,
@@ -248,6 +248,7 @@ data DbAction
   | GetChat ChatId
   | DeleteChat ChatId
   | IncReads [FeedLink]
+  | DbSearch [T.Text]
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
@@ -313,9 +314,9 @@ data LogItem = LogPerf
 
 {- Search engine -}
 
-type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
+type FeedsSearch = SearchEngine IdxItems Int Field NoFeatures
 
-data KeyedItem = KeyedItem {
+data IdxItems = IdxItems {
     key ::Int,
     item :: Item
 } deriving (Eq, Show)
@@ -350,7 +351,7 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
-    search_engine :: MVar ([KeyedItem], FeedsSearch),
+    search_engine :: MVar ([IdxItems], FeedsSearch),
     postjobs :: Chan Job,
     worker_interval :: Int
   }

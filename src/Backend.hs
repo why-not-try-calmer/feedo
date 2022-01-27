@@ -106,7 +106,7 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
             let c' = c { sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c) }
             in  (sub_chatid c, c')) chats
 
-updateEngine :: MVar ([KeyedItem], FeedsSearch)-> [Feed] -> IO ()
+updateEngine :: MVar ([IdxItems], FeedsSearch)-> [Feed] -> IO ()
 updateEngine mvar items =
     let is_search = initSearchWith items
     in  tryTakeMVar mvar >> putMVar mvar is_search

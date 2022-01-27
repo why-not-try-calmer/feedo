@@ -118,6 +118,18 @@ evalMongo env GetAllChats =
     withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
         if null docs then pure DbNoChat
         else pure $ DbChats . map bsonToChat $ docs
+evalMongo env (DbSearch keywords) =
+    let action = aggregate "feeds" [[
+            "$search" =: [
+                --"index" =: ("default" :: T.Text), 
+                "text" =: [
+                    "query" =: keywords,
+                    "path" =: ["wildcard" =: ("*" :: T.Text)]]]]]
+    in  withMongo env action >>= \res ->
+        let feeds = map bsonToFeed res
+            collectedItems = S.toList $ foldl' (\acc f -> S.union (S.fromList . map i_title . f_items $ f) acc) S.empty feeds
+        in  if not $ null collectedItems then liftIO (print . show . length $ feeds) >> liftIO (print . show $ collectedItems) >> pure DbOk
+            else liftIO (putStrLn "No result!") >> pure DbOk
 evalMongo env (UpsertChat chat) = do
     withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     pure DbOk
