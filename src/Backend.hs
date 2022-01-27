@@ -117,7 +117,7 @@ evalFeedsAct (InitF start_urls) = do
                 DbErr err -> liftIO $ print $ renderDbError err
                 _ -> pure ()
             pure FeedsOk
-evalFeedsAct LoadF = 
+evalFeedsAct LoadF =
     ask >>= \env ->
     evalDb env Get100Feeds >>= \case
         DbFeeds feeds -> do
@@ -170,13 +170,13 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
         let (failed, succeeded) = partitionEither eitherUpdated
         -- handling case of some feeds not rebuilding
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $
-            "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
+            "Failed to update theses feeds: " `T.append` T.intercalate ", " failed)
         -- updating memory on successful db write
         modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
             DbErr e ->
                 let err = FeedsError e
                 in  pure (old_feeds, err)
-            _ -> 
+            _ ->
                 do
                 let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                     to_keep_in_memory = HMS.union fresh_feeds old_feeds
@@ -189,7 +189,13 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
                         in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
                 -- finally saving feeds and search index to memory
                 dbres <- forM scheduled_searches $ \(sset, lks) -> evalDb env $ DbSearch sset lks
-                void $ evalDb env (CopyFeeds succeeded)
+                evalDb env (CopyFeeds succeeded) >>= \case
+                    DbErr err -> writeChan (postjobs env) . JobTgAlert $
+                        "Failed to upsert these feeds: " 
+                        `T.append` T.intercalate ", " (map f_link succeeded) 
+                        `T.append` " because of " 
+                        `T.append` renderDbError err
+                    _ -> pure ()
                 pure (to_keep_in_memory, FeedBatches notif dbres)
 
 dueChatsFeeds :: SubChats -> UTCTime -> (SubChats, [FeedLink])
@@ -206,7 +212,7 @@ dueChatsFeeds chats now =
             else (hmap, links)) (HMS.empty, S.empty) chats
     in  (chats', S.toList links')
     where
-        checkMissedBefore last_t settings = 
+        checkMissedBefore last_t settings =
             let mb_every_secs = batch_every_secs . settings_batch_interval $ settings
             in  case mb_every_secs of
                 Nothing -> diffUTCTime now last_t > 86400

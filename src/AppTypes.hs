@@ -55,16 +55,7 @@ data Feed = Feed
 
 data FeedType = Rss | Atom deriving (Eq, Show)
 
-{- Chat -}
-
-data BatchInterval = BatchInterval {
-    batch_every_secs :: Maybe NominalDiffTime,
-    batch_at :: Maybe [(Int, Int)]
-} deriving (Eq, Show)
-
-type FeedLink = T.Text
-
-type BlackList = S.Set T.Text
+{- Searches -}
 
 type Scope = S.Set T.Text
 
@@ -76,6 +67,17 @@ data SearchResult = SearchResult {
     sr_feedlink :: T.Text,
     sr_score :: Double
 } deriving (Show, Eq)
+
+{- Settings -}
+
+data BatchInterval = BatchInterval {
+    batch_every_secs :: Maybe NominalDiffTime,
+    batch_at :: Maybe [(Int, Int)]
+} deriving (Eq, Show)
+
+type FeedLink = T.Text
+
+type BlackList = S.Set T.Text
 
 data WordMatches = WordMatches {
     match_blacklist :: BlackList,

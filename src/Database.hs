@@ -51,10 +51,10 @@ withMongo config action = liftIO $ do
     MongoPipe pipe <- readIORef . db_connector $ config
     try (runMongo pipe action) >>= \case
         Left (ConnectionFailure err) -> do
-            print err
+            print err >> putStrLn "Regenerating pipe"
             openDbHandle config
             withMongo config action
-        Left err -> print err >> withMongo config action 
+        Left err -> print err >> withMongo config action
         Right r -> pure r
 
 {- Connection -}
@@ -91,34 +91,42 @@ installPipe _ _ = undefined
 
 {- Actions -}
 
-evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (CopyFeeds feeds) =
-    let (link, items) = foldMap (\f -> (f_link f, f_items f)) feeds
-        selector = map (\i -> (["i_link" =: i_link i], itemToBson i ++ ["i_feed_link" =: link], [Upsert])) items
-        action = withMongo env $ updateAll "items" selector 
-    in  action >>= \res ->
-        if not $ failed res then pure DbOk
-        else openDbHandle env >> action >>= \retried ->
-            if not $ failed retried then pure DbOk
-            else pure . DbErr . FailedToUpdate "CopyFeeds" $ T.intercalate ", " (map f_link feeds) 
-evalMongo env (DbSearch keywords scope) =
-    let stage1 = ["$search" =: [
+writeOrRetry :: (Monad m, Db m) => WriteResult -> AppConfig -> m WriteResult -> m DbRes
+writeOrRetry res env action =
+    if not $ failed res then pure DbOk
+    else openDbHandle env >> action >>= \retried ->
+        if not $ failed retried then pure DbOk
+        else pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
+
+searchKeywords :: S.Set T.Text -> [Document]
+searchKeywords ws =
+    let search = [
+            "$search" =: [
             "index" =: ("default" :: T.Text),
             "text" =: [
-                "query" =: S.toList keywords,
+                "query" =: S.toList ws,
                 "fuzzy" =: ([] :: Document),
                 "path" =: (["i_desc", "i_title"] :: [T.Text])
             ]]]
-        stage2 = ["$project" =: [
-            "_id" =: (0 :: Int),
-            "i_title" =: (1 :: Int),
-            "i_feed_link" =: (1 :: Int),
-            "i_link"=: (1 :: Int),
-            "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
+        project = [
+            "$project" =: [
+                "_id" =: (0 :: Int),
+                "i_title" =: (1 :: Int),
+                "i_feed_link" =: (1 :: Int),
+                "i_link"=: (1 :: Int),
+                "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
-        action = aggregate "items" [stage1, stage2]
+    in [search, project]
+
+evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
+evalMongo env (CopyFeeds feeds) =
+    let selector = foldMap (map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) . f_items) feeds
+        action = withMongo env $ updateAll "items" selector
+    in  action >>= \res -> writeOrRetry res env action
+evalMongo env (DbSearch keywords scope) =
+    let action = aggregate "items" $ searchKeywords keywords
     in  withMongo env action >>= \res ->
-        let mkSearchRes doc = SearchResult 
+        let mkSearchRes doc = SearchResult
                 (fromJust $ M.lookup "i_title" doc)
                 (fromJust $ M.lookup "i_link" doc)
                 (fromJust $ M.lookup "i_feed_link" doc)
@@ -126,7 +134,7 @@ evalMongo env (DbSearch keywords scope) =
             search_res = map mkSearchRes res
             sort_limit = take 10 . sortOn (Down . sr_score)
             rescind = filter (\sr -> sr_feedlink sr `elem` scope)
-            payload = 
+            payload =
                 if null scope then sort_limit search_res
                 else rescind . sort_limit $ search_res
         in  pure $ DbSearchRes keywords payload
@@ -163,25 +171,18 @@ evalMongo env (UpsertChats chatshmap) =
     let chats = HMS.elems chatshmap
         selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
         action = withMongo env $ updateAll "chats" selector
-        chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
-    in  action >>= \res -> if not $ failed res then pure DbOk else
-        openDbHandle env >> action >>= \retried ->
-            if not $ failed retried then pure DbOk
-            else pure . DbErr . FailedToUpdate chatids $ T.pack . show $ res
+    in  action >>= \res -> writeOrRetry res env action
 evalMongo env (UpsertFeeds feeds) =
-    let titles = T.intercalate ", " $ map f_link feeds
-        selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
+    let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
         action = withMongo env $ updateAll "feeds" selector
-    in  action >>= \res ->
-        if not $ failed res then pure DbOk else
-        openDbHandle env >> action >>= \retried ->
-            if not $ failed retried then pure DbOk
-            else pure . DbErr $ FailedToUpdate "Failed to update these titles" titles
+    in  action >>= \res -> writeOrRetry res env action
 
-{- Feeds -}
+{- Items -}
 
 itemToBson :: Item -> Document
-itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
+itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_feed_link" =: i_feed_link i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
+
+{- Feeds -}
 
 feedToBson :: Feed -> Document
 feedToBson Feed {..} =
