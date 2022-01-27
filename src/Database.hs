@@ -21,7 +21,6 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
-import TgramOutJson (ChatId)
 
 {- Interface -}
 
@@ -119,7 +118,7 @@ searchKeywords ws =
     in [search, project]
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (CopyFeeds feeds) =
+evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
     in  action >>= \res -> writeOrRetry res env action
@@ -141,6 +140,11 @@ evalMongo env (DbSearch keywords scope) =
 evalMongo env (DeleteChat cid) = do
     withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
     pure DbOk
+evalMongo env Get100Feeds =
+    withMongo env $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
+        >>= rest >>= \docs ->
+            if null docs then pure DbNoFeed
+            else pure . DbFeeds $ map bsonToFeed docs
 evalMongo env GetAllChats =
     withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
         if null docs then pure DbNoChat
@@ -153,14 +157,12 @@ evalMongo env (GetFeed link) =
     withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
         Just doc -> pure $ DbFeeds [bsonToFeed doc]
         Nothing -> pure DbNoFeed
-evalMongo env Get100Feeds =
-    withMongo env $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
-        >>= rest >>= \docs ->
-            if null docs then pure DbNoFeed
-            else pure . DbFeeds $ map bsonToFeed docs
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
+evalMongo env (PruneOldItems t) =
+    let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
+    in  withMongo env action >> pure DbOk
 evalMongo env (RemoveFeeds links) = do
     _ <- withMongo env $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
     pure DbOk
@@ -277,11 +279,6 @@ chatToBson (SubChat chat_id last_notification next_notification flinks settings)
             "sub_feeds_links" =: S.toList flinks,
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
-
-{- Batches -}
-
-toBsonBatch :: UTCTime -> (ChatId, FeedLink, [Item]) -> Document
-toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: map itemToBson i, "chat_id" =: cid]
 
 {- Logs -}
 

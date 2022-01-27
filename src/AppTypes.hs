@@ -258,7 +258,8 @@ data DbAction
   | DeleteChat ChatId
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
-  | CopyFeeds [Feed]
+  | ArchiveItems [Feed]
+  | PruneOldItems UTCTime
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]

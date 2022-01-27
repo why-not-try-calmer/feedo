@@ -2,21 +2,20 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Backend where
-
 import AppTypes
 import Control.Concurrent
-import Control.Concurrent.Async (mapConcurrently, forConcurrently)
+import Control.Concurrent.Async (forConcurrently, mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time (UTCTime, addUTCTime, diffUTCTime)
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
-import Data.Time (UTCTime, diffUTCTime)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid = ask >>= \env -> liftIO $ do
@@ -123,7 +122,7 @@ evalFeedsAct LoadF =
         DbFeeds feeds -> do
             liftIO $ modifyMVar_ (feeds_state env) $ \_ ->
                 pure $ HMS.fromList $ map (\f -> (f_link f, f)) feeds
-            evalDb env (CopyFeeds feeds) >>= \case
+            evalDb env (ArchiveItems feeds) >>= \case
                 DbOk -> pure FeedsOk
                 _ -> liftIO (putStrLn "Failed to copy feeds!") >> pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
@@ -133,7 +132,7 @@ evalFeedsAct (AddF feeds) = do
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
         in  evalDb env (UpsertFeeds feeds) >>= \case
                 DbOk ->
-                    evalDb env (CopyFeeds feeds) >>= \case
+                    evalDb env (ArchiveItems feeds) >>= \case
                     _ -> pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
@@ -187,15 +186,19 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
                         let searchset = match_searchset . settings_word_matches . sub_settings $ chat
                             lks = match_only_search_results . settings_word_matches . sub_settings $ chat
                         in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
-                -- finally saving feeds and search index to memory
+                -- performing db search
                 dbres <- forM scheduled_searches $ \(sset, lks) -> evalDb env $ DbSearch sset lks
-                evalDb env (CopyFeeds succeeded) >>= \case
+                -- archiving items
+                evalDb env (ArchiveItems succeeded) >>= \case
                     DbErr err -> writeChan (postjobs env) . JobTgAlert $
                         "Failed to upsert these feeds: " 
                         `T.append` T.intercalate ", " (map f_link succeeded) 
                         `T.append` " because of " 
                         `T.append` renderDbError err
                     _ -> pure ()
+                -- cleaning archives
+                void $ evalDb env (PruneOldItems $ addUTCTime (-2592000) now)
+                -- returning to calling thread
                 pure (to_keep_in_memory, FeedBatches notif dbres)
 
 dueChatsFeeds :: SubChats -> UTCTime -> (SubChats, [FeedLink])
