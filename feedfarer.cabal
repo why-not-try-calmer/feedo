@@ -33,7 +33,6 @@ library
       Replies
       Requests
       Responses
-      Search
       TgActions
       TgramInJson
       TgramOutJson
@@ -54,14 +53,12 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
-    , full-text-search
     , mongoDB
     , mtl
     , req
     , servant-server
     , text
     , time
-    , tokenize
     , unordered-containers
     , wai
     , warp
@@ -87,14 +84,12 @@ executable feedfarer-exe
     , bytestring
     , containers
     , feedfarer
-    , full-text-search
     , mongoDB
     , mtl
     , req
     , servant-server
     , text
     , time
-    , tokenize
     , unordered-containers
     , wai
     , warp
@@ -121,14 +116,12 @@ test-suite feedfarer-test
     , bytestring
     , containers
     , feedfarer
-    , full-text-search
     , mongoDB
     , mtl
     , req
     , servant-server
     , text
     , time
-    , tokenize
     , unordered-containers
     , wai
     , warp

@@ -8,8 +8,6 @@ import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
-import Data.Ix (Ix)
-import Data.SearchEngine (NoFeatures, SearchEngine)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
@@ -69,6 +67,14 @@ type FeedLink = T.Text
 type BlackList = S.Set T.Text
 
 type SearchSet = S.Set T.Text
+
+data SearchResult = SearchResult {
+    sr_title :: T.Text,
+    sr_link :: T.Text,
+    sr_feedlink :: T.Text,
+    sr_pubdate :: UTCTime,
+    sr_score :: Double
+} deriving (Show, Eq)
 
 data WordMatches = WordMatches {
     match_blacklist :: BlackList,
@@ -207,7 +213,7 @@ data ToReply = FromChangelog
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
     | FromFeedsItems [(Feed, [Item])]
-    | FromSearchRes ([T.Text], [Item])
+    | FromSearchRes ([T.Text], [SearchResult])
     | FromStart
     deriving (Eq, Show)
 
@@ -248,7 +254,8 @@ data DbAction
   | GetChat ChatId
   | DeleteChat ChatId
   | IncReads [FeedLink]
-  | DbSearch [T.Text]
+  | DbSearch [T.Text] [T.Text]
+  | CopyFeeds [Feed]
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
@@ -257,6 +264,7 @@ data DbRes = DbFeeds [Feed]
   | DbNoFeed
   | DbErr DbError
   | DbOk
+  | DbSearchRes ([T.Text], [SearchResult])
 
 data DbError
   = PipeNotAcquired
@@ -297,7 +305,7 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId ([T.Text], [Item]))
+    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
     | FeedLinkBatch [(FeedLink, [Item])]
 
 {- Logs -}
@@ -311,17 +319,6 @@ data LogItem = LogPerf
     log_total :: Int64
   }
   deriving (Eq, Show)
-
-{- Search engine -}
-
-type FeedsSearch = SearchEngine IdxItems Int Field NoFeatures
-
-data IdxItems = IdxItems {
-    key ::Int,
-    item :: Item
-} deriving (Eq, Show)
-
-data Field = FieldTitle | FieldDescription deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 {- Application, settings -}
 
@@ -351,7 +348,6 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
-    search_engine :: MVar ([IdxItems], FeedsSearch),
     postjobs :: Chan Job,
     worker_interval :: Int
   }

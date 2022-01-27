@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Database where
 
@@ -49,10 +50,11 @@ withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
 withMongo config action = liftIO $ do
     MongoPipe pipe <- readIORef . db_connector $ config
     try (runMongo pipe action) >>= \case
-        Left (SomeException _) -> do
+        Left (SomeException err) -> do
+            print err
             openDbHandle config
-            withMongo config action  
-        Right r -> pure r    
+            withMongo config action
+        Right r -> pure r
 
 {- Connection -}
 
@@ -89,15 +91,53 @@ installPipe _ _ = undefined
 {- Actions -}
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (UpsertFeeds feeds) =
-    let titles = T.intercalate ", " $ map f_link feeds
-        selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
-        action = withMongo env $ updateAll "feeds" selector
+evalMongo env (CopyFeeds feeds) =
+    let items = foldMap f_items feeds
+        selector = map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) items
+        action = withMongo env $ updateAll "items" selector 
     in  action >>= \res ->
-        if not $ failed res then pure DbOk else
-        openDbHandle env >> action >>= \retried -> 
+        if not $ failed res then pure DbOk
+        else openDbHandle env >> action >>= \retried ->
             if not $ failed retried then pure DbOk
-            else pure . DbErr $ FailedToUpdate "Failed to update these titles" titles
+            else pure . DbErr . FailedToUpdate "CopyFeeds" $ T.intercalate ", " (map f_link feeds) 
+evalMongo env (DbSearch keywords scope) =
+    let stage1 = ["$search" =: [
+            "index" =: ("default" :: T.Text),
+            "text" =: [
+                "query" =: keywords,
+                "fuzzy" =: ([] :: Document),
+                "path" =: (["i_desc", "i_title"] :: [T.Text])
+            ]]]
+        stage2 = ["$project" =: [
+            "_id" =: (0 :: Int),
+            "i_title" =: (1 :: Int),
+            "i_feedlink" =: (1 :: Int),
+            "i_link"=: (1 :: Int),
+            "i_pubdate" =: (1 :: Int),
+            "i_desc" =: (0 :: Int),
+            "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
+            ]]
+        action = aggregate "items" [stage1, stage2]
+    in  withMongo env action >>= \res ->
+        let mkSearchRes doc = SearchResult 
+                (fromJust $ M.lookup "i_title" doc)
+                (fromJust $ M.lookup "i_feedlink" doc)
+                (fromJust $ M.lookup "i_link" doc)
+                (fromJust $ M.lookup "i_pubdate" doc)
+                (fromJust $ M.lookup "score" doc)
+            post_proc = filter (\sr -> sr_feedlink sr `elem` scope) . take 10 . sortOn (Down . sr_score)
+        in  pure $ DbSearchRes (keywords, post_proc . map mkSearchRes $ res)
+evalMongo env (DeleteChat cid) = do
+    withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
+    pure DbOk
+evalMongo env GetAllChats =
+    withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
+        if null docs then pure DbNoChat
+        else pure $ DbChats . map bsonToChat $ docs
+evalMongo env (GetChat cid) =
+    withMongo env $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
+        Just doc -> pure $ DbChats [bsonToChat doc]
+        Nothing -> pure DbNoChat
 evalMongo env (GetFeed link) =
     withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
         Just doc -> pure $ DbFeeds [bsonToFeed doc]
@@ -107,29 +147,12 @@ evalMongo env Get100Feeds =
         >>= rest >>= \docs ->
             if null docs then pure DbNoFeed
             else pure . DbFeeds $ map bsonToFeed docs
+evalMongo env (IncReads links) =
+    let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
+    in  traverse_ action links >> pure DbOk
 evalMongo env (RemoveFeeds links) = do
     _ <- withMongo env $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
     pure DbOk
-evalMongo env (GetChat cid) =
-    withMongo env $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
-        Just doc -> pure $ DbChats [bsonToChat doc]
-        Nothing -> pure DbNoChat
-evalMongo env GetAllChats =
-    withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
-        if null docs then pure DbNoChat
-        else pure $ DbChats . map bsonToChat $ docs
-evalMongo env (DbSearch keywords) =
-    let action = aggregate "feeds" [[
-            "$search" =: [
-                --"index" =: ("default" :: T.Text), 
-                "text" =: [
-                    "query" =: keywords,
-                    "path" =: ["wildcard" =: ("*" :: T.Text)]]]]]
-    in  withMongo env action >>= \res ->
-        let feeds = map bsonToFeed res
-            collectedItems = S.toList $ foldl' (\acc f -> S.union (S.fromList . map i_title . f_items $ f) acc) S.empty feeds
-        in  if not $ null collectedItems then liftIO (print . show . length $ feeds) >> liftIO (print . show $ collectedItems) >> pure DbOk
-            else liftIO (putStrLn "No result!") >> pure DbOk
 evalMongo env (UpsertChat chat) = do
     withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     pure DbOk
@@ -139,15 +162,18 @@ evalMongo env (UpsertChats chatshmap) =
         action = withMongo env $ updateAll "chats" selector
         chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
     in  action >>= \res -> if not $ failed res then pure DbOk else
-        openDbHandle env >> action >>= \retried -> 
-            if not $ failed retried then pure DbOk 
+        openDbHandle env >> action >>= \retried ->
+            if not $ failed retried then pure DbOk
             else pure . DbErr . FailedToUpdate chatids $ T.pack . show $ res
-evalMongo env (DeleteChat cid) = do
-    withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
-    pure DbOk
-evalMongo env (IncReads links) =
-    let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
-    in  traverse_ action links >> pure DbOk
+evalMongo env (UpsertFeeds feeds) =
+    let titles = T.intercalate ", " $ map f_link feeds
+        selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
+        action = withMongo env $ updateAll "feeds" selector
+    in  action >>= \res ->
+        if not $ failed res then pure DbOk else
+        openDbHandle env >> action >>= \retried ->
+            if not $ failed retried then pure DbOk
+            else pure . DbErr $ FailedToUpdate "Failed to update these titles" titles
 
 {- Feeds -}
 

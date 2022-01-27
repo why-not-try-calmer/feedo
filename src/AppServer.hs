@@ -4,12 +4,14 @@
 module AppServer (startApp, registerWebhook, makeConfig) where
 import AppTypes
 import Backend
-import Control.Concurrent (newChan, newEmptyMVar, newMVar)
+import Control.Concurrent (newChan, newMVar)
+import Control.Exception (throwIO)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
+import Database (initConnectionMongo)
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -20,8 +22,6 @@ import System.Environment (getEnvironment)
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
-import Database (initConnectionMongo)
-import Control.Exception (throwIO)
 
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
@@ -86,7 +86,6 @@ makeConfig env = do
         starting_feeds = (Just . T.splitOn "," . T.pack) =<< lookup "STARTING_FEEDS" env
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
-    mvar3 <- newEmptyMVar
     chan <- newChan
     pipe_ref <- initConnectionMongo creds >>= \case
         Left err -> throwIO . userError $ T.unpack $ renderDbError err   
@@ -99,8 +98,7 @@ makeConfig env = do
         postjobs = chan,
         worker_interval = interval,
         db_config = creds,
-        db_connector = pipe_ref,
-        search_engine = mvar3
+        db_connector = pipe_ref
         }, port, starting_feeds)
 
 initStart :: AppConfig -> Maybe [T.Text] -> IO ()

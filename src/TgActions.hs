@@ -4,19 +4,19 @@ module TgActions where
 import AppTypes
 import Backend (evalFeedsAct, withChat)
 import Control.Concurrent (Chan, readMVar, writeChan)
-import Control.Concurrent.Async (mapConcurrently, concurrently)
+import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
-import Data.List (foldl', sort)
+import Data.List (sort)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parser (eitherUrlScheme, getFeedFromUrlScheme)
 import Replies (render, toReply)
 import Requests (reqSend, setWebhook)
-import Search (searchWith)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -359,20 +359,15 @@ evalTgAct uid Reset cid = do
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
 evalTgAct _ (Search keywords) cid = ask >>= \env ->
     let get_chats = liftIO . readMVar $ subs_state env
-        search_from_subs subs =
-            liftIO (readMVar $ search_engine env) >>= \(kitems, engine) ->
-                let results = searchWith kitems keywords engine
-                in  pure $ foldl' (\acc kitem ->
-                        let i = item kitem
-                        in  if i_feed_link i `elem` subs then acc ++ [i]
-                            else acc) [] results
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
         Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
         Just c ->
             let subs = S.toList . sub_feeds_links $ c
             in  if null subs
                 then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Search applies only to items of which to which you are subscribed."
-                else search_from_subs subs >>= \res -> pure . Right $ toReply (FromSearchRes (keywords, res)) Nothing
+                else evalDb env (DbSearch keywords subs) >>= \case
+                    DbSearchRes res -> pure . Right $ toReply (FromSearchRes res) Nothing
+                    _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid chan_id >>= \case

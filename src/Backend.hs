@@ -14,7 +14,6 @@ import qualified Data.Text as T
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
-import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
 import Data.Time (UTCTime, diffUTCTime)
@@ -106,11 +105,6 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
             let c' = c { sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c) }
             in  (sub_chatid c, c')) chats
 
-updateEngine :: MVar ([IdxItems], FeedsSearch)-> [Feed] -> IO ()
-updateEngine mvar items =
-    let is_search = initSearchWith items
-    in  tryTakeMVar mvar >> putMVar mvar is_search
-
 evalFeedsAct :: MonadIO m => FeedsAction -> App m FeedsRes
 evalFeedsAct (InitF start_urls) = do
     env <- ask
@@ -126,11 +120,8 @@ evalFeedsAct (InitF start_urls) = do
 evalFeedsAct LoadF = do
     env <- ask
     evalDb env Get100Feeds >>= \case
-        DbFeeds feeds -> do
-            liftIO $ modifyMVar_ (feeds_state env) $ \_ ->
-                let feeds_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
-                in  updateEngine (search_engine env) feeds >> pure feeds_hmap
-            pure FeedsOk
+        DbFeeds feeds -> evalDb env (CopyFeeds feeds) >>= \case
+            _ -> pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
 evalFeedsAct (AddF feeds) = do
     env <- ask
@@ -138,8 +129,8 @@ evalFeedsAct (AddF feeds) = do
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
         in  evalDb env (UpsertFeeds feeds) >>= \case
                 DbOk ->
-                    updateEngine (search_engine env) feeds >>
-                    pure (HMS.union user_hmap app_hmap, Just ())
+                    evalDb env (CopyFeeds feeds) >>= \case
+                    _ -> pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
         Nothing -> pure $ FeedsError FailedToStoreAll
@@ -186,17 +177,17 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
                         -- creating update notification payload
                         notif = notifFor to_keep_in_memory due_chats
                         -- rebuilding search index & search notification payload
-                        (idx, engine) = initSearchWith $ HMS.elems to_keep_in_memory
                         scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
                             let searchset = match_searchset . settings_word_matches . sub_settings $ chat
                                 lks = match_only_search_results . settings_word_matches . sub_settings $ chat
-                                res = scheduledSearch searchset lks idx engine
-                            in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty due_chats
+                            in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
                     -- finally saving feeds and search index to memory
                     -- returning notification payloads to caller thread
-                    in do
-                    modifyMVar_ (search_engine env) (\_ -> pure (idx, engine))
-                    pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
+                    in  do
+                        dbres <- forM scheduled_searches $ \(sset, lks) -> 
+                            let (keywords, scope) = (S.toList sset, S.toList lks)
+                            in  evalDb env $ DbSearch keywords scope
+                        pure (to_keep_in_memory, FeedBatches notif dbres)
 
 dueChatsFeeds :: SubChats -> UTCTime -> (SubChats, [FeedLink])
 dueChatsFeeds chats now =

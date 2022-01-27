@@ -44,8 +44,8 @@ notifier = do
             \(cid, (settings, feed_items)) ->
                 reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
                 >> pure (cid, map (f_link . fst) feed_items)
-        send_tg_search payload = forConcurrently_ (HMS.toList payload) $
-            \(cid, keys_items) -> reply tok cid (toReply (FromSearchRes keys_items) Nothing) (postjobs env)
+        send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
+            \(cid, DbSearchRes res) -> reply tok cid (toReply (FromSearchRes res) Nothing) (postjobs env)
         send_notifs update search = fst <$> concurrently (send_tg_notif update) (send_tg_search search)
         updated_notified_chats notified_chats chats now =
             HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
