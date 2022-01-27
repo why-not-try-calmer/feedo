@@ -176,7 +176,6 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
                 let err = FeedsError e
                 in  pure (old_feeds, err)
             _ ->
-                do
                 let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                     to_keep_in_memory = HMS.union fresh_feeds old_feeds
                     -- creating update notification payload
@@ -186,6 +185,7 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
                         let searchset = match_searchset . settings_word_matches . sub_settings $ chat
                             lks = match_only_search_results . settings_word_matches . sub_settings $ chat
                         in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
+                in do
                 -- performing db search
                 dbres <- forM scheduled_searches $ \(sset, lks) -> evalDb env $ DbSearch sset lks
                 -- archiving items

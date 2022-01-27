@@ -125,18 +125,24 @@ evalMongo env (ArchiveItems feeds) =
 evalMongo env (DbSearch keywords scope) =
     let action = aggregate "items" $ searchKeywords keywords
     in  withMongo env action >>= \res ->
-        let mkSearchRes doc = SearchResult
-                (fromJust $ M.lookup "i_title" doc)
-                (fromJust $ M.lookup "i_link" doc)
-                (fromJust $ M.lookup "i_feed_link" doc)
-                (fromJust $ M.lookup "score" doc)
-            search_res = map mkSearchRes res
+        let mkSearchRes doc = 
+                let title = M.lookup "i_title" doc
+                    link = M.lookup "i_link" doc
+                    f_link = M.lookup "i_feed_link" doc
+                    score = M.lookup "score" doc
+                in  case sequence [title, link, f_link] :: Maybe [T.Text] of
+                    Just [t, l, fl] -> case score :: Maybe Double of
+                        Nothing -> Nothing 
+                        Just s -> Just $ SearchResult t l fl s
+                    _ -> Nothing 
             sort_limit = take 10 . sortOn (Down . sr_score)
             rescind = filter (\sr -> sr_feedlink sr `elem` scope)
-            payload =
-                if null scope then sort_limit search_res
-                else rescind . sort_limit $ search_res
-        in  pure $ DbSearchRes keywords payload
+            payload r =
+                if null scope then sort_limit r
+                else rescind . sort_limit $ r
+        in  case traverse mkSearchRes res of
+            Nothing -> pure $ DbSearchRes S.empty []
+            Just r -> pure . DbSearchRes keywords . payload $ r
 evalMongo env (DeleteChat cid) = do
     withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
     pure DbOk
