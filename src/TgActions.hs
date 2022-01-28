@@ -293,7 +293,7 @@ evalTgAct uid (Migrate to) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
     mb_ok <- liftIO $ do
-        (one, two) <- liftIO $ concurrently (checkIfAdmin tok uid cid) (checkIfAdmin tok uid to)
+        (one, two) <- concurrently (checkIfAdmin tok uid cid) (checkIfAdmin tok uid to)
         pure $ (&&) <$> one <*> two
     case mb_ok of
         Nothing -> pure . Left $ TelegramErr
@@ -305,7 +305,7 @@ evalTgAct uid (Migrate to) cid = do
                 Left err -> restore >> onErr err
                 Right _ -> onOk
     where
-        migrate = withChat (Migrate to) cid >> withChat Purge cid
+        migrate = sequence <$> sequence [withChat (Migrate to) cid, withChat Purge cid]
         restore = withChat (Migrate cid) to >> withChat Purge to
         onOk = pure . Right . ServiceReply $
             "Successfully migrated " `T.append`
