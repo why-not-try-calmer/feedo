@@ -173,15 +173,11 @@ data UserAction
 
 data UserError
   = BadFeedUrl T.Text
-  | BadFilter
   | BadInput T.Text
   | BadRef T.Text
-  | FeedFailToBuild T.Text
-  | NoSettings
   | NotAdmin T.Text
   | NotFoundChat
   | NotFoundFeed T.Text
-  | NotImplemented T.Text
   | NotSubscribed
   | MaxFeedsAlready T.Text
   | ParseError T.Text
@@ -193,8 +189,6 @@ data UserError
 renderUserError :: UserError -> T.Text
 renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
 renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t
-renderUserError (FeedFailToBuild t) = T.append "We found a feed at this address, but we couldn't build any feed from it: " t
-renderUserError (NotImplemented _) = "This feature is not implemented yet. Bear with us."
 renderUserError (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
 renderUserError (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
 renderUserError (ParseError input) = T.append "Parsing this input failed: " input
@@ -202,9 +196,7 @@ renderUserError (UpdateError err) = T.append "Unable to update, because of this 
 renderUserError (NotFoundFeed feed) = T.append "The feed you were looking for does not exist: " feed
 renderUserError NotFoundChat = "The chat you called from is not subscribed to any feed yet."
 renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
-renderUserError BadFilter = "Filters should be at least 4-character long."
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
-renderUserError NoSettings = "No settings found for the supscription to this feed."
 renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
 
@@ -250,11 +242,9 @@ data DbAction
   = UpsertFeeds [Feed]
   | Get100Feeds
   | GetFeed FeedLink
-  | RemoveFeeds [FeedLink]
   | GetAllChats
   | UpsertChat SubChat
   | UpsertChats SubChats
-  | GetChat ChatId
   | DeleteChat ChatId
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
@@ -273,23 +263,17 @@ data DbRes = DbFeeds [Feed]
 data DbError
   = PipeNotAcquired
   | DbLoginFailed
-  | DbChangedMaster
   | NoFeedFound T.Text
   | FailedToUpdate T.Text T.Text
-  | FailedToDeleteAll
-  | FailedToStoreAll
   | FailedToLog
   | FailedToLoadFeeds
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
-renderDbError DbChangedMaster = "You need to make sure you are authenticating with the latest master instance."
 renderDbError DbLoginFailed = "Pipe acquired, but login failed."
-renderDbError FailedToDeleteAll = "Unable to delete these items."
 renderDbError (FailedToUpdate items reason) = "Unable to update the following items :" `T.append` items `T.append` ". Reason: " `T.append` reason
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
-renderDbError FailedToStoreAll = "Unable to store all these items."
 renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 

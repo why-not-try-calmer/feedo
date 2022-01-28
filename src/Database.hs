@@ -155,10 +155,6 @@ evalMongo env GetAllChats =
     withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
         if null docs then pure DbNoChat
         else pure $ DbChats . map bsonToChat $ docs
-evalMongo env (GetChat cid) =
-    withMongo env $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
-        Just doc -> pure $ DbChats [bsonToChat doc]
-        Nothing -> pure DbNoChat
 evalMongo env (GetFeed link) =
     withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
         Just doc -> pure $ DbFeeds [bsonToFeed doc]
@@ -169,9 +165,6 @@ evalMongo env (IncReads links) =
 evalMongo env (PruneOldItems t) =
     let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
     in  withMongo env action >> pure DbOk
-evalMongo env (RemoveFeeds links) = do
-    _ <- withMongo env $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
-    pure DbOk
 evalMongo env (UpsertChat chat) = do
     withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     pure DbOk

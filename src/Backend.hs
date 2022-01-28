@@ -136,7 +136,7 @@ evalFeedsAct (AddF feeds) = do
                     _ -> pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
-        Nothing -> pure $ FeedsError FailedToStoreAll
+        Nothing -> pure . FeedsError $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) "could not be added."
         Just _ -> pure FeedsOk
 evalFeedsAct (RemoveF links) = ask >>= \env -> do
     liftIO $ modifyMVar_ (feeds_state env) $ \app_hmap ->
