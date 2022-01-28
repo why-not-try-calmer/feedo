@@ -5,6 +5,7 @@
 module Database where
 
 import AppTypes
+import Control.Concurrent (writeChan)
 import Control.Exception
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -40,6 +41,12 @@ instance Db IO where
         Right p -> installPipe p config
     evalDb = evalMongo
 
+installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
+installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
+    (db_connector config)
+    (MongoPipe pipe)
+installPipe _ _ = undefined
+
 {- Evaluation -}
 
 runMongo :: MonadIO m => Pipe -> Action m a -> m a
@@ -50,7 +57,9 @@ withMongo config action = liftIO $ do
     MongoPipe pipe <- readIORef . db_connector $ config
     try (runMongo pipe action) >>= \case
         Left (ConnectionFailure err) -> do
-            print err >> putStrLn "Regenerating pipe"
+            writeChan (postjobs config) . JobTgAlert $ 
+                "ConnectionFailure with " `T.append` (T.pack . show $ err) `T.append`
+                " Refreshing connection now."
             openDbHandle config
             withMongo config action
         Left err -> print err >> pure (Left ())
@@ -81,12 +90,6 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
     pipe <- primary repset
     verdict <- isClosed pipe
     if verdict then pure . Left $ PipeNotAcquired else authWith creds pipe
-
-installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
-installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
-    (db_connector config)
-    (MongoPipe pipe)
-installPipe _ _ = undefined
 
 {- Actions -}
 
@@ -123,12 +126,12 @@ evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "ArchiveItems failed"
         Right res -> writeOrRetry res env action
 evalMongo env (DbSearch keywords scope) =
     let action = aggregate "items" $ searchKeywords keywords
     in  withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure . DbErr $ FailedToUpdate mempty "DbSearch failed"
         Right res  ->
             let mkSearchRes doc =
                     let title = M.lookup "i_title" doc
@@ -151,26 +154,26 @@ evalMongo env (DbSearch keywords scope) =
 evalMongo env (DeleteChat cid) =
     let action = withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "DeleteChat failed"
         Right _ -> pure DbOk
 evalMongo env Get100Feeds =
     let action = find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
     in  withMongo env (action >>= rest) >>= \case
-        Left () -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left () -> pure $ DbErr $ FailedToUpdate mempty "Get100Feeds failed"
         Right docs ->
             if null docs then pure DbNoFeed
             else pure . DbFeeds $ map bsonToFeed docs
 evalMongo env GetAllChats =
     let action = find (select [] "chats")
     in  withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllChats failed"
         Right docs ->
             if null docs then pure DbNoChat
             else pure $ DbChats . map bsonToChat $ docs
 evalMongo env (GetFeed link) =
     let action = withMongo env $ findOne (select ["f_link" =: link] "feeds")
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetFeed failed"
         Right (Just doc) -> pure $ DbFeeds [bsonToFeed doc]
         Right Nothing -> pure DbNoFeed
 evalMongo env (IncReads links) =
@@ -182,20 +185,20 @@ evalMongo env (PruneOldItems t) =
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
         Right _ -> pure DbOk
 evalMongo env (UpsertChats chatshmap) =
     let chats = HMS.elems chatshmap
         selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
         action = withMongo env $ updateAll "chats" selector
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
         Right res -> writeOrRetry res env action
 evalMongo env (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
         action = withMongo env $ updateAll "feeds" selector
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty mempty
+        Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
         Right res -> writeOrRetry res env action
 
 {- Items -}
