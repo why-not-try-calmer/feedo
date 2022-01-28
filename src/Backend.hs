@@ -131,9 +131,9 @@ evalFeedsAct (AddF feeds) = do
     res <- liftIO $ modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
         in  evalDb env (UpsertFeeds feeds) >>= \case
-                DbOk ->
-                    evalDb env (ArchiveItems feeds) >>= \case
-                    _ -> pure (HMS.union user_hmap app_hmap, Just ())
+                DbOk -> do
+                    writeChan (postjobs env) $ JobArchive feeds
+                    pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
         Nothing -> pure . FeedsError $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) "could not be added."
