@@ -53,17 +53,23 @@ runMongo :: MonadIO m => Pipe -> Action m a -> m a
 runMongo pipe = access pipe master "feedfarer"
 
 withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
-withMongo config action = liftIO $ do
-    MongoPipe pipe <- readIORef . db_connector $ config
-    try (runMongo pipe action) >>= \case
-        Left (ConnectionFailure err) -> do
-            writeChan (postjobs config) . JobTgAlert $ 
-                "ConnectionFailure with " `T.append` (T.pack . show $ err) `T.append`
-                " Refreshing connection now."
-            openDbHandle config
-            withMongo config action
-        Left err -> print err >> pure (Left ())
-        Right r -> pure $ Right r
+withMongo config action = go >>= \case
+    Left (ConnectionFailure err) -> do
+        alert err >> openDbHandle config >> go >>= \case
+            Left (e :: Failure) -> alertGiveUp e
+            Right r -> pure $ Right r
+    Left err -> alertGiveUp err
+    Right r -> pure $ Right r
+    where
+        alertGiveUp err = do
+            alert err
+            pure $ Left ()
+        alert err = liftIO $ writeChan (postjobs config) . JobTgAlert $
+            "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
+            " If the connector timed out, one retry will be carried out."
+        go = liftIO $ do
+            MongoPipe pipe <- readIORef $ db_connector config
+            try $ runMongo pipe action
 
 {- Connection -}
 
@@ -97,8 +103,8 @@ writeOrRetry :: (Monad m, Db m) => WriteResult -> AppConfig -> m (Either () Writ
 writeOrRetry res env action =
     if not $ failed res then pure DbOk
     else openDbHandle env >> action >>= \case
-    Left _ -> giveUp
-    Right retried -> if not $ failed retried then pure DbOk else giveUp
+        Left _ -> giveUp
+        Right retried -> if failed retried then giveUp else pure DbOk
     where   giveUp = pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
 
 searchKeywords :: S.Set T.Text -> [Document]
@@ -126,7 +132,7 @@ evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
     in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty "ArchiveItems failed"
+        Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
         Right res -> writeOrRetry res env action
 evalMongo env (DbSearch keywords scope) =
     let action = aggregate "items" $ searchKeywords keywords
@@ -327,14 +333,14 @@ saveToLog env LogPerf{..} = withMongo env (insert "logs" doc) >> pure ()
             ]
 
 cleanLogs :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
-cleanLogs env = do 
+cleanLogs env = do
     res <- withMongo env $ do
         res_delete <- deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])]
         res_found <- find (select ["log_at" =: ["$exists" =: False]] "logs") >>= rest
         pure (res_delete, res_found)
     case res of
         Left _ -> pure . Left $ "Failed to cleanLogs"
-        Right (del, found) -> 
+        Right (del, found) ->
             if failed del then pure . Left . show $ del else
             if not $ null found then pure . Left . show $ found else
             pure $ Right ()
