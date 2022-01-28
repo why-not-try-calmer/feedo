@@ -2,22 +2,20 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Backend where
-
 import AppTypes
 import Control.Concurrent
-import Control.Concurrent.Async (mapConcurrently, forConcurrently)
+import Control.Concurrent.Async (forConcurrently, mapConcurrently)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time (UTCTime, diffUTCTime)
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
-import Search (initSearchWith, scheduledSearch)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
-import Data.Time (UTCTime, diffUTCTime)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
 withChat action cid = ask >>= \env -> liftIO $ do
@@ -106,11 +104,6 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
             let c' = c { sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c) }
             in  (sub_chatid c, c')) chats
 
-updateEngine :: MVar ([KeyedItem], FeedsSearch)-> [Feed] -> IO ()
-updateEngine mvar items =
-    let is_search = initSearchWith items
-    in  tryTakeMVar mvar >> putMVar mvar is_search
-
 evalFeedsAct :: MonadIO m => FeedsAction -> App m FeedsRes
 evalFeedsAct (InitF start_urls) = do
     env <- ask
@@ -123,26 +116,27 @@ evalFeedsAct (InitF start_urls) = do
                 DbErr err -> liftIO $ print $ renderDbError err
                 _ -> pure ()
             pure FeedsOk
-evalFeedsAct LoadF = do
-    env <- ask
+evalFeedsAct LoadF =
+    ask >>= \env ->
     evalDb env Get100Feeds >>= \case
         DbFeeds feeds -> do
             liftIO $ modifyMVar_ (feeds_state env) $ \_ ->
-                let feeds_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
-                in  updateEngine (search_engine env) feeds >> pure feeds_hmap
-            pure FeedsOk
+                pure $ HMS.fromList $ map (\f -> (f_link f, f)) feeds
+            evalDb env (ArchiveItems feeds) >>= \case
+                DbOk -> pure FeedsOk
+                _ -> liftIO (putStrLn "Failed to copy feeds!") >> pure FeedsOk
         _ -> pure $ FeedsError FailedToLoadFeeds
 evalFeedsAct (AddF feeds) = do
     env <- ask
     res <- liftIO $ modifyMVar (feeds_state env) $ \app_hmap ->
         let user_hmap = HMS.fromList $ map (\f -> (f_link f, f)) feeds
         in  evalDb env (UpsertFeeds feeds) >>= \case
-                DbOk ->
-                    updateEngine (search_engine env) feeds >>
+                DbOk -> do
+                    writeChan (postjobs env) $ JobArchive feeds
                     pure (HMS.union user_hmap app_hmap, Just ())
                 _ -> pure (app_hmap, Nothing)
     case res of
-        Nothing -> pure $ FeedsError FailedToStoreAll
+        Nothing -> pure . FeedsError $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) "could not be added."
         Just _ -> pure FeedsOk
 evalFeedsAct (RemoveF links) = ask >>= \env -> do
     liftIO $ modifyMVar_ (feeds_state env) $ \app_hmap ->
@@ -175,28 +169,29 @@ evalFeedsAct Refresh = ask >>= \env -> liftIO $ do
         let (failed, succeeded) = partitionEither eitherUpdated
         -- handling case of some feeds not rebuilding
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $
-            "Failed to update theses feeds: " `T.append` T.intercalate " " failed)
+            "Failed to update theses feeds: " `T.append` T.intercalate ", " failed)
         -- updating memory on successful db write
         modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
             DbErr e ->
                 let err = FeedsError e
                 in  pure (old_feeds, err)
-            _ ->    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-                        to_keep_in_memory = HMS.union fresh_feeds old_feeds
-                        -- creating update notification payload
-                        notif = notifFor to_keep_in_memory due_chats
-                        -- rebuilding search index & search notification payload
-                        (idx, engine) = initSearchWith $ HMS.elems to_keep_in_memory
-                        scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
-                            let searchset = match_searchset . settings_word_matches . sub_settings $ chat
-                                lks = match_only_search_results . settings_word_matches . sub_settings $ chat
-                                res = scheduledSearch searchset lks idx engine
-                            in  if S.null searchset then hmap else HMS.insert cid res hmap) HMS.empty due_chats
-                    -- finally saving feeds and search index to memory
-                    -- returning notification payloads to caller thread
-                    in do
-                    modifyMVar_ (search_engine env) (\_ -> pure (idx, engine))
-                    pure (to_keep_in_memory, FeedBatches notif scheduled_searches)
+            _ ->
+                let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
+                    to_keep_in_memory = HMS.union fresh_feeds old_feeds
+                    -- creating update notification payload
+                    notif = notifFor to_keep_in_memory due_chats
+                    -- preparing search notification payload
+                    scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
+                        let searchset = match_searchset . settings_word_matches . sub_settings $ chat
+                            lks = match_only_search_results . settings_word_matches . sub_settings $ chat
+                        in  if S.null searchset then hmap else HMS.insert cid (searchset, lks) hmap) HMS.empty due_chats
+                in do
+                -- performing db search
+                dbres <- forM scheduled_searches $ \(sset, lks) -> evalDb env $ DbSearch sset lks
+                -- archiving
+                writeChan (postjobs env) $ JobArchive succeeded
+                -- returning to calling thread
+                pure (to_keep_in_memory, FeedBatches notif dbres)
 
 dueChatsFeeds :: SubChats -> UTCTime -> (SubChats, [FeedLink])
 dueChatsFeeds chats now =
@@ -212,7 +207,7 @@ dueChatsFeeds chats now =
             else (hmap, links)) (HMS.empty, S.empty) chats
     in  (chats', S.toList links')
     where
-        checkMissedBefore last_t settings = 
+        checkMissedBefore last_t settings =
             let mb_every_secs = batch_every_secs . settings_batch_interval $ settings
             in  case mb_every_secs of
                 Nothing -> diffUTCTime now last_t > 86400

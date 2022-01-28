@@ -33,8 +33,6 @@ dependencies:
 - wai
 - warp
 - mongoDB
-- tokenize
-- full-text-search
 
 library:
   source-dirs: src

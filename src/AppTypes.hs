@@ -8,8 +8,6 @@ import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
-import Data.Ix (Ix)
-import Data.SearchEngine (NoFeatures, SearchEngine)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
@@ -41,7 +39,7 @@ data Item = Item
     i_feed_link :: T.Text,
     i_pubdate :: UTCTime
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 data Feed = Feed
   { f_type :: FeedType,
@@ -57,7 +55,20 @@ data Feed = Feed
 
 data FeedType = Rss | Atom deriving (Eq, Show)
 
-{- Chat -}
+{- Searches -}
+
+type Scope = S.Set T.Text
+
+type Keywords = S.Set T.Text
+
+data SearchResult = SearchResult {
+    sr_title :: T.Text,
+    sr_link :: T.Text,
+    sr_feedlink :: T.Text,
+    sr_score :: Double
+} deriving (Show, Eq)
+
+{- Settings -}
 
 data BatchInterval = BatchInterval {
     batch_every_secs :: Maybe NominalDiffTime,
@@ -68,11 +79,9 @@ type FeedLink = T.Text
 
 type BlackList = S.Set T.Text
 
-type SearchSet = S.Set T.Text
-
 data WordMatches = WordMatches {
     match_blacklist :: BlackList,
-    match_searchset :: SearchSet,
+    match_searchset :: Scope,
     match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
 
@@ -164,15 +173,11 @@ data UserAction
 
 data UserError
   = BadFeedUrl T.Text
-  | BadFilter
   | BadInput T.Text
   | BadRef T.Text
-  | FeedFailToBuild T.Text
-  | NoSettings
   | NotAdmin T.Text
   | NotFoundChat
   | NotFoundFeed T.Text
-  | NotImplemented T.Text
   | NotSubscribed
   | MaxFeedsAlready T.Text
   | ParseError T.Text
@@ -184,8 +189,6 @@ data UserError
 renderUserError :: UserError -> T.Text
 renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
 renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t
-renderUserError (FeedFailToBuild t) = T.append "We found a feed at this address, but we couldn't build any feed from it: " t
-renderUserError (NotImplemented _) = "This feature is not implemented yet. Bear with us."
 renderUserError (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
 renderUserError (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
 renderUserError (ParseError input) = T.append "Parsing this input failed: " input
@@ -193,9 +196,7 @@ renderUserError (UpdateError err) = T.append "Unable to update, because of this 
 renderUserError (NotFoundFeed feed) = T.append "The feed you were looking for does not exist: " feed
 renderUserError NotFoundChat = "The chat you called from is not subscribed to any feed yet."
 renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
-renderUserError BadFilter = "Filters should be at least 4-character long."
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
-renderUserError NoSettings = "No settings found for the supscription to this feed."
 renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
 
@@ -207,7 +208,7 @@ data ToReply = FromChangelog
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
     | FromFeedsItems [(Feed, [Item])]
-    | FromSearchRes ([T.Text], [Item])
+    | FromSearchRes Keywords [SearchResult]
     | FromStart
     deriving (Eq, Show)
 
@@ -241,13 +242,14 @@ data DbAction
   = UpsertFeeds [Feed]
   | Get100Feeds
   | GetFeed FeedLink
-  | RemoveFeeds [FeedLink]
   | GetAllChats
   | UpsertChat SubChat
   | UpsertChats SubChats
-  | GetChat ChatId
   | DeleteChat ChatId
   | IncReads [FeedLink]
+  | DbSearch Keywords Scope
+  | ArchiveItems [Feed]
+  | PruneOldItems UTCTime
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
@@ -256,27 +258,22 @@ data DbRes = DbFeeds [Feed]
   | DbNoFeed
   | DbErr DbError
   | DbOk
+  | DbSearchRes Keywords [SearchResult]
 
 data DbError
   = PipeNotAcquired
   | DbLoginFailed
-  | DbChangedMaster
   | NoFeedFound T.Text
   | FailedToUpdate T.Text T.Text
-  | FailedToDeleteAll
-  | FailedToStoreAll
   | FailedToLog
   | FailedToLoadFeeds
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
-renderDbError DbChangedMaster = "You need to make sure you are authenticating with the latest master instance."
 renderDbError DbLoginFailed = "Pipe acquired, but login failed."
-renderDbError FailedToDeleteAll = "Unable to delete these items."
 renderDbError (FailedToUpdate items reason) = "Unable to update the following items :" `T.append` items `T.append` ". Reason: " `T.append` reason
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
-renderDbError FailedToStoreAll = "Unable to store all these items."
 renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 
@@ -296,7 +293,7 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId ([T.Text], [Item]))
+    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
     | FeedLinkBatch [(FeedLink, [Item])]
 
 {- Logs -}
@@ -310,17 +307,6 @@ data LogItem = LogPerf
     log_total :: Int64
   }
   deriving (Eq, Show)
-
-{- Search engine -}
-
-type FeedsSearch = SearchEngine KeyedItem Int Field NoFeatures
-
-data KeyedItem = KeyedItem {
-    key ::Int,
-    item :: Item
-} deriving (Eq, Show)
-
-data Field = FieldTitle | FieldDescription deriving (Eq, Ord, Enum, Bounded, Ix, Show)
 
 {- Application, settings -}
 
@@ -340,7 +326,8 @@ data Job =
     JobRemoveMsg ChatId Int Int |
     JobLog LogItem |
     JobPin ChatId Int |
-    JobTgAlert T.Text
+    JobTgAlert T.Text |
+    JobArchive [Feed]
     deriving (Eq, Show)
 
 data AppConfig = AppConfig
@@ -350,7 +337,6 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
-    search_engine :: MVar ([KeyedItem], FeedsSearch),
     postjobs :: Chan Job,
     worker_interval :: Int
   }

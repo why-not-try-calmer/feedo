@@ -1,9 +1,11 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Database where
 
 import AppTypes
+import Control.Concurrent (writeChan)
 import Control.Exception
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -20,7 +22,6 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
-import TgramOutJson (ChatId)
 
 {- Interface -}
 
@@ -40,19 +41,35 @@ instance Db IO where
         Right p -> installPipe p config
     evalDb = evalMongo
 
+installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
+installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
+    (db_connector config)
+    (MongoPipe pipe)
+installPipe _ _ = undefined
+
 {- Evaluation -}
 
-runMongo :: MonadIO m => Pipe -> Action IO a -> m a
-runMongo pipe action = access pipe master "feedfarer" $ liftDB action
+runMongo :: MonadIO m => Pipe -> Action m a -> m a
+runMongo pipe = access pipe master "feedfarer"
 
-withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m a
-withMongo config action = liftIO $ do
-    MongoPipe pipe <- readIORef . db_connector $ config
-    try (runMongo pipe action) >>= \case
-        Left (SomeException _) -> do
-            openDbHandle config
-            withMongo config action  
-        Right r -> pure r    
+withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
+withMongo config action = go >>= \case
+    Left (ConnectionFailure err) -> do
+        alert err >> openDbHandle config >> go >>= \case
+            Left (e :: Failure) -> alertGiveUp e
+            Right r -> pure $ Right r
+    Left err -> alertGiveUp err
+    Right r -> pure $ Right r
+    where
+        alertGiveUp err = do
+            alert err
+            pure $ Left ()
+        alert err = liftIO $ writeChan (postjobs config) . JobTgAlert $
+            "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
+            " If the connector timed out, one retry will be carried out."
+        go = liftIO $ do
+            MongoPipe pipe <- readIORef $ db_connector config
+            try $ runMongo pipe action
 
 {- Connection -}
 
@@ -80,67 +97,122 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
     verdict <- isClosed pipe
     if verdict then pure . Left $ PipeNotAcquired else authWith creds pipe
 
-installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
-installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
-    (db_connector config)
-    (MongoPipe pipe)
-installPipe _ _ = undefined
-
 {- Actions -}
 
+writeOrRetry :: (Monad m, Db m) => WriteResult -> AppConfig -> m (Either () WriteResult) -> m DbRes
+writeOrRetry res env action =
+    if not $ failed res then pure DbOk
+    else openDbHandle env >> action >>= \case
+        Left _ -> giveUp
+        Right retried -> if failed retried then giveUp else pure DbOk
+    where   giveUp = pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
+
+searchKeywords :: S.Set T.Text -> [Document]
+searchKeywords ws =
+    let search = [
+            "$search" =: [
+            "index" =: ("default" :: T.Text),
+            "text" =: [
+                "query" =: S.toList ws,
+                "fuzzy" =: ([] :: Document),
+                "path" =: (["i_desc", "i_title"] :: [T.Text])
+            ]]]
+        project = [
+            "$project" =: [
+                "_id" =: (0 :: Int),
+                "i_title" =: (1 :: Int),
+                "i_feed_link" =: (1 :: Int),
+                "i_link"=: (1 :: Int),
+                "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
+            ]]
+    in [search, project]
+
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (UpsertFeeds feeds) =
-    let titles = T.intercalate ", " $ map f_link feeds
-        selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
-        action = withMongo env $ updateAll "feeds" selector
-    in  action >>= \res ->
-        if not $ failed res then pure DbOk else
-        openDbHandle env >> action >>= \retried -> 
-            if not $ failed retried then pure DbOk
-            else pure . DbErr $ FailedToUpdate "Failed to update these titles" titles
-evalMongo env (GetFeed link) =
-    withMongo env $ findOne (select ["f_link" =: link] "feeds") >>= \case
-        Just doc -> pure $ DbFeeds [bsonToFeed doc]
-        Nothing -> pure DbNoFeed
+evalMongo env (ArchiveItems feeds) =
+    let selector = foldMap (map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) . f_items) feeds
+        action = withMongo env $ updateAll "items" selector
+    in  action >>= \case
+        Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
+        Right res -> writeOrRetry res env action
+evalMongo env (DbSearch keywords scope) =
+    let action = aggregate "items" $ searchKeywords keywords
+    in  withMongo env action >>= \case
+        Left _ -> pure . DbErr $ FailedToUpdate mempty "DbSearch failed"
+        Right res  ->
+            let mkSearchRes doc =
+                    let title = M.lookup "i_title" doc
+                        link = M.lookup "i_link" doc
+                        f_link = M.lookup "i_feed_link" doc
+                        score = M.lookup "score" doc
+                    in  case sequence [title, link, f_link] :: Maybe [T.Text] of
+                        Just [t, l, fl] -> case score :: Maybe Double of
+                            Nothing -> Nothing
+                            Just s -> Just $ SearchResult t l fl s
+                        _ -> Nothing
+                sort_limit = take 10 . sortOn (Down . sr_score)
+                rescind = filter (\sr -> sr_feedlink sr `elem` scope)
+                payload r =
+                    if null scope then sort_limit r
+                    else rescind . sort_limit $ r
+            in  case traverse mkSearchRes res of
+                Nothing -> pure $ DbSearchRes S.empty []
+                Just r -> pure . DbSearchRes keywords . payload $ r
+evalMongo env (DeleteChat cid) =
+    let action = withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
+    in  action >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "DeleteChat failed"
+        Right _ -> pure DbOk
 evalMongo env Get100Feeds =
-    withMongo env $ find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
-        >>= rest >>= \docs ->
+    let action = find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
+    in  withMongo env (action >>= rest) >>= \case
+        Left () -> pure $ DbErr $ FailedToUpdate mempty "Get100Feeds failed"
+        Right docs ->
             if null docs then pure DbNoFeed
             else pure . DbFeeds $ map bsonToFeed docs
-evalMongo env (RemoveFeeds links) = do
-    _ <- withMongo env $ deleteAll "feeds" $ map (\l -> (["f_link" =: l], [])) links
-    pure DbOk
-evalMongo env (GetChat cid) =
-    withMongo env $ findOne (select ["sub_chatid" =: cid] "chats") >>= \case
-        Just doc -> pure $ DbChats [bsonToChat doc]
-        Nothing -> pure DbNoChat
 evalMongo env GetAllChats =
-    withMongo env $ find (select [] "chats") >>= rest >>= \docs ->
-        if null docs then pure DbNoChat
-        else pure $ DbChats . map bsonToChat $ docs
-evalMongo env (UpsertChat chat) = do
-    withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
-    pure DbOk
+    let action = find (select [] "chats")
+    in  withMongo env (action >>= rest) >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllChats failed"
+        Right docs ->
+            if null docs then pure DbNoChat
+            else pure $ DbChats . map bsonToChat $ docs
+evalMongo env (GetFeed link) =
+    let action = withMongo env $ findOne (select ["f_link" =: link] "feeds")
+    in  action >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetFeed failed"
+        Right (Just doc) -> pure $ DbFeeds [bsonToFeed doc]
+        Right Nothing -> pure DbNoFeed
+evalMongo env (IncReads links) =
+    let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
+    in  traverse_ action links >> pure DbOk
+evalMongo env (PruneOldItems t) =
+    let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
+    in  withMongo env action >> pure DbOk
+evalMongo env (UpsertChat chat) =
+    let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
+    in  action >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
+        Right _ -> pure DbOk
 evalMongo env (UpsertChats chatshmap) =
     let chats = HMS.elems chatshmap
         selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
         action = withMongo env $ updateAll "chats" selector
-        chatids = T.intercalate ", " $ map (T.pack . show . sub_chatid) chats
-    in  action >>= \res -> if not $ failed res then pure DbOk else
-        openDbHandle env >> action >>= \retried -> 
-            if not $ failed retried then pure DbOk 
-            else pure . DbErr . FailedToUpdate chatids $ T.pack . show $ res
-evalMongo env (DeleteChat cid) = do
-    withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
-    pure DbOk
-evalMongo env (IncReads links) =
-    let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
-    in  traverse_ action links >> pure DbOk
+    in  action >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
+        Right res -> writeOrRetry res env action
+evalMongo env (UpsertFeeds feeds) =
+    let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
+        action = withMongo env $ updateAll "feeds" selector
+    in  action >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
+        Right res -> writeOrRetry res env action
 
-{- Feeds -}
+{- Items -}
 
 itemToBson :: Item -> Document
-itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
+itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_feed_link" =: i_feed_link i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
+
+{- Feeds -}
 
 feedToBson :: Feed -> Document
 feedToBson Feed {..} =
@@ -236,11 +308,6 @@ chatToBson (SubChat chat_id last_notification next_notification flinks settings)
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
 
-{- Batches -}
-
-toBsonBatch :: UTCTime -> (ChatId, FeedLink, [Item]) -> Document
-toBsonBatch now (cid, f, i) = ["created" =: now, "feed_link" =: f, "items" =: map itemToBson i, "chat_id" =: cid]
-
 {- Logs -}
 
 bsonToLog :: Document -> LogItem
@@ -254,7 +321,7 @@ bsonToLog doc = LogPerf {
     }
 
 saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env LogPerf{..} = withMongo env $ insert "logs" doc >> pure ()
+saveToLog env LogPerf{..} = withMongo env (insert "logs" doc) >> pure ()
     where
         doc = [
             "log_message" =: log_message,
@@ -266,22 +333,30 @@ saveToLog env LogPerf{..} = withMongo env $ insert "logs" doc >> pure ()
             ]
 
 cleanLogs :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
-cleanLogs env = withMongo env $ do
-    res_delete <- deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])]
-    res_found <- find (select ["log_at" =: ["$exists" =: False]] "logs") >>= rest
-    if failed res_delete then pure . Left . show $ res_delete else
-        if not $ null res_found then pure . Left . show $ res_found else
-        pure $ Right ()
+cleanLogs env = do
+    res <- withMongo env $ do
+        res_delete <- deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])]
+        res_found <- find (select ["log_at" =: ["$exists" =: False]] "logs") >>= rest
+        pure (res_delete, res_found)
+    case res of
+        Left _ -> pure . Left $ "Failed to cleanLogs"
+        Right (del, found) ->
+            if failed del then pure . Left . show $ del else
+            if not $ null found then pure . Left . show $ found else
+            pure $ Right ()
 
 collectLogStats :: (Db m, MonadIO m) => AppConfig -> m T.Text
 collectLogStats env = do
-    (docs_logs, feeds_docs) <- withMongo env $ do
+    res <- withMongo env $ do
         logs <- rest =<< find (select ["log_total" =: ["$gte" =: (0.5 :: Double)]] "logs")
         counts <- rest =<< find (select [] "feeds") {sort = [ "f_reads" =: (-1 :: Int)], limit = 100}
         pure (logs, counts)
-    let logs = sortOn log_at . filter (not . T.null . log_message) . map bsonToLog $ docs_logs
-        feeds_counts = map (\d -> let f = bsonToFeed d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
-    pure $ foldl' (\acc (k, v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
+    case res of
+        Left _ -> pure "Failed to collectLogStats"
+        Right (docs_logs, feeds_docs) ->
+            let logs = sortOn log_at . filter (not . T.null . log_message) . map bsonToLog $ docs_logs
+                feeds_counts = map (\d -> let f = bsonToFeed d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
+            in  pure $ foldl' (\acc (k, v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
     where
         mkStats logs =
             let values =
@@ -301,6 +376,9 @@ collectLogStats env = do
 purgeCollections :: (Db m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
 purgeCollections _ [] = pure . Left $ "Empty list of collection names!"
 purgeCollections env colls =
-    withMongo env $ traverse (`deleteAll` [([],[])]) colls >>= \res ->
-        if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
-        else pure $ Right ()
+    let action = withMongo env $ traverse (`deleteAll` [([],[])]) colls
+    in  action >>= \case
+        Left _ -> pure . Left $ "Failed to purgeCollections."
+        Right res ->
+            if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
+            else pure $ Right ()
