@@ -299,13 +299,19 @@ evalTgAct uid (Migrate to) cid = do
         Nothing -> pure . Left $ TelegramErr
         Just ok ->
             if not ok then pure . Right . ServiceReply $ 
-                "Not authorized. Make sure you have admin permissions in both the origin and the destination."
-            else withChat (Migrate to) cid >>= \case
-                Left err -> pure . Right . ServiceReply $ renderUserError err
-                Right _ -> pure . Right . ServiceReply $
-                    "Successfully migrated " `T.append`
-                    (T.pack . show $ cid) `T.append`
-                    " to " `T.append` (T.pack . show $ to)
+                "Not authorized. Make sure you have admin permissions \
+                \ in both the origin and the destination."
+            else migrate >>= \case
+                Left err -> restore >> onErr err
+                Right _ -> onOk
+    where
+        migrate = withChat (Migrate to) cid >> withChat Purge cid
+        restore = withChat (Migrate cid) to >> withChat Purge to
+        onOk = pure . Right . ServiceReply $
+            "Successfully migrated " `T.append`
+            (T.pack . show $ cid) `T.append`
+            " to " `T.append` (T.pack . show $ to)
+        onErr err = pure . Right . ServiceReply $ renderUserError err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
 evalTgAct uid (Pause pause_or_resume) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in

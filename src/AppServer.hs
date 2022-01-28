@@ -67,7 +67,7 @@ withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
 
 makeConfig :: [(String, String)] -> IO (AppConfig, Int, Maybe [T.Text])
-makeConfig env = do
+makeConfig env =
     let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
         alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
         webhook = 
@@ -84,6 +84,7 @@ makeConfig env = do
         port = maybe 80 read $ lookup "PORT" env
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
         starting_feeds = (Just . T.splitOn "," . T.pack) =<< lookup "STARTING_FEEDS" env
+    in do
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
     chan <- newChan
