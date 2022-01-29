@@ -136,12 +136,13 @@ toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =
             render .
+            take 25 .
             sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
 toReply (FromFeedsItems items) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
-            `T.append` (render . sortOn (Down . i_pubdate) $ i)
+            `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
             `T.append` "\n")
         payload = foldl' step mempty items
     in  case mbs of
