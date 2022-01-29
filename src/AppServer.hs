@@ -18,20 +18,23 @@ import Network.Wai.Handler.Warp
 import Requests (reply)
 import Responses
 import Servant
+import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
+import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
 
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
-    "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] ()
+    "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
+    "accept" :> Capture "token" T.Text :> Capture "email" T.Text :> Get '[HTML] Markup
 
 botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = root :<|> handleWebhook    where
+server = root :<|> handleWebhook :<|> acceptForm    where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
@@ -48,9 +51,9 @@ server = root :<|> handleWebhook    where
                         uid = user_id . fromJust . from $ msg :: UserId
                     in  case reply_to_message msg of
                         Just _ -> pure ()
-                        Nothing -> case text msg of
+                        Nothing -> case TgramInJson.text msg of
                             Nothing -> pure ()
-                            Just contents -> case interpretCmd contents of
+                            Just conts -> case interpretCmd conts of
                                 Left (Ignore _) -> pure ()
                                 Left err -> finishWith env cid err
                                 Right action -> evalTgAct uid action cid >>= \case
@@ -59,6 +62,9 @@ server = root :<|> handleWebhook    where
 
     root :: MonadIO m => App m ServerResponse
     root = pure $ RespOk "ok" "testing"
+
+    acceptForm :: MonadIO m => T.Text -> T.Text -> App m Markup
+    acceptForm token email = pure mkForm
 
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server

@@ -41,8 +41,7 @@ packages:
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
 extra-deps:
-  - full-text-search-0.2.1.4@sha256:81f6df3327e5b604f99b15e78635e5d6ca996e504c21d268a6d751d7d131aa36,6032
-  - tokenize-0.3.0@sha256:73e4e845359ff60e51d30f3c33b751ced1076fac5e6640243463795260172ee0,2256
+  - crypt-sha512-0@sha256:a4811afdeb36c272d6c3d1ee0d4ddd9c6e8c17c6d150abbc6191c397788e22a2,1941
 # Override default flag values for local packages and extra-deps
 # flags: {}
 

@@ -1,12 +1,14 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Responses where
 
-import Data.Aeson (ToJSON)
+import Data.Aeson
+import Data.Aeson.TH (deriveJSON)
 import qualified Data.Text as T
-import GHC.Generics (Generic)
-
-newtype Ok = Ok T.Text deriving (Eq, Show)
+import qualified Text.Blaze.Html as Html
+import Text.Blaze.Html5 ((!))
+import qualified Text.Blaze.Html5 as Html
+import qualified Text.Blaze.Html5.Attributes as Attr
 
 data ServerResponse
   = RespError
@@ -17,6 +19,10 @@ data ServerResponse
       { ok_message :: T.Text,
         ok_request :: T.Text
       }
-  deriving (Generic)
+  deriving (Eq, Show)
 
-instance ToJSON ServerResponse
+$(deriveJSON defaultOptions ''ServerResponse)
+
+mkForm :: Html.Html
+mkForm =
+    Html.div ! Attr.class_ "row" $ pure mempty

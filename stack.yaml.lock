@@ -5,19 +5,12 @@
 
 packages:
 - completed:
-    hackage: full-text-search-0.2.1.4@sha256:81f6df3327e5b604f99b15e78635e5d6ca996e504c21d268a6d751d7d131aa36,6032
+    hackage: crypt-sha512-0@sha256:a4811afdeb36c272d6c3d1ee0d4ddd9c6e8c17c6d150abbc6191c397788e22a2,1941
     pantry-tree:
-      size: 1743
-      sha256: 90b7cf8646ad1a7e3b6144ebeefa5af4d6bddec070eadb8e17489ae769612260
+      size: 400
+      sha256: 2abf2e39fb365c66db382ca1ce17c7fd03aea92775ef62a67a25274bc17fe199
   original:
-    hackage: full-text-search-0.2.1.4@sha256:81f6df3327e5b604f99b15e78635e5d6ca996e504c21d268a6d751d7d131aa36,6032
-- completed:
-    hackage: tokenize-0.3.0@sha256:73e4e845359ff60e51d30f3c33b751ced1076fac5e6640243463795260172ee0,2256
-    pantry-tree:
-      size: 402
-      sha256: 9d3349fd6c99072d48683d133d79bb421ac7ad99d365d41900d33edc5eeab727
-  original:
-    hackage: tokenize-0.3.0@sha256:73e4e845359ff60e51d30f3c33b751ced1076fac5e6640243463795260172ee0,2256
+    hackage: crypt-sha512-0@sha256:a4811afdeb36c272d6c3d1ee0d4ddd9c6e8c17c6d150abbc6191c397788e22a2,1941
 snapshots:
 - completed:
     size: 586286

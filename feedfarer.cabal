@@ -51,11 +51,15 @@ library
       aeson
     , async
     , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
     , bytestring
     , containers
+    , crypt-sha512
     , mongoDB
     , mtl
     , req
+    , servant-blaze
     , servant-server
     , text
     , time
@@ -81,12 +85,16 @@ executable feedfarer-exe
       aeson
     , async
     , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
     , bytestring
     , containers
+    , crypt-sha512
     , feedfarer
     , mongoDB
     , mtl
     , req
+    , servant-blaze
     , servant-server
     , text
     , time
@@ -113,12 +121,16 @@ test-suite feedfarer-test
       aeson
     , async
     , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
     , bytestring
     , containers
+    , crypt-sha512
     , feedfarer
     , mongoDB
     , mtl
     , req
+    , servant-blaze
     , servant-server
     , text
     , time
