@@ -2,7 +2,7 @@
 module Jobs where
 
 import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
-import Backend (evalFeedsAct)
+import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
     readChan,
@@ -56,7 +56,7 @@ notifier = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
             -- rebuilding feeds and dispatching notifications
-            res <- runApp (env { last_worker_run = Just now }) $ evalFeedsAct Refresh
+            res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
                 FeedBatches update_notif search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
@@ -81,8 +81,14 @@ notifier = do
                     (t4, later) <- (\t -> (systemSeconds t, systemToUTCTime t)) <$> getSystemTime
                     let perf = scanTimeSlices [t1, t2, t3, t4]
                     when (length perf == 3) $ do
-                        let item = LogPerf {
-                            log_message = "notifier just ran",
+                        let from_keys = T.intercalate ", " . map (T.pack . show) . HMS.keys
+                            (report1, report2) = (from_keys update_notif, from_keys search_notif)
+                            msg = "notifier ran on update notif package for "
+                                `T.append` report1
+                                `T.append` "and search search notif package for "
+                                `T.append` report2
+                            item = LogPerf {
+                            log_message = msg,
                             log_at = later,
                             log_refresh = head perf,
                             log_sending_notif = perf !! 1,
@@ -105,19 +111,18 @@ postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
         action = readChan (postjobs env) >>= \case
-            JobArchive feeds -> fork $ do
-                now <- getCurrentTime 
+            JobArchive feeds now -> fork $ do
                 -- archiving items
                 evalDb env (ArchiveItems feeds) >>= \case
                     DbErr err -> writeChan (postjobs env) . JobTgAlert $
-                        "Failed to upsert these feeds: " 
-                        `T.append` T.intercalate ", " (map f_link feeds) 
-                        `T.append` " because of " 
+                        "Failed to upsert these feeds: "
+                        `T.append` T.intercalate ", " (map f_link feeds)
+                        `T.append` " because of "
                         `T.append` renderDbError err
                     _ -> pure ()
                 -- cleaning more than 1 month old archives
                 void $ evalDb env (PruneOldItems $ addUTCTime (-2592000) now)
-            JobIncReadsJob links -> fork $ runApp env $ evalFeedsAct (IncReadsF links)
+            JobIncReadsJob links -> fork $ runApp env $ evalFeeds (IncReadsF links)
             JobLog item -> fork $ saveToLog env item
             JobPin cid mid -> fork $ do
                 reqSend_ tok "pinChatMessage" (PinMessage cid mid) >>= \case

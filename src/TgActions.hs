@@ -2,7 +2,7 @@
 
 module TgActions where
 import AppTypes
-import Backend (evalFeedsAct, withChat)
+import Backend (evalFeeds, withChat)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless, void)
@@ -199,7 +199,7 @@ subFeed env cid feeds_urls =
             -- add feeds
             let (failed, built_feeds) = partitionEither res
                 all_links = old_keys ++ map f_link built_feeds
-            in  evalFeedsAct (AddF built_feeds) >>= \case
+            in  evalFeeds (AddF built_feeds) >>= \case
                 FeedsOk ->
                     -- subscribes chat to newly added feeds, returning result to caller
                     let to_sub_to = map f_link built_feeds
@@ -264,7 +264,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
         Just c ->
             let subscribed = S.toList . sub_feeds_links $ c
             in  if null subscribed then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
-            else evalFeedsAct (GetAllXDays subscribed n) >>= \case
+            else evalFeeds (GetAllXDays subscribed n) >>= \case
                 FeedLinkBatch feeds -> do
                     liftIO $ writeChan (postjobs env) (JobIncReadsJob $ map fst feeds)
                     pure . Right $ toReply (FromFeedLinkItems feeds) (Just $ sub_settings c)

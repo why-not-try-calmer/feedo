@@ -327,7 +327,7 @@ data Job =
     JobLog LogItem |
     JobPin ChatId Int |
     JobTgAlert T.Text |
-    JobArchive [Feed]
+    JobArchive [Feed] UTCTime
     deriving (Eq, Show)
 
 data AppConfig = AppConfig

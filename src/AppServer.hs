@@ -107,9 +107,9 @@ initStart config mb_urls = case mb_urls of
     Nothing -> runApp config startup
     Just urls -> do
         putStrLn "Found urls. Trying to build feeds..."
-        runApp config $ evalFeedsAct (InitF urls) >> startup
+        runApp config $ evalFeeds (InitF urls) >> startup
     where 
-        startup = evalFeedsAct LoadF >> loadChats >> notifier >> postProcJobs
+        startup = evalFeeds LoadF >> loadChats >> notifier >> postProcJobs
         
 startApp :: IO ()
 startApp = do
