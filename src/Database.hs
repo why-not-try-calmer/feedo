@@ -17,7 +17,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime)
+import Data.Time (NominalDiffTime, UTCTime, getCurrentTime, addUTCTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
@@ -334,7 +334,9 @@ saveToLog env LogPerf{..} = withMongo env (insert "logs" doc) >> pure ()
 
 cleanLogs :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
 cleanLogs env = do
+    now <- liftIO getCurrentTime
     res <- withMongo env $ do
+        void $ deleteAll "logs" [(["log_at" =: ["$lt" =: (one_week_from now :: UTCTime)]], [])]
         res_delete <- deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])]
         res_found <- find (select ["log_at" =: ["$exists" =: False]] "logs") >>= rest
         pure (res_delete, res_found)
@@ -344,6 +346,8 @@ cleanLogs env = do
             if failed del then pure . Left . show $ del else
             if not $ null found then pure . Left . show $ found else
             pure $ Right ()
+    where
+        one_week_from now = addUTCTime (-604800) now
 
 collectLogStats :: (Db m, MonadIO m) => AppConfig -> m T.Text
 collectLogStats env = do
