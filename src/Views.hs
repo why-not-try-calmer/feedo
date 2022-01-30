@@ -1,13 +1,14 @@
 module Views where
 
 import AppTypes
-import Control.Monad.Reader (MonadIO, ask, forM_)
+import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
+import Data.Time (getCurrentTime)
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Parser (eitherUrlScheme, getTime)
@@ -30,8 +31,8 @@ view (Just flinks_txt) (Just fr) to = do
             \ Make sure to use the format as in '2022-28-01,2022-30-01' \
             \ for the 2-days interval between January 28 and January 30, 2022. \
             \ The second parameter is optional."
-        Just [f] -> evalDb env (View flinks f Nothing) <&> renderHtml (h2_txt fr Nothing)
-        Just [f, t] -> evalDb env (View flinks f (Just t)) <&> renderHtml (h2_txt fr (Just . T.pack . show $ t))
+        Just [f] -> liftIO getCurrentTime >>= \now -> evalDb env (View flinks f now) <&> renderHtml (h2_txt fr Nothing)
+        Just [f, t] -> evalDb env (View flinks f t) <&> renderHtml (h2_txt fr (Just . T.pack . show $ t))
         _ ->  abortWith "Unable to parse values for 'start' and/or 'end'"
     where
         parsed = foldl' (\acc m -> case m of
