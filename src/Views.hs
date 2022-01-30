@@ -21,12 +21,12 @@ import qualified Text.Blaze.Html5.Attributes as Attr
 
 view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
 view Nothing _ _ = pure "Missing a comma-separated list of urls. Example of a full query: \
-    \ /view?flinks=url1,url2,url2&from=2022-01-28&to=2022-01-30"
+    \ /view?flinks=https://my_url1.org\\https://myurl2.org&from=2022-01-28&to=2022-01-30"
 view _ Nothing _ = pure "Missing a datestring (format: '2022-01-28')"
 view (Just flinks_txt) (Just fr) to = do
     env <- ask
     if null flinks then abortWith "No links given or invalid links. \
-        \ Make sure to pass a string of valid, comma-separated links, respecting URI encoding."
+        \ Make sure to pass a string of valid, anti-slash-separated links, respecting URI encoding."
     else
         case sequence parsed of
         Nothing -> abortWith
@@ -41,7 +41,7 @@ view (Just flinks_txt) (Just fr) to = do
         parsed = foldl' (\acc m -> case m of
             Nothing -> acc
             Just v -> acc ++ [getTime . T.unpack $ v]) [] [Just fr, to]
-        flinks = case traverse (eitherUrlScheme . decodeText) $ T.splitOn "," flinks_txt of
+        flinks = case traverse (eitherUrlScheme . decodeText) $ T.splitOn "\\" flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
         abortWith msg = pure . renderHtml mempty . DbErr . BadQuery $ msg
