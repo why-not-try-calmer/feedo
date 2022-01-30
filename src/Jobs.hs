@@ -85,7 +85,7 @@ notifier = do
                             (report1, report2) = (from_keys update_notif, from_keys search_notif)
                             msg = "notifier ran on update notif package for "
                                 `T.append` report1
-                                `T.append` "and search search notif package for "
+                                `T.append` " and search notif package for "
                                 `T.append` report2
                             item = LogPerf {
                             log_message = msg,
