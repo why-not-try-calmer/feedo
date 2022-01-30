@@ -29,7 +29,7 @@ import Views (view)
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
-    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
+    "view" :> Capture "flinks" T.Text :> Capture "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
 
 botApi :: Proxy BotAPI
 botApi = Proxy

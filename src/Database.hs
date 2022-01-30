@@ -211,9 +211,10 @@ evalMongo env (UpsertFeeds feeds) =
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
         Right res -> writeOrRetry res env action
-evalMongo env (View flinks start end) =
-    let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
-    in  withMongo env query >>= \case
+evalMongo env (View flinks start mb_end) =
+    let getEnd = maybe getCurrentTime pure mb_end
+        query end = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
+    in  liftIO getEnd >>= withMongo env . query >>= \case
         Left _ -> pure $ DbErr FailedToLoadFeeds
         Right is -> pure $ DbView (map bsonToItem is)
 
@@ -223,7 +224,7 @@ itemToBson :: Item -> Document
 itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_feed_link" =: i_feed_link i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
 
 bsonToItem :: Document -> Item
-bsonToItem doc = Item 
+bsonToItem doc = Item
     (fromJust $ M.lookup "i_title" doc)
     (fromJust $ M.lookup "i_desc" doc)
     (fromJust $ M.lookup "i_link" doc)
