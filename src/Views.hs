@@ -34,7 +34,7 @@ view flinks_txt fr mb_to = do
     where
         parsed = foldl' (\acc m -> case m of
             Nothing -> acc
-            Just v -> (getTime . T.unpack $ v):acc) [] [Just fr, mb_to]
+            Just v -> acc ++ [getTime . T.unpack $ v]) [] [Just fr, mb_to]
         flinks = case traverse eitherUrlScheme $ T.splitOn "," flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
