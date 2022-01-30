@@ -17,25 +17,30 @@ import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
 
-view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
-view (Just flinks_txt) (Just f) (Just t) = do
+view :: MonadIO m => T.Text -> T.Text -> Maybe T.Text -> App m Markup
+view flinks_txt fr mb_to = do
     env <- ask
     if null flinks then abortWith "No links given or invalid links. Make sure to pass a string of valid, comma-separated links."
-    else case traverse (getTime . T.unpack) flinks of
+    else
+        case sequence parsed of
         Nothing -> abortWith
             "Unable to parse values for 'start' and/or 'end'. \
             \ Make sure to use the format as in '2022-28-01,2022-30-01' \
-            \ for the 2-days interval between January 28 and January 30, 2022."
-        Just [f', t'] -> evalDb env (View flinks f' t') <&> renderHtml h2_txt
+            \ for the 2-days interval between January 28 and January 30, 2022. \
+            \ The second parameter is optional."
+        Just [f] -> evalDb env (View flinks f Nothing) <&> renderHtml (h2_txt fr Nothing)
+        Just [f, t] -> evalDb env (View flinks f (Just t)) <&> renderHtml (h2_txt fr (Just . T.pack . show $ t))
         _ ->  abortWith "Unable to parse values for 'start' and/or 'end'"
     where
+        parsed = foldl' (\acc m -> case m of
+            Nothing -> acc
+            Just v -> (getTime . T.unpack $ v):acc) [] [Just fr, mb_to]
         flinks = case traverse eitherUrlScheme $ T.splitOn "," flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
         abortWith msg = pure . renderHtml mempty . DbErr . BadQuery $ msg
-        h2_txt = T.intercalate ", " flinks `T.append` " between " `T.append` T.intercalate " and " [f, t]
-view _ _ _ = pure . renderHtml mempty . DbErr . BadQuery $ "Missing parameters. Correct requests must be addressed to /view?flinks=url1,url2&from=date_str&to=date_str"
-
+        h2_txt f Nothing = T.intercalate ", " flinks `T.append` " between " `T.append` f `T.append` " and " `T.append` "now"
+        h2_txt f (Just t) = T.intercalate ", " flinks `T.append` " between " `T.append` T.intercalate " and " [f, t]
 renderHtml :: T.Text -> DbRes -> H.Html
 renderHtml query_txt (DbView []) = toHtml $ "No item found for these query parameters"
     `T.append` query_txt

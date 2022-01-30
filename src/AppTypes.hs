@@ -250,7 +250,7 @@ data DbAction
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
-  | View [FeedLink] UTCTime UTCTime
+  | View [FeedLink] UTCTime (Maybe UTCTime)
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
