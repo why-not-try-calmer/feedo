@@ -1,12 +1,12 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Responses where
 
-import Data.Aeson (ToJSON)
+import AppTypes (App)
+import Control.Monad.IO.Class (MonadIO)
+import Data.Aeson
+import Data.Aeson.TH (deriveJSON)
 import qualified Data.Text as T
-import GHC.Generics (Generic)
-
-newtype Ok = Ok T.Text deriving (Eq, Show)
 
 data ServerResponse
   = RespError
@@ -17,6 +17,9 @@ data ServerResponse
       { ok_message :: T.Text,
         ok_request :: T.Text
       }
-  deriving (Generic)
+  deriving (Eq, Show)
 
-instance ToJSON ServerResponse
+$(deriveJSON defaultOptions ''ServerResponse)
+
+root :: MonadIO m => App m ServerResponse
+root = pure $ RespOk "ok" "testing" 

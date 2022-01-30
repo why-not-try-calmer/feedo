@@ -37,6 +37,7 @@ library
       TgramInJson
       TgramOutJson
       Utils
+      Views
   other-modules:
       Paths_feedfarer
   hs-source-dirs:
@@ -51,11 +52,14 @@ library
       aeson
     , async
     , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
     , bytestring
     , containers
     , mongoDB
     , mtl
     , req
+    , servant-blaze
     , servant-server
     , text
     , time
@@ -81,12 +85,15 @@ executable feedfarer-exe
       aeson
     , async
     , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
     , bytestring
     , containers
     , feedfarer
     , mongoDB
     , mtl
     , req
+    , servant-blaze
     , servant-server
     , text
     , time
@@ -113,12 +120,15 @@ test-suite feedfarer-test
       aeson
     , async
     , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
     , bytestring
     , containers
     , feedfarer
     , mongoDB
     , mtl
     , req
+    , servant-blaze
     , servant-server
     , text
     , time

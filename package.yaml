@@ -33,6 +33,9 @@ dependencies:
 - wai
 - warp
 - mongoDB
+- servant-blaze
+- blaze-markup
+- blaze-html
 
 library:
   source-dirs: src

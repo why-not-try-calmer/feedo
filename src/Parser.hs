@@ -26,9 +26,9 @@ getTime :: String -> Maybe UTCTime
 getTime s = if isNothing first_pass then iso8601ParseM s else first_pass
     where
         first_pass = foldr step Nothing formats
-        formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z"]
         step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
-
+        formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
+        
 averageInterval :: [UTCTime] -> Maybe NominalDiffTime
 averageInterval [] = Nothing
 averageInterval (x:xs) = go [] x (sort xs)
