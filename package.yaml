@@ -36,6 +36,7 @@ dependencies:
 - servant-blaze
 - blaze-markup
 - blaze-html
+- uri-encode
 
 library:
   source-dirs: src

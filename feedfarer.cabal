@@ -64,6 +64,7 @@ library
     , text
     , time
     , unordered-containers
+    , uri-encode
     , wai
     , warp
     , xml-conduit
@@ -98,6 +99,7 @@ executable feedfarer-exe
     , text
     , time
     , unordered-containers
+    , uri-encode
     , wai
     , warp
     , xml-conduit
@@ -133,6 +135,7 @@ test-suite feedfarer-test
     , text
     , time
     , unordered-containers
+    , uri-encode
     , wai
     , warp
     , xml-conduit
