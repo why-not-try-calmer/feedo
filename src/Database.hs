@@ -99,13 +99,18 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
 
 {- Actions -}
 
-writeOrRetry :: (Monad m, Db m) => WriteResult -> AppConfig -> m (Either () WriteResult) -> m DbRes
+writeOrRetry :: (MonadIO m, Db m) => WriteResult -> AppConfig -> m (Either () WriteResult) -> m DbRes
 writeOrRetry res env action =
     if not $ failed res then pure DbOk
     else openDbHandle env >> action >>= \case
-        Left _ -> giveUp
-        Right retried -> if failed retried then giveUp else pure DbOk
-    where   giveUp = pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
+        Left _ -> liftIO $ giveUp env res 
+        Right retried -> if failed retried then liftIO $ giveUp env retried else pure DbOk
+    where
+        giveUp config err = do
+            writeChan (postjobs config) . JobTgAlert $
+                "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
+                " If the connector timed out, one retry will be carried out."
+            pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
 
 searchKeywords :: S.Set T.Text -> [Document]
 searchKeywords ws =
