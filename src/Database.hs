@@ -206,11 +206,24 @@ evalMongo env (UpsertFeeds feeds) =
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
         Right res -> writeOrRetry res env action
+evalMongo env (View flinks start end) =
+    let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
+    in  withMongo env query >>= \case
+        Left _ -> pure $ DbErr FailedToLoadFeeds
+        Right is -> pure $ DbView (map bsonToItem is)
 
 {- Items -}
 
 itemToBson :: Item -> Document
 itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_feed_link" =: i_feed_link i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
+
+bsonToItem :: Document -> Item
+bsonToItem doc = Item 
+    (fromJust $ M.lookup "i_title" doc)
+    (fromJust $ M.lookup "i_desc" doc)
+    (fromJust $ M.lookup "i_link" doc)
+    (fromJust $ M.lookup "i_feed_link" doc)
+    (fromJust $ M.lookup "i_pubdate" doc)
 
 {- Feeds -}
 
@@ -229,7 +242,7 @@ feedToBson Feed {..} =
 bsonToFeed :: Document -> Feed
 bsonToFeed doc =
     let raw_items = fromJust $ M.lookup "f_items" doc
-        items = map (\i -> Item (fromJust $ M.lookup "i_title" i) (fromJust $ M.lookup "i_desc" i) (fromJust $ M.lookup "i_link" i) (fromMaybe (fromJust $ M.lookup "f_link" doc) $ M.lookup "i_feed_link" i) (fromJust $ M.lookup "i_pubdate" i)) raw_items
+        items = map bsonToItem raw_items
     in  Feed {
             f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom,
             f_desc = fromJust $ M.lookup "f_desc" doc,

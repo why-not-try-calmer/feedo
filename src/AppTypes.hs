@@ -239,17 +239,18 @@ data DbCreds
 data DbConnector = MongoPipe Pipe | SomethingElse
 
 data DbAction
-  = UpsertFeeds [Feed]
-  | Get100Feeds
-  | GetFeed FeedLink
-  | GetAllChats
-  | UpsertChat SubChat
-  | UpsertChats SubChats
+  = ArchiveItems [Feed]
   | DeleteChat ChatId
+  | Get100Feeds
+  | GetAllChats
+  | GetFeed FeedLink
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
-  | ArchiveItems [Feed]
   | PruneOldItems UTCTime
+  | UpsertChat SubChat
+  | UpsertChats SubChats
+  | UpsertFeeds [Feed]
+  | View [FeedLink] UTCTime UTCTime
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
@@ -259,6 +260,7 @@ data DbRes = DbFeeds [Feed]
   | DbErr DbError
   | DbOk
   | DbSearchRes Keywords [SearchResult]
+  | DbView [Item]
 
 data DbError
   = PipeNotAcquired
@@ -267,6 +269,7 @@ data DbError
   | FailedToUpdate T.Text T.Text
   | FailedToLog
   | FailedToLoadFeeds
+  | BadQuery T.Text
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
@@ -276,6 +279,7 @@ renderDbError (FailedToUpdate items reason) = "Unable to update the following it
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
+renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt
 
 {- Feeds -}
 

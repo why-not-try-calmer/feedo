@@ -2,13 +2,11 @@
 
 module Responses where
 
+import AppTypes (App)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson
 import Data.Aeson.TH (deriveJSON)
 import qualified Data.Text as T
-import qualified Text.Blaze.Html as Html
-import Text.Blaze.Html5 ((!))
-import qualified Text.Blaze.Html5 as Html
-import qualified Text.Blaze.Html5.Attributes as Attr
 
 data ServerResponse
   = RespError
@@ -23,6 +21,5 @@ data ServerResponse
 
 $(deriveJSON defaultOptions ''ServerResponse)
 
-mkForm :: Html.Html
-mkForm =
-    Html.div ! Attr.class_ "row" $ pure mempty
+root :: MonadIO m => App m ServerResponse
+root = pure $ RespOk "ok" "testing" 

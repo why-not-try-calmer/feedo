@@ -24,17 +24,18 @@ import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
+import Views (view)
 
 type BotAPI =
     Get '[JSON] ServerResponse :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
-    "accept" :> Capture "token" T.Text :> Capture "email" T.Text :> Get '[HTML] Markup
+    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
 
 botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = root :<|> handleWebhook :<|> acceptForm    where
+server = root :<|> handleWebhook :<|> view    where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
@@ -60,12 +61,6 @@ server = root :<|> handleWebhook :<|> acceptForm    where
                                     Left err -> finishWith env cid err
                                     Right r -> reply (tok env) cid r (postjobs env)
 
-    root :: MonadIO m => App m ServerResponse
-    root = pure $ RespOk "ok" "testing"
-
-    acceptForm :: MonadIO m => T.Text -> T.Text -> App m Markup
-    acceptForm token email = pure mkForm
-
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server
 
@@ -76,7 +71,7 @@ makeConfig :: [(String, String)] -> IO (AppConfig, Int, Maybe [T.Text])
 makeConfig env =
     let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
         alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
-        webhook = 
+        webhook =
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
             in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
         connection_string = T.pack . fromJust $ lookup "MONGODB_CONNECTION_STRING" env
@@ -85,7 +80,7 @@ makeConfig env =
             host_name = T.unpack hn,
             database_name = db,
             user_name = un,
-            password = pass 
+            password = pass
         }
         port = maybe 80 read $ lookup "PORT" env
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
@@ -95,7 +90,7 @@ makeConfig env =
     mvar2 <- newMVar HMS.empty
     chan <- newChan
     pipe_ref <- initConnectionMongo creds >>= \case
-        Left err -> throwIO . userError $ T.unpack $ renderDbError err   
+        Left err -> throwIO . userError $ T.unpack $ renderDbError err
         Right pipe -> newIORef pipe
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
@@ -114,9 +109,9 @@ initStart config mb_urls = case mb_urls of
     Just urls -> do
         putStrLn "Found urls. Trying to build feeds..."
         runApp config $ evalFeeds (InitF urls) >> startup
-    where 
+    where
         startup = evalFeeds LoadF >> loadChats >> notifier >> postProcJobs
-        
+
 startApp :: IO ()
 startApp = do
     env <- getEnvironment
