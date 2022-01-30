@@ -46,6 +46,7 @@ view (Just flinks_txt) (Just fr) to = do
         abortWith msg = pure . renderHtml mempty . DbErr . BadQuery $ msg
         h2_txt f Nothing = T.intercalate ", " flinks `T.append` " between " `T.append` f `T.append` " and " `T.append` "now"
         h2_txt f (Just t) = T.intercalate ", " flinks `T.append` " between " `T.append` T.intercalate " and " [f, t]
+        
 renderHtml :: T.Text -> DbRes -> H.Html
 renderHtml query_txt (DbView []) = toHtml $ "No item found for these query parameters"
     `T.append` query_txt

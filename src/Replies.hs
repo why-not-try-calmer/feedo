@@ -12,6 +12,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Parser (renderAvgInterval)
 import Utils (secsToReadable)
+import Network.URI.Encode (encodeText)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -30,6 +31,23 @@ mkdSingles = ["_", "*", "`"]
 
 mkdDoubles :: [T.Text]
 mkdDoubles = ["[", "]"]
+
+mkQuoteUri :: [Item] -> Maybe T.Text
+mkQuoteUri [] = Nothing
+mkQuoteUri items =
+    let (ts, flinks) = foldl' (\(x:xs, !fs) i ->
+            let pub_i = i_pubdate i
+                flink = i_feed_link i
+                fs' = if flink `notElem` fs then flink:fs else fs
+            in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')) ([],[]) items
+        flinks_txt = "?flinks=" `T.append` T.intercalate "\\" flinks
+        from_to_txt = 
+            "&from=" `T.append`
+            (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . head $ ts) `T.append`
+            "&to=" `T.append`
+            (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . last $ ts)
+    in  if length ts < 2 || null flinks then Nothing else Just . encodeText $ 
+            "https://feedfarer-webapp.azurewebsites.net/view" `T.append` flinks_txt `T.append` from_to_txt
 
 class Renderable e where
     render :: e -> T.Text
@@ -83,9 +101,9 @@ instance Renderable SubChat where
             ]
 
 instance Renderable [Item] where
-    render = fst . foldl' step (mempty, 0)
+    render = fst . foldl' into_timeline (mempty, 0)
         where
-        step (!str, !d) i =
+        into_timeline (!str, !d) i =
             let day = utctDay $ i_pubdate i
                 (_, _, d') = toGregorian day
                 date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
