@@ -10,7 +10,7 @@ import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (UTCTime, diffUTCTime)
+import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parser (getFeedFromHref, rebuildFeed)
@@ -201,17 +201,16 @@ dueChatsFeeds chats now =
                 next_notif = sub_next_notification c
                 last_notif = sub_last_notification c
                 c_links = sub_feeds_links c
-            in  if (not . settings_paused $ settings) &&
-                maybe True (< now) next_notif || maybe True (`checkMissedBefore` settings) last_notif
+                interval = settings_batch_interval settings
+            in  if (not . settings_paused $ settings) && 
+                    nextIsNow last_notif next_notif interval
             then (HMS.insert chat_id c hmap, S.union c_links links)
             else (hmap, links)) (HMS.empty, S.empty) chats
     in  (chats', S.toList links')
     where
-        checkMissedBefore last_t settings =
-            let mb_every_secs = batch_every_secs . settings_batch_interval $ settings
-            in  case mb_every_secs of
-                Nothing -> diffUTCTime now last_t > 86400
-                Just every_secs -> diffUTCTime now last_t > every_secs
+        nextIsNow Nothing Nothing _ = True
+        nextIsNow Nothing (Just next_t) _ = next_t < now
+        nextIsNow (Just last_t) _ i = findNextTime last_t i < now
 
 regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
 regenFeeds chats = ask >>= \env ->
