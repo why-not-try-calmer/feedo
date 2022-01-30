@@ -17,8 +17,10 @@ import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
 
-view :: MonadIO m => T.Text -> T.Text -> Maybe T.Text -> App m Markup
-view flinks_txt fr mb_to = do
+view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
+view Nothing _ _ = pure "Missing a comma-separated list of urls"
+view _ Nothing _ = pure "Missing a datestring (format: '2022-01-28')"
+view (Just flinks_txt) (Just fr) to = do
     env <- ask
     if null flinks then abortWith "No links given or invalid links. Make sure to pass a string of valid, comma-separated links."
     else
@@ -34,7 +36,7 @@ view flinks_txt fr mb_to = do
     where
         parsed = foldl' (\acc m -> case m of
             Nothing -> acc
-            Just v -> acc ++ [getTime . T.unpack $ v]) [] [Just fr, mb_to]
+            Just v -> acc ++ [getTime . T.unpack $ v]) [] [Just fr, to]
         flinks = case traverse eitherUrlScheme $ T.splitOn "," flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
