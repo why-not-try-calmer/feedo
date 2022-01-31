@@ -66,24 +66,22 @@ view (Just flinks_txt) (Just fr) m_to = do
         abortWith msg = pure . renderItemsView [] mempty Nothing . DbErr . BadQuery $ msg
 
 renderItemsView :: [T.Text] -> T.Text -> Maybe T.Text -> DbRes -> H.Html
+renderItemsView _ _ _ (DbErr err) = toHtml $ renderDbError err
 renderItemsView _ _ _ (DbView []) = "Your query is valid, but no item matched. Try with different urls and/or a different time window."
 renderItemsView flinks from m_to (DbView items) = H.docTypeHtml $ do
     H.head $ do
-        H.title "@feedfarer_bot::view::results"
+        H.title "feedfarer_bot/view/results"
         H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
     H.body $ do
-        H.h3 "Query"
-        H.p "Feeds queried about"
+        H.h3 . toHtml $ "Feeds found (" `T.append` (T.pack . show . length $ flinks) `T.append` ")" 
         H.ul $ forM_ flinks (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
-        H.p "Time window"
-        H.p . toHtml $ "between " `T.append` from `T.append` " and " `T.append` fromMaybe "now" m_to `T.append` "."
-        H.h3 "Results"
+        H.p . toHtml $ "Time window: between " `T.append` from `T.append` " and " `T.append` fromMaybe "now" m_to `T.append` "."
+        H.h3 . toHtml $ "Items found (" `T.append` (T.pack . show . length $ items) `T.append` " items)" 
         H.ul $ forM_ ordered_items (\is -> do
-            H.p (toHtml . i_feed_link . head $ is)
+            H.p . toHtml $ "(" `T.append` (i_feed_link . head $ is) `T.append` ") items"
             H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
         H.p "To get your favorite web feeds posted to your Telegram account, start talking to "
         H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
-            
     where
         go m _ [] = m
         go m d (i:is) =
@@ -98,5 +96,4 @@ renderItemsView flinks from m_to (DbView items) = H.docTypeHtml $ do
             in  case Map.lookup flink acc of
                 Nothing -> Map.insert flink [i] acc
                 Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty items
-renderItemsView _ _ _ (DbErr err) = toHtml $ renderDbError err
 renderItemsView _ _ _ _ = mempty
