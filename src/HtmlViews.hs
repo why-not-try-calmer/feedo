@@ -23,7 +23,7 @@ import Data.Maybe (fromMaybe)
 home :: MonadIO m => App m Markup
 home = pure . H.docTypeHtml $ do
     H.head $ do
-        H.title "@feedfarer_bot::view::home"
+        H.title "feedfarer_bot/view/home"
         H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
     H.body $ do
         H.h3 "This might have been"
@@ -81,7 +81,9 @@ renderItemsView flinks from m_to (DbView items) = H.docTypeHtml $ do
         H.ul $ forM_ ordered_items (\is -> do
             H.p (toHtml . i_feed_link . head $ is)
             H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
-        H.p "To get your favorite web feeds posted to your Telegram account, start talking to https://t.me/feedfarer_bot !"
+        H.p "To get your favorite web feeds posted to your Telegram account, start talking to "
+        H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
+            
     where
         go m _ [] = m
         go m d (i:is) =
