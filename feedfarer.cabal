@@ -28,16 +28,15 @@ library
       AppTypes
       Backend
       Database
+      HtmlViews
       Jobs
       Parser
       Replies
       Requests
-      Responses
       TgActions
       TgramInJson
       TgramOutJson
       Utils
-      Views
   other-modules:
       Paths_feedfarer
   hs-source-dirs:

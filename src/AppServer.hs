@@ -16,7 +16,6 @@ import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Requests (reply)
-import Responses
 import Servant
 import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
@@ -24,10 +23,10 @@ import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
-import Views (view)
+import HtmlViews
 
 type BotAPI =
-    Get '[JSON] ServerResponse :<|>
+    Get '[HTML] Markup :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
 
@@ -35,7 +34,7 @@ botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = root :<|> handleWebhook :<|> view    where
+server = home :<|> handleWebhook :<|> view    where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->

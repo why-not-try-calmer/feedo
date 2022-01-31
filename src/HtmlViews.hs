@@ -1,4 +1,4 @@
-module Views where
+module HtmlViews where
 
 import AppTypes
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
@@ -20,6 +20,25 @@ import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
 import Data.Maybe (fromMaybe)
 
+home :: MonadIO m => App m Markup
+home = pure . H.docTypeHtml $ do
+    H.head $ do
+        H.title "@feedfarer_bot::view::home"
+        H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
+    H.body $ do
+        H.h3 "This might have been"
+        H.p "...your query..."
+        H.ul $ forM_ [] (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
+        H.p "and this the time window"
+        H.p . toHtml $ "between " `T.append` "a date to specifiy" `T.append` " and " `T.append` fromMaybe "now" (Just "another date to specify") `T.append` "."
+        H.h3 "This might have been the results"
+        H.ul $ forM_ ["item1", "item2", "item3"] (\i -> do
+            H.p "To start the day with something beautiful"
+            H.ul $ H.li $ H.article i)
+        H.p "But mostly useful, start talking to " 
+            >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
+            >> H.p " and get your favorite web feeds posted to your Telegram account!"
+    
 view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
 view Nothing _ _ = pure "Missing a anti-slash-separated list of urls. Example of a full query: \
     \ /view?flinks=https://my_url1.org\\https://myurl2.org&from=2022-01-28&to=2022-01-30"
@@ -34,8 +53,8 @@ view (Just flinks_txt) (Just fr) m_to = do
             \ Make sure to use the format as in '2022-28-01,2022-30-01' \
             \ for the 2-days interval between January 28 and January 30, 2022. \
             \ The second parameter is optional."
-        Just [f] -> liftIO getCurrentTime >>= \now -> evalDb env (View flinks f now) <&> renderHtml flinks fr Nothing
-        Just [f, t] -> evalDb env (View flinks f t) <&> renderHtml flinks fr m_to
+        Just [f] -> liftIO getCurrentTime >>= \now -> evalDb env (View flinks f now) <&> renderItemsView flinks fr Nothing
+        Just [f, t] -> evalDb env (View flinks f t) <&> renderItemsView flinks fr m_to
         _ ->  abortWith "Unable to parse values for 'start' and/or 'end'"
     where
         parsed = foldl' (\acc m -> case m of
@@ -44,13 +63,14 @@ view (Just flinks_txt) (Just fr) m_to = do
         flinks = case traverse (eitherUrlScheme . decodeText) $ T.splitOn "\\" flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
-        abortWith msg = pure . renderHtml [] mempty Nothing . DbErr . BadQuery $ msg
+        abortWith msg = pure . renderItemsView [] mempty Nothing . DbErr . BadQuery $ msg
 
-renderHtml :: [T.Text] -> T.Text -> Maybe T.Text -> DbRes -> H.Html
-renderHtml _ _ _ (DbView []) = "Your query is valid, but no item matched. Try with different urls and/or a different time window."
-renderHtml flinks from m_to (DbView items) = H.docTypeHtml $ do
+renderItemsView :: [T.Text] -> T.Text -> Maybe T.Text -> DbRes -> H.Html
+renderItemsView _ _ _ (DbView []) = "Your query is valid, but no item matched. Try with different urls and/or a different time window."
+renderItemsView flinks from m_to (DbView items) = H.docTypeHtml $ do
     H.head $ do
         H.title "@feedfarer_bot::view::results"
+        H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
     H.body $ do
         H.h3 "Query"
         H.p "Feeds queried about"
@@ -70,13 +90,15 @@ renderHtml flinks from m_to (DbView items) = H.docTypeHtml $ do
                 date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
                 date_p = H.p $ toHtml date
                 item_li = do
-                    H.li $ H.a ! Attr.href (textValue $ i_link i) $ toHtml (i_title i)
-                    H.p (toHtml . T.take 120 . i_desc $ i)
+                    H.li $
+                        H.article $ do
+                            H.a ! Attr.href (textValue $ i_link i) $ toHtml (i_title i)
+                            H.p (toHtml . T.take 120 . i_desc $ i)
             in  if d == d' then go (m >> item_li) d' is else go (m >> date_p >> item_li) d' is
         ordered_items = foldl' (\acc i ->
             let flink = i_feed_link i
             in  case Map.lookup flink acc of
                 Nothing -> Map.insert flink [i] acc
                 Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty items
-renderHtml _ _ _ (DbErr err) = toHtml $ renderDbError err
-renderHtml _ _ _ _ = mempty
+renderItemsView _ _ _ (DbErr err) = toHtml $ renderDbError err
+renderItemsView _ _ _ _ = mempty
