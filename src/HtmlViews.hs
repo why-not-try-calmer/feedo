@@ -89,11 +89,7 @@ renderItemsView flinks from m_to (DbView items) = H.docTypeHtml $ do
                 (_, _, d') = toGregorian day
                 date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
                 date_p = H.p $ toHtml date
-                item_li = do
-                    H.li $
-                        H.article $ do
-                            H.a ! Attr.href (textValue $ i_link i) $ toHtml (i_title i)
-                            H.p (toHtml . T.take 120 . i_desc $ i)
+                item_li = H.li $ H.article $ H.a ! Attr.href (textValue $ i_link i) $ toHtml (i_title i)
             in  if d == d' then go (m >> item_li) d' is else go (m >> date_p >> item_li) d' is
         ordered_items = foldl' (\acc i ->
             let flink = i_feed_link i
