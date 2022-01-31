@@ -1,8 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Replies (render, Reply(..), toReply, ToReply(..)) where
-
+module Replies (render, Reply(..), toReply, ToReply(..), encodeUri) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -10,9 +9,9 @@ import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
+import Network.URI.Encode (encodeText)
 import Parser (renderAvgInterval)
 import Utils (secsToReadable)
-import Network.URI.Encode (encodeText)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -32,14 +31,10 @@ mkdSingles = ["_", "*", "`"]
 mkdDoubles :: [T.Text]
 mkdDoubles = ["[", "]"]
 
-mkQuoteUri :: [Item] -> Maybe T.Text
-mkQuoteUri [] = Nothing
-mkQuoteUri items =
-    let (ts, flinks) = foldl' (\(x:xs, !fs) i ->
-            let pub_i = i_pubdate i
-                flink = i_feed_link i
-                fs' = if flink `notElem` fs then flink:fs else fs
-            in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')) ([],[]) items
+encodeUri :: [Item] -> Maybe T.Text
+encodeUri [] = Nothing
+encodeUri items =
+    let (ts, flinks) = foldl' step ([],[]) items
         flinks_txt = "?flinks=" `T.append` T.intercalate "\\" flinks
         from_to_txt = 
             "&from=" `T.append`
@@ -48,6 +43,18 @@ mkQuoteUri items =
             (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . last $ ts)
     in  if length ts < 2 || null flinks then Nothing else Just . encodeText $ 
             "https://feedfarer-webapp.azurewebsites.net/view" `T.append` flinks_txt `T.append` from_to_txt
+    where
+        step ([], !fs) i = ([i_pubdate i], i_feed_link i:fs)
+        step (x:xs, !fs) i =
+            let pub_i = i_pubdate i
+                flink = i_feed_link i
+                fs' = if flink `notElem` fs then flink:fs else fs
+            in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
+
+{-
+decodeUri :: T.Text -> T.Text
+decodeUri = decodeText
+-}
 
 class Renderable e where
     render :: e -> T.Text
