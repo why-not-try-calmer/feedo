@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Replies (render, Reply(..), toReply, ToReply(..), encodeUri) where
+module Replies (render, Reply(..), toReply, ToReply(..), mkViewUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -31,18 +31,20 @@ mkdSingles = ["_", "*", "`"]
 mkdDoubles :: [T.Text]
 mkdDoubles = ["[", "]"]
 
-encodeUri :: [Item] -> Maybe T.Text
-encodeUri [] = Nothing
-encodeUri items =
-    let (ts, flinks) = foldl' step ([],[]) items
-        flinks_txt = "?flinks=" `T.append` T.intercalate "\\" flinks
-        from_to_txt = 
+mkViewUrl :: [Item] -> Maybe T.Text
+mkViewUrl [] = Nothing
+mkViewUrl items =
+    let base_url = "https://feedfarer-webapp.azurewebsites.net/view"
+        (ts, flinks) = foldl' step ([],[]) items
+        flinks_txt = "?flinks=" `T.append` encodeText (T.intercalate "\\" flinks)
+        from_to_txt =
             "&from=" `T.append`
             (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . head $ ts) `T.append`
             "&to=" `T.append`
             (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . last $ ts)
-    in  if length ts < 2 || null flinks then Nothing else Just . encodeText $ 
-            "https://feedfarer-webapp.azurewebsites.net/view" `T.append` flinks_txt `T.append` from_to_txt
+    in  if length ts < 2 || null flinks
+        then Nothing
+        else Just $ base_url `T.append` flinks_txt `T.append` from_to_txt
     where
         step ([], !fs) i = ([i_pubdate i], i_feed_link i:fs)
         step (x:xs, !fs) i =
