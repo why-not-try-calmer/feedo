@@ -21,11 +21,11 @@ import Data.Time (getCurrentTime, addUTCTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
-  ( toReply,
+  ( toReply, mkBatchUrl
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Utils (findNextTime, scanTimeSlices, hash, mkBatchUrl)
+import Utils (findNextTime, scanTimeSlices, hash)
 
 {- Background tasks -}
 

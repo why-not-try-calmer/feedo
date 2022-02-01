@@ -63,9 +63,6 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
 hash :: String -> Int
 hash = foldl' (\h c -> 33*h `xor` fromEnum c) 5381
 
-mkBatchUrl :: Int -> T.Text
-mkBatchUrl = T.append "https://feedfarer-webapp.azurewebsites.net/batches/" . T.pack . show
-
 {- Time -}
 
 freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]

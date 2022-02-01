@@ -201,7 +201,7 @@ evalMongo env (PruneOldItems t) =
 evalMongo env (ReadBatch _id) =
     let action = findOne (select ["batch_id" =: _id] "batches")
     in  withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "Batch" "Db refused to insert batch items"
+        Left _ -> pure . DbErr $ FailedToUpdate "Batch" "ReadBatch refused to read from the database."
         Right doc -> maybe (pure DbNoBatch) (pure . DbBatch . bsonToBatch) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
