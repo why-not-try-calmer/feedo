@@ -223,7 +223,7 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
                     Nothing -> Just (sub_settings c, [feed_items])
                     Just (s, fits) -> Just (s, feed_items:fits)) (sub_chatid c) hmapping) acc subs
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
-        fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_notification c) $ f_items f
+        fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_digest c) $ f_items f
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
             (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters

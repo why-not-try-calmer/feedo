@@ -48,6 +48,7 @@ notifier = do
                     batch = Batch _id now items flinks
                     mb_batch_link res = case res of DbOk -> Just $ mkBatchUrl _id; _ -> Nothing 
                 in  do
+                    -- writing batch
                     res <- evalDb env $ WriteBatch batch
                     reply tok cid 
                         (toReply (FromFeedsItems feed_items $ mb_batch_link res)
@@ -56,11 +57,19 @@ notifier = do
                     pure (cid, map (f_link . fst) feed_items)
         send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
             \(cid, DbSearchRes keys scope) -> reply tok cid (toReply (FromSearchRes keys scope) Nothing) (postjobs env)
-        send_notifs update search now = fst <$> concurrently (send_tg_notif update now) (send_tg_search search)
+        send_notifs digest search follow now =
+            send_tg_follow follow >> fst <$> concurrently
+                (send_tg_notif digest now)
+                (send_tg_search search)
+        send_tg_follow follow = forConcurrently_ (HMS.toList follow) $
+            \(cid, (settings, feeds_items)) -> reply tok cid 
+                (toReply (FromFeedsItems feeds_items Nothing)
+                (Just settings))
+                (postjobs env)
         updated_notified_chats notified_chats chats now =
             HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
-                sub_last_notification = Just now,
-                sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)
+                sub_last_digest = Just now,
+                sub_next_digest = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)
             } else c) chats
         notify = do
             now <- getCurrentTime
@@ -68,10 +77,10 @@ notifier = do
             -- rebuilding feeds and dispatching notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
-                FeedBatches update_notif search_notif -> do
+                FeedBatches digest_notif follow_notif search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending update & search notifications
-                    notified_chats_feeds <- send_notifs update_notif search_notif now
+                    notified_chats_feeds <- send_notifs digest_notif search_notif follow_notif now
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
@@ -81,6 +90,7 @@ notifier = do
                     -- updating chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = updated_notified_chats notified_chats subs now
+                        -- updating db
                         in  evalDb env (UpsertChats updated_chats) >>= \case
                             DbErr err -> do
                                 writeChan (postjobs env) $ JobTgAlert $ "notifier: failed to \
@@ -92,7 +102,7 @@ notifier = do
                     let perf = scanTimeSlices [t1, t2, t3, t4]
                     when (length perf == 3) $ do
                         let from_keys = T.intercalate ", " . map (T.pack . show) . HMS.keys
-                            (report1, report2) = (from_keys update_notif, from_keys search_notif)
+                            (report1, report2) = (from_keys digest_notif, from_keys search_notif)
                             msg = "notifier ran on update notif package for "
                                 `T.append` report1
                                 `T.append` " and search notif package for "
@@ -105,6 +115,7 @@ notifier = do
                             log_updating = perf !! 2,
                             log_total = sum perf
                             }
+                        -- writing logs
                         writeChan (postjobs env) $ JobLog item
                 FeedsError err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \

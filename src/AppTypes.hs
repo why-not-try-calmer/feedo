@@ -105,8 +105,9 @@ data Settings = Settings {
 
 data SubChat = SubChat
   { sub_chatid :: ChatId,
-    sub_last_notification :: Maybe UTCTime,
-    sub_next_notification :: Maybe UTCTime,
+    sub_last_digest :: Maybe UTCTime,
+    sub_next_digest :: Maybe UTCTime,
+    sub_last_follow :: Maybe UTCTime,
     sub_feeds_links :: S.Set FeedLink,
     sub_settings :: Settings
 } deriving (Show, Eq)
@@ -312,7 +313,7 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
+    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
     | FeedLinkBatch [(FeedLink, [Item])]
 
 {- Logs -}

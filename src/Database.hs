@@ -308,14 +308,15 @@ bsonToChat doc =
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
-            sub_last_notification = M.lookup "sub_last_notification" doc,
-            sub_next_notification = M.lookup "sub_next_notification" doc,
+            sub_last_digest = M.lookup "sub_last_digest" doc,
+            sub_next_digest = M.lookup "sub_next_digest" doc,
+            sub_last_follow = M.lookup "sub_last_follow" doc,
             sub_feeds_links = S.fromList feeds_links,
             sub_settings = feeds_settings_docs
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_notification next_notification flinks settings) =
+chatToBson (SubChat chat_id last_digest next_digest last_follow flinks settings) =
     let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
         searchset = S.toList . match_searchset . settings_word_matches $ settings
         only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
@@ -336,8 +337,9 @@ chatToBson (SubChat chat_id last_notification next_notification flinks settings)
             (batch_at . settings_batch_interval $ settings)
     in  [
             "sub_chatid" =: chat_id,
-            "sub_last_notification" =: last_notification,
-            "sub_next_notification" =: next_notification,
+            "sub_last_digest" =: last_digest,
+            "sub_next_digest" =: next_digest,
+            "sub_last_follow" =: last_follow,
             "sub_feeds_links" =: S.toList flinks,
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
