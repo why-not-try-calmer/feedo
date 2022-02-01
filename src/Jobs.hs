@@ -87,7 +87,7 @@ notifier = do
                         read_feeds = S.toList . S.fromList . foldMap snd $ notified_chats_feeds
                     -- increasing reads count
                     writeChan (postjobs env) $ JobIncReadsJob read_feeds
-                    -- updating chats
+                    -- confirming notifications against locally stored + database chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = updated_notified_chats notified_chats subs now
                         -- updating db
