@@ -11,7 +11,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
 import Parser (renderAvgInterval)
-import Utils (secsToReadable)
+import Utils (secsToReadable, hash)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -31,7 +31,7 @@ mkdSingles = ["_", "*", "`"]
 mkdDoubles :: [T.Text]
 mkdDoubles = ["[", "]"]
 
-mkViewUrl :: [Item] -> Maybe T.Text
+mkViewUrl ::[Item] -> Maybe T.Text
 mkViewUrl [] = Nothing
 mkViewUrl items =
     let base_url = "https://feedfarer-webapp.azurewebsites.net/view"
@@ -52,6 +52,12 @@ mkViewUrl items =
                 flink = i_feed_link i
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
+
+mkBatchUrl :: UTCTime -> (T.Text, T.Text)
+mkBatchUrl now = 
+    let h = T.pack . show . hash . show $ now
+        base_url = "https://feedfarer-webapp.azurewebsites.net/batches/"
+    in  (base_url `T.append` h, h)
 
 {-
 decodeUri :: T.Text -> T.Text

@@ -14,6 +14,7 @@ import Data.Time.Clock.POSIX
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Data.Int (Int64)
+import Data.Bits (Bits(xor))
 
 {- Data -}
 
@@ -58,6 +59,9 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
     Just chat ->
         let diff = upper_bound - length (sub_feeds_links chat)
         in  diff < 0
+
+hash :: String -> Int
+hash = foldl' (\h c -> 33*h `xor` fromEnum c) 5381
 
 {- Time -}
 

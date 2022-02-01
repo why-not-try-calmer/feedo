@@ -28,13 +28,14 @@ import HtmlViews
 type BotAPI =
     Get '[HTML] Markup :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
+    "batches" :> Capture "batch_id" Int :> Get '[HTML] Markup :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
 
 botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = home :<|> handleWebhook :<|> view    where
+server = home :<|> handleWebhook :<|> batches :<|> view where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->

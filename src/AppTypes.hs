@@ -251,6 +251,7 @@ data DbAction
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
   | View [FeedLink] UTCTime UTCTime
+  | Batch Int
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
@@ -260,7 +261,8 @@ data DbRes = DbFeeds [Feed]
   | DbErr DbError
   | DbOk
   | DbSearchRes Keywords [SearchResult]
-  | DbView [Item]
+  | DbView [Item] UTCTime UTCTime 
+  | DbBatch [Item] Int
 
 data DbError
   = PipeNotAcquired

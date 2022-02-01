@@ -215,7 +215,7 @@ evalMongo env (View flinks start end) =
     let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
     in  withMongo env query >>= \case
         Left _ -> pure $ DbErr FailedToLoadFeeds
-        Right is -> pure $ DbView (map bsonToItem is)
+        Right is -> pure $ DbView (map bsonToItem is) start end
 
 {- Items -}
 
