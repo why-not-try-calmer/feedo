@@ -70,16 +70,18 @@ _Notice_: As of the latest version, this settings _is_ compatible with `batch_at
 
 - `batch_size: <integer>`
     - the number of items to fetch for any single feed
-- `paused: "true" or "false"`
-    - suspend all notifications to the chat
 - `disable_webview: "true" or "false"`
     - allow Telegram to display the last shown items in disable_webview mode
+- `only_search_notif: <list of urls>`
+    - ignore the feeds matching the urls when sending regular updates
+- `paused: "true" or "false"`
+    - suspend all notifications to the chat
 - `pin: "true" or "false"`,
     - have the bot try to pin every batch message
-- `search_then_update: <list of space-separated keywords>`
+- `search_notif: <list of space-separated keywords>`
     - have the bot send an extra notification whenever a feed to which the current chat is subscribed has items in which the keywords are found
-- `only_search_results: <list of urls>`
-    - ignore the feeds matching the urls when sending regular updates
+- `share_link: "true" or "false"`
+    - appends a link at the end of each batch update to a web rendered view
 
 _Notice_: The last two settings allow to completely ignore certain feeds from the regular updates, while still getting notifications on matches.
 
@@ -150,6 +152,7 @@ response    | all the items available from the target feed
 - /changelog: Show the latest changelog
 - /pause `<optional: channel_id>`: Suspend notification to the chat or channel.
 - /resume `<optional: channel_id>`:  Whether the bot is allowed to send notification messages to the chat or channel.
+- /migrate `<from: chat or channel_id> <to: chat or channel id>`: Copies the settings defined for the first chat or channel, to the second. Then runs '/purge' on the first.
 - /purge `<optional: channel_id>` (chat admins only): Make the database forget entirely about the chat or channel.
 - /reset `<optional: channel_id>` (chat admins only): Set the chat's or channel's settings to the defaults
 - /search, /se `<space-separated keywords>` (non-channels only): Search for keywords in all items in all feeds the current chat is subscribed to. 
