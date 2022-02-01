@@ -93,7 +93,7 @@ home = pure . H.docTypeHtml $ do
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
     
 batches :: MonadIO m => Int -> App m Markup
-batches _id = ask >>= \env -> evalDb env (Batch _id) <&> renderDbRes
+batches _id = ask >>= \env -> evalDb env (ReadBatch _id) <&> renderDbRes
 
 view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
 view Nothing _ _ = pure "Missing a anti-slash-separated list of urls. Example of a full query: \

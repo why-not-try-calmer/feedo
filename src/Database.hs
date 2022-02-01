@@ -193,6 +193,11 @@ evalMongo env (IncReads links) =
 evalMongo env (PruneOldItems t) =
     let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
     in  withMongo env action >> pure DbOk
+evalMongo env (ReadBatch _id) = 
+    let action = findOne (select ["batch_id" =: _id] "batches")
+    in  withMongo env action >>= \case
+        Left _ -> pure . DbErr $ FailedToUpdate "Batch" "Db refused to insert batch items"
+        Right doc -> maybe (pure DbNoFeed) (\b -> pure $ DbBatch (bsonToBatch b) _id) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     in  action >>= \case
@@ -216,6 +221,11 @@ evalMongo env (View flinks start end) =
     in  withMongo env query >>= \case
         Left _ -> pure $ DbErr FailedToLoadFeeds
         Right is -> pure $ DbView (map bsonToItem is) start end
+evalMongo env (WriteBatch items _id) = 
+    let action = insert "batches" []
+    in  withMongo env action >>= \case
+        Left _ -> pure . DbErr $ FailedToUpdate "Batch" "Db refused to insert batch items"
+        Right _ -> pure DbOk
 
 {- Items -}
 
@@ -325,6 +335,13 @@ chatToBson (SubChat chat_id last_notification next_notification flinks settings)
             "sub_feeds_links" =: S.toList flinks,
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
+
+{- Batches -}
+
+bsonToBatch :: Document -> [Item]
+bsonToBatch doc = 
+    let items = fromJust $ M.lookup "items" doc
+    in  map bsonToItem items
 
 {- Logs -}
 

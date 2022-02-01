@@ -243,6 +243,7 @@ data DbAction
   | DeleteChat ChatId
   | Get100Feeds
   | GetAllChats
+  | ReadBatch Int
   | GetFeed FeedLink
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
@@ -251,7 +252,7 @@ data DbAction
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
   | View [FeedLink] UTCTime UTCTime
-  | Batch Int
+  | WriteBatch [Item] Int
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
