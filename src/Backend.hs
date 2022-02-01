@@ -13,7 +13,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
-import Parser (getFeedFromHref, rebuildFeed)
+import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
 

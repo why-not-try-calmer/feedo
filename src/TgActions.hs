@@ -14,13 +14,13 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl, responseBody)
-import Parser (eitherUrlScheme, getFeedFromUrlScheme)
+import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
 import Replies (render, toReply)
 import Requests (reqSend, setWebhook)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
-import Utils (maybeUserIdx, parseSettings, partitionEither, tooManySubs)
+import Utils (maybeUserIdx, partitionEither, tooManySubs)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =

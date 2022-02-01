@@ -30,7 +30,7 @@ library
       Database
       HtmlViews
       Jobs
-      Parser
+      Parsing
       Replies
       Requests
       TgActions

@@ -14,13 +14,14 @@ import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTi
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
-import Parser (eitherUrlScheme, getTime)
 import Text.Blaze (Markup, textValue, (!))
 import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
 import qualified Data.HashSet as S
+import Parsing (eitherUrlScheme)
+import Utils (getTime)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of

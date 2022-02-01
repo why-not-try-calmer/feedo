@@ -2,19 +2,20 @@
 
 module Utils where
 import AppTypes
+import Data.Bits (Bits (xor))
 import qualified Data.HashMap.Strict as HMS
+import Data.Int (Int64)
 import Data.List (foldl', sort)
+import Data.Maybe (isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, timeToDaysAndTimeOfDay)
+import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, defaultTimeLocale, diffUTCTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
 import Data.Time.Clock.POSIX
   ( posixSecondsToUTCTime,
     utcTimeToPOSIXSeconds,
   )
-import Text.Read (readMaybe)
+import Data.Time.Format.ISO8601
 import TgramOutJson (ChatId)
-import Data.Int (Int64)
-import Data.Bits (Bits(xor))
 
 {- Data -}
 
@@ -64,6 +65,41 @@ hash :: String -> Int
 hash = foldl' (\h c -> 33*h `xor` fromEnum c) 5381
 
 {- Time -}
+
+getTime :: String -> Maybe UTCTime
+-- tries to parse input string against various time formats
+getTime s = if isNothing first_pass then iso8601ParseM s else first_pass
+    where
+        first_pass = foldr step Nothing formats
+        step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
+        formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
+        
+averageInterval :: [UTCTime] -> Maybe NominalDiffTime
+averageInterval [] = Nothing
+averageInterval (x:xs) = go [] x (sort xs)
+    where
+        {-
+        nroot :: (Integral a, Floating b) => a -> b -> b 
+        n `nroot` x = x ** (1 / fromIntegral n)
+        geo_avg acc = realToFrac $ nroot (length acc) (realToFrac . product . map abs $ acc) :: NominalDiffTime
+        -}
+        avg acc = realToFrac $ floor (sum $ map abs acc) `div` length acc :: NominalDiffTime
+        go !acc _ [] = Just $ avg acc
+        go !acc tn (tm:ts) =
+            let diffed = diffUTCTime tn tm
+            in  go (diffed:acc) tm ts
+
+renderAvgInterval :: Maybe NominalDiffTime -> T.Text
+renderAvgInterval Nothing = "No average interval was computed."
+renderAvgInterval (Just i) =
+    let a = if i < 0 then -i else i
+        hours = floor a `div` 3600 :: Integer
+        (d, h) = go hours 0
+    in  (T.pack . show $ d) `T.append` " days, " `T.append` (T.pack . show $ h) `T.append` " hours."
+    where
+        go !hs !d = if hs < 24 then (d, hs) else go (hs-24 :: Integer) (d+1 :: Integer)
+
+
 
 freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]
 freshLastXDays days now items =
@@ -126,100 +162,12 @@ validSettingsKeys = [
     "batch_size",
     "blacklist",
     "disable_webview",
-    "search_then_update",
-    "only_search_results",
+    "search_notif",
+    "only_search_notif",
     "paused",
-    "pin"
+    "pin",
+    "share_link"
     ]
-
-parseSettings :: [T.Text] -> Either T.Text [ParsingSettings]
-parseSettings [] = Left "Unable to parse from an empty list of strings."
-parseSettings lns = case foldr mkPairs Nothing lns of
-    Nothing -> Left "Unable to parse the settings you've sent, please respect the format: \
-        \ /set <optional: chat_id>\nkey: val val\nkey:val val"
-    Just pairs ->
-        let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
-        if null not_parsed then Right parsed
-        else Left $ T.intercalate ", " not_parsed
-    where
-        intoParsing (!not_parsed, !parsed) (!k, !txt)
-            | k == "batch_at" =
-                let failure l = (l:not_parsed, parsed)
-                    success r = (not_parsed, PBatchAt r:parsed)
-                    collected = sortTimePairs . foldr into_hm [] . T.words $ txt
-                in  if "reset" `T.isInfixOf` txt then success [] else
-                    if null collected
-                    then failure "Unable to parse 'batch_at' values. \
-                        \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
-                        \ Use ':' to separate hours from minutes and whitespaces to separate many time values: '00:00 12:00' for midgnight and noon."
-                    else success collected
-            | k == "batch_every" =
-                let failure l = (l:not_parsed, parsed)
-                    success r = (not_parsed, PBatchEvery r:parsed)
-                    int = T.init txt
-                    t_tag = T.singleton . T.last $ txt
-                    triage n t
-                        | 1 > n = Left "n must be bigger than 0."
-                        | "m" == t = Right $ n * 60
-                        | "h" == t = Right $ n * 3600
-                        | "d" == t = Right $ n * 86400
-                        | otherwise = Left "'batch_every' needs a number of minutes, hours or days. Example: batch_at: 1d, batch_at: 6h, batch_at: 40m."
-                in  if "reset" `T.isInfixOf` txt then success 0 else
-                    if T.length txt < 2 then failure "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)" else
-                    case readMaybe . T.unpack $ int :: Maybe Int of
-                        Nothing -> failure "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)"
-                        Just n -> case triage n t_tag of
-                            Left t -> failure t
-                            Right s -> success $ realToFrac s
-            | k == "batch_size" =
-                if "reset" `T.isInfixOf` txt then (not_parsed, PBatchSize 10:parsed)
-                else case readMaybe . T.unpack $ txt :: Maybe Int of
-                    Nothing -> (k:not_parsed, parsed)
-                    Just n -> (not_parsed, PBatchSize n:parsed)
-            | k == "blacklist" =
-                if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
-                else
-                    let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
-                    in (not_parsed, PBlacklist v:parsed)
-            | k == "disable_webview" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PDisableWebview True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False:parsed) else ("'disable_webview' takes only 'true' or 'false' as values.":not_parsed, parsed)
-            | k == "search_then_update" =
-                if T.length txt < 3 then ("'search_then_update' cannot be shorter than 3 characters.":not_parsed, parsed)
-                else
-                    let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
-                    in (not_parsed, PSearchKws v:parsed)
-            | k == "only_search_results" =
-                if T.length txt < 3 then ("'only_search_results' cannot be shorter than 3 characters.":not_parsed, parsed)
-                else
-                    let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
-                    in (not_parsed, PSearchLinks v:parsed)
-            | k == "paused" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPaused False:parsed) else ("'paused' takes only 'true' or 'false' as values.":not_parsed, parsed)
-            | k == "pin" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPin True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False:parsed) else ("'pin' takes only 'true' or 'false' as values.":not_parsed, parsed)
-            | otherwise = (k:not_parsed, parsed)
-        into_hm val acc =
-            let [hh, mm] = T.splitOn ":" val
-                (m1, m2) = T.splitAt 1 mm
-                mm' =
-                    if m1 == "0" then readMaybe . T.unpack $ m2 :: Maybe Int
-                    else readMaybe . T.unpack $ mm :: Maybe Int
-                hh' = readMaybe . T.unpack $ hh :: Maybe Int
-            in  if T.length val /= 5 || not (":" `T.isInfixOf` val) then []
-                else case sequence [hh', mm'] of
-                    Nothing -> []
-                    Just parsed -> if length parsed /= 2 then [] else
-                        let (h, m) = (head parsed, last parsed)
-                        in  groupPairs h m acc
-        groupPairs h m acc
-            | h < 0 || h > 24 = []
-            | m < 0 || m > 60 = []
-            | otherwise = acc ++ [(h, m)]
-        mkPairs l acc =
-            let (k, rest) = let (h, r) = T.breakOn ":" l in (h, T.drop 1 r)
-            in  if T.null rest then Nothing else case acc of
-                Nothing -> Just [(k, rest)]
-                Just p -> Just $ (k, rest):p
 
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {

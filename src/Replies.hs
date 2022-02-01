@@ -10,8 +10,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
-import Parser (renderAvgInterval)
-import Utils (secsToReadable)
+import Utils (secsToReadable, renderAvgInterval)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
