@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp, Batch (Batch))
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -25,7 +25,7 @@ import Replies
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Utils (findNextTime, scanTimeSlices)
+import Utils (findNextTime, scanTimeSlices, hash, mkBatchUrl)
 
 {- Background tasks -}
 
@@ -40,13 +40,23 @@ notifier = do
         onError (SomeException err) = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
-        send_tg_notif payload = forConcurrently (HMS.toList payload) $
+        send_tg_notif payload now = forConcurrently (HMS.toList payload) $
             \(cid, (settings, feed_items)) ->
-                reply tok cid (toReply (FromFeedsItems feed_items) (Just settings)) (postjobs env)
-                >> pure (cid, map (f_link . fst) feed_items)
+                let _id = hash . show $ now
+                    items = foldMap snd feed_items
+                    flinks = map (f_link . fst) feed_items
+                    batch = Batch _id now items flinks
+                    mb_batch_link res = case res of DbOk -> Just $ mkBatchUrl _id; _ -> Nothing 
+                in  do
+                    res <- evalDb env $ WriteBatch batch
+                    reply tok cid 
+                        (toReply (FromFeedsItems feed_items $ mb_batch_link res)
+                        (Just settings))
+                        (postjobs env)
+                    pure (cid, map (f_link . fst) feed_items)
         send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
             \(cid, DbSearchRes keys scope) -> reply tok cid (toReply (FromSearchRes keys scope) Nothing) (postjobs env)
-        send_notifs update search = fst <$> concurrently (send_tg_notif update) (send_tg_search search)
+        send_notifs update search now = fst <$> concurrently (send_tg_notif update now) (send_tg_search search)
         updated_notified_chats notified_chats chats now =
             HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
                 sub_last_notification = Just now,
@@ -61,7 +71,7 @@ notifier = do
                 FeedBatches update_notif search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending update & search notifications
-                    notified_chats_feeds <- send_notifs update_notif search_notif
+                    notified_chats_feeds <- send_notifs update_notif search_notif now
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds

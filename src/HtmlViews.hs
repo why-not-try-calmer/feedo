@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 module HtmlViews where
 
 import AppTypes
@@ -23,17 +24,17 @@ import qualified Data.HashSet as S
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
-    DbBatch [] _ -> "No item found for this batch. Make sure to use a valid reference to batches."
-    DbBatch items _id -> H.docTypeHtml $ do
+    DbNoBatch -> "No item found for this batch. Make sure to use a valid reference to batches."
+    DbBatch Batch{..} -> H.docTypeHtml $ do
         H.head $ do
             H.title "feedfarer_bot/view/results"
             H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
         H.body $ do
-            H.h2 . toHtml $ "Batch id: " `T.append` (T.pack . show $ _id)
-            H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks items `T.append` ")" 
-            H.ul $ forM_ (flinks items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
-            H.h3 . toHtml $ "Items (" `T.append` nbOf items `T.append` " items)" 
-            H.ul $ forM_ (ordered_items items) (\is -> do
+            H.h2 . toHtml $ "Batch id: " `T.append` (T.pack . show $ batch_id)
+            H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks batch_items `T.append` ")" 
+            H.ul $ forM_ (flinks batch_items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
+            H.h3 . toHtml $ "Items (" `T.append` nbOf batch_items `T.append` " items)" 
+            H.ul $ forM_ (ordered_items batch_items) (\is -> do
                 H.p . toHtml $ "(" `T.append` (i_feed_link . head $ is) `T.append` ") items"
                 H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
             H.p "To get your favorite web feeds posted to your Telegram account, start talking to "

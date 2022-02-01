@@ -11,7 +11,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
 import Parser (renderAvgInterval)
-import Utils (secsToReadable, hash)
+import Utils (secsToReadable)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -52,17 +52,6 @@ mkViewUrl items =
                 flink = i_feed_link i
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
-
-mkBatchUrl :: UTCTime -> (T.Text, T.Text)
-mkBatchUrl now = 
-    let h = T.pack . show . hash . show $ now
-        base_url = "https://feedfarer-webapp.azurewebsites.net/batches/"
-    in  (base_url `T.append` h, h)
-
-{-
-decodeUri :: T.Text -> T.Text
-decodeUri = decodeText
--}
 
 class Renderable e where
     render :: e -> T.Text
@@ -173,11 +162,15 @@ toReply (FromFeedItems f) _ =
             sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
-toReply (FromFeedsItems items) mbs =
+toReply (FromFeedsItems items mb_link) mbs =
     let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
             `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
             `T.append` "\n")
-        payload = foldl' step mempty items
+        escaped_body = foldl' step mempty items
+        escaped_link = case mb_link of
+            Just link -> toHrefEntities Nothing "this link" link
+            Nothing -> mempty
+        payload = escaped_body `T.append` "\nUse " `T.append` escaped_link `T.append` " for a web view."
     in  case mbs of
         Just s -> ChatReply {
             reply_contents = payload,

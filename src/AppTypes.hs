@@ -30,7 +30,7 @@ data Reply =
 
 newtype Path = Path T.Text
 
-{- Items, feeds -}
+{- Items, feeds, batches -}
 
 data Item = Item
   { i_title :: T.Text,
@@ -54,6 +54,13 @@ data Feed = Feed
   deriving (Eq, Show)
 
 data FeedType = Rss | Atom deriving (Eq, Show)
+
+data Batch = Batch {
+    batch_id :: Int,
+    batch_created :: UTCTime,
+    batch_items :: [Item],
+    batch_flinks :: [T.Text]
+} deriving (Show, Eq)
 
 {- Searches -}
 
@@ -207,7 +214,7 @@ data ToReply = FromChangelog
     | FromFeedDetails Feed
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
-    | FromFeedsItems [(Feed, [Item])]
+    | FromFeedsItems [(Feed, [Item])] (Maybe T.Text)
     | FromSearchRes Keywords [SearchResult]
     | FromStart
     deriving (Eq, Show)
@@ -243,27 +250,29 @@ data DbAction
   | DeleteChat ChatId
   | Get100Feeds
   | GetAllChats
-  | ReadBatch Int
   | GetFeed FeedLink
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
+  | PruneOneMonthBatches
   | PruneOldItems UTCTime
+  | ReadBatch Int
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
   | View [FeedLink] UTCTime UTCTime
-  | WriteBatch [Item] Int
+  | WriteBatch Batch
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
   | DbChats [SubChat]
   | DbNoChat
   | DbNoFeed
+  | DbNoBatch
   | DbErr DbError
   | DbOk
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime 
-  | DbBatch [Item] Int
+  | DbBatch Batch
 
 data DbError
   = PipeNotAcquired

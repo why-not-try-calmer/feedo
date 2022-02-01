@@ -10,6 +10,7 @@ import Control.Exception
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (foldl'), traverse_)
+import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
 import Data.List (sortOn)
@@ -17,7 +18,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, getCurrentTime, addUTCTime)
+import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
@@ -103,7 +104,7 @@ writeOrRetry :: (MonadIO m, Db m) => WriteResult -> AppConfig -> m (Either () Wr
 writeOrRetry res env action =
     if not $ failed res then pure DbOk
     else openDbHandle env >> action >>= \case
-        Left _ -> liftIO $ giveUp env res 
+        Left _ -> liftIO $ giveUp env res
         Right retried -> if failed retried then liftIO $ giveUp env retried else pure DbOk
     where
         giveUp config err = do
@@ -190,14 +191,18 @@ evalMongo env (GetFeed link) =
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
+evalMongo env PruneOneMonthBatches =
+    let oneMonth = liftIO $ getCurrentTime <&> addUTCTime (-2592000)
+        action t = deleteAll "batches" [(["batch_created" =: ["$lt" =: t]], [])]
+    in  oneMonth >>= withMongo env . action >> pure DbOk
 evalMongo env (PruneOldItems t) =
     let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
     in  withMongo env action >> pure DbOk
-evalMongo env (ReadBatch _id) = 
+evalMongo env (ReadBatch _id) =
     let action = findOne (select ["batch_id" =: _id] "batches")
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "Batch" "Db refused to insert batch items"
-        Right doc -> maybe (pure DbNoFeed) (\b -> pure $ DbBatch (bsonToBatch b) _id) doc
+        Right doc -> maybe (pure DbNoBatch) (pure . DbBatch . bsonToBatch) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     in  action >>= \case
@@ -221,8 +226,8 @@ evalMongo env (View flinks start end) =
     in  withMongo env query >>= \case
         Left _ -> pure $ DbErr FailedToLoadFeeds
         Right is -> pure $ DbView (map bsonToItem is) start end
-evalMongo env (WriteBatch items _id) = 
-    let action = insert "batches" []
+evalMongo env (WriteBatch batch) =
+    let action = insert "batches" $ batchToBson batch
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "Batch" "Db refused to insert batch items"
         Right _ -> pure DbOk
@@ -338,10 +343,21 @@ chatToBson (SubChat chat_id last_notification next_notification flinks settings)
 
 {- Batches -}
 
-bsonToBatch :: Document -> [Item]
-bsonToBatch doc = 
-    let items = fromJust $ M.lookup "items" doc
-    in  map bsonToItem items
+bsonToBatch :: Document -> Batch
+bsonToBatch doc =
+    let items = map bsonToItem . fromJust $ M.lookup "batch_items" doc
+        created = fromJust $ M.lookup "batch_created" doc
+        _id = fromJust $ M.lookup "batch_id" doc
+        flinks = fromJust $ M.lookup "batch_flinks" doc
+    in  Batch _id created items flinks
+
+batchToBson :: Batch -> Document
+batchToBson Batch{..} = [
+    "batch_id" =: batch_id,
+    "batch_created" =: (batch_created :: UTCTime),
+    "batch_items" =: map itemToBson batch_items,
+    "batch_flinks" =: (S.toList . S.fromList . map i_feed_link $ batch_items :: [T.Text])
+    ]
 
 {- Logs -}
 
