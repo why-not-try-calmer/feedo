@@ -25,7 +25,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
     afterDb hmap env = case HMS.lookup cid hmap of
         Nothing -> case action of
             Sub links ->
-                let created_c = SubChat cid Nothing Nothing Nothing (S.fromList links) defaultChatSettings
+                let created_c = SubChat cid Nothing Nothing (S.fromList links) defaultChatSettings
                 in  getCurrentTime >>= \now ->
                         let updated_c = created_c { sub_next_digest =
                                 Just $ findNextTime now (settings_digest_interval . sub_settings $ created_c)
@@ -162,7 +162,8 @@ evalFeeds (IncReadsF links) = ask >>= \env -> do
 evalFeeds Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     now <- getCurrentTime
-    let (due_for_digest, to_rebuild_flinks, due_for_follow) = collectDue chats now
+    let last_run = last_worker_run env
+        (due_for_digest, to_rebuild_flinks, due_for_follow) = collectDue chats last_run now
     -- stop here if no chat is due
     if null due_for_digest && null due_for_follow then pure FeedsOk else do
         -- else rebuilding all feeds with any subscribers
@@ -196,8 +197,8 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 -- returning to calling thread
                 pure (to_keep_in_memory, FeedDigests digest_notif follow_notif dbres)
 
-collectDue :: SubChats -> UTCTime -> (SubChats, [FeedLink], SubChats)
-collectDue chats now =
+collectDue :: SubChats -> Maybe UTCTime -> UTCTime -> (SubChats, [FeedLink], SubChats)
+collectDue chats last_run now =
     let (chats', links', follow') = foldl' (\(!digests, !links, !follows) c@SubChat{..} ->
             let nochange = (digests, links, follows)
                 interval = settings_digest_interval sub_settings
@@ -206,8 +207,8 @@ collectDue chats now =
             in  if settings_paused sub_settings then nochange else
                 if nextIsNow sub_last_digest sub_next_digest interval
                 then (inserted, unioned, follows)
-                else case sub_last_follow of
-                    Nothing -> nochange
+                else case last_run of
+                    Nothing -> (digests, links, inserted)
                     Just t ->     
                         if addUTCTime 1200 t < now 
                         then (digests, unioned, inserted)
