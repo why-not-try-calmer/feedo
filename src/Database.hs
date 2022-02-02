@@ -328,7 +328,9 @@ chatToBson (SubChat chat_id last_digest next_digest last_follow flinks settings)
             "settings_digest_size" =: settings_digest_size settings,
             "settings_paused" =: settings_paused settings,
             "settings_disable_web_view" =: settings_disable_web_view settings,
-            "settings_pin" =: settings_pin settings
+            "settings_pin" =: settings_pin settings,
+            "settings_share_link" =: settings_share_link settings,
+            "settings_follow" =: settings_follow settings
             ]
         with_secs = maybe []
             (\secs -> ["settings_digest_every_secs" =: secs])
@@ -441,3 +443,11 @@ purgeCollections env colls =
         Right res ->
             if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
             else pure $ Right ()
+
+{- Remapping -}
+
+remapChats :: (MonadIO m, Db m) => AppConfig -> SubChats -> m (Either String ())
+remapChats env chats =
+    let selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) $ HMS.elems chats
+        action =  updateAll "chats" selector
+    in  withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()

@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Replies (render, Reply(..), toReply, ToReply(..), mkViewUrl, mkBatchUrl) where
+module Replies (render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -52,8 +52,8 @@ mkViewUrl items =
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
-mkBatchUrl :: Int -> T.Text
-mkBatchUrl = T.append "https://feedfarer-webapp.azurewebsites.net/batches/" . T.pack . show . abs
+mkDigestUrl :: Int -> T.Text
+mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/batches/" . T.pack . show . abs
 
 class Renderable e where
     render :: e -> T.Text

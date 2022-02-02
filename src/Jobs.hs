@@ -21,7 +21,7 @@ import Data.Time (getCurrentTime, addUTCTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
-  ( toReply, mkBatchUrl
+  ( toReply, mkDigestUrl
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
@@ -62,7 +62,7 @@ notifier = do
                     items = foldMap snd feed_items
                     flinks = map (f_link . fst) feed_items
                     batch = Digest _id now items flinks
-                    mb_batch_link res = case res of DbOk -> Just $ mkBatchUrl _id; _ -> Nothing 
+                    mb_batch_link res = case res of DbOk -> Just $ mkDigestUrl _id; _ -> Nothing 
                 in  do
                     res <- evalDb env $ WriteDigest batch
                     reply tok cid 
