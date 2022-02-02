@@ -62,7 +62,7 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
         in  diff < 0
 
 hash :: String -> Int
-hash = foldl' (\h c -> 33*h `xor` fromEnum c) 5381
+hash = abs . foldl' (\h c -> 33*h `xor` fromEnum c) 5381
 
 {- Time -}
 
