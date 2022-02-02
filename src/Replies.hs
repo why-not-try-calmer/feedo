@@ -174,11 +174,9 @@ toReply (FromFeedItems f) _ =
     in  defaultReply rendered_items
 toReply (FromFeedsItems f_items mb_link) mbs =
     let batch_link = case mb_link of
-            Just link ->
-                let tme_link = "https://t.me/iv?url=" `T.append` encodeText link
-                in  toHrefEntities Nothing "share this batch" tme_link
+            Just link -> toHrefEntities Nothing "share this batch" link
             Nothing -> mempty
-        payload = render f_items `T.append` "\nYou can now " `T.append` batch_link `T.append ` "."
+        payload = render f_items `T.append` "You can now " `T.append` batch_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
             reply_contents = payload,

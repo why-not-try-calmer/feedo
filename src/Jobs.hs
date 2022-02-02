@@ -40,6 +40,22 @@ notifier = do
         onError (SomeException err) = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
+        -- to send search notifications
+        send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
+            \(cid, DbSearchRes keys scope) -> reply tok cid (toReply (FromSearchRes keys scope) Nothing) (postjobs env)
+        -- to send digest notifications
+        send_notifs digest search follow now =
+            send_tg_follow follow >> fst <$> concurrently
+                (send_tg_notif digest now)
+                (send_tg_search search)
+        -- to send follow notifications
+        send_tg_follow follow = forConcurrently_ (HMS.toList follow) $
+            \(cid, (settings, feeds_items)) -> reply tok cid 
+                (toReply (FromFeedsItems feeds_items Nothing)
+                (Just settings))
+                (postjobs env)
+        -- writing the last digest to the db
+        -- sending digest notifications
         send_tg_notif payload now = forConcurrently (HMS.toList payload) $
             \(cid, (settings, feed_items)) ->
                 let _id = hash . show $ now
@@ -48,24 +64,12 @@ notifier = do
                     batch = Batch _id now items flinks
                     mb_batch_link res = case res of DbOk -> Just $ mkBatchUrl _id; _ -> Nothing 
                 in  do
-                    -- writing batch
                     res <- evalDb env $ WriteBatch batch
                     reply tok cid 
                         (toReply (FromFeedsItems feed_items $ mb_batch_link res)
                         (Just settings))
                         (postjobs env)
                     pure (cid, map (f_link . fst) feed_items)
-        send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
-            \(cid, DbSearchRes keys scope) -> reply tok cid (toReply (FromSearchRes keys scope) Nothing) (postjobs env)
-        send_notifs digest search follow now =
-            send_tg_follow follow >> fst <$> concurrently
-                (send_tg_notif digest now)
-                (send_tg_search search)
-        send_tg_follow follow = forConcurrently_ (HMS.toList follow) $
-            \(cid, (settings, feeds_items)) -> reply tok cid 
-                (toReply (FromFeedsItems feeds_items Nothing)
-                (Just settings))
-                (postjobs env)
         updated_notified_chats notified_chats chats now =
             HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
                 sub_last_digest = Just now,
