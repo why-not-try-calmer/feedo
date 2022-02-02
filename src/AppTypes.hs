@@ -31,7 +31,7 @@ data Reply =
 
 newtype Path = Path T.Text
 
-{- Items, feeds, batches -}
+{- Items, feeds, digests -}
 
 data Item = Item
   { i_title :: T.Text,
@@ -56,11 +56,11 @@ data Feed = Feed
 
 data FeedType = Rss | Atom deriving (Eq, Show)
 
-data Batch = Batch {
-    batch_id :: Int,
-    batch_created :: UTCTime,
-    batch_items :: [Item],
-    batch_flinks :: [T.Text]
+data Digest = Digest {
+    digest_id :: Int,
+    digest_created :: UTCTime,
+    digest_items :: [Item],
+    digest_flinks :: [T.Text]
 } deriving (Show, Eq)
 
 {- Searches -}
@@ -78,9 +78,9 @@ data SearchResult = SearchResult {
 
 {- Settings -}
 
-data BatchInterval = BatchInterval {
-    batch_every_secs :: Maybe NominalDiffTime,
-    batch_at :: Maybe [(Int, Int)]
+data DigestInterval = DigestInterval {
+    digest_every_secs :: Maybe NominalDiffTime,
+    digest_at :: Maybe [(Int, Int)]
 } deriving (Eq, Show)
 
 type FeedLink = T.Text
@@ -94,19 +94,21 @@ data WordMatches = WordMatches {
 } deriving (Show, Eq)
 
 data Settings = Settings {
-    settings_batch_interval :: BatchInterval,
-    settings_batch_size :: Int,
+    settings_digest_interval :: DigestInterval,
+    settings_digest_size :: Int,
     settings_disable_web_view :: Bool,
     settings_paused :: Bool,
     settings_pin :: Bool,
     settings_word_matches :: WordMatches,
-    settings_share_link :: Bool
+    settings_share_link :: Bool,
+    settings_follow :: Bool
 } deriving (Show, Eq)
 
 data SubChat = SubChat
   { sub_chatid :: ChatId,
-    sub_last_notification :: Maybe UTCTime,
-    sub_next_notification :: Maybe UTCTime,
+    sub_last_digest :: Maybe UTCTime,
+    sub_next_digest :: Maybe UTCTime,
+    sub_last_follow :: Maybe UTCTime,
     sub_feeds_links :: S.Set FeedLink,
     sub_settings :: Settings
 } deriving (Show, Eq)
@@ -140,16 +142,17 @@ toFeedRef ss
 {- User actions, errors -}
 
 data ParsingSettings =
-    PBatchAt [(Int, Int)] |
-    PBatchEvery NominalDiffTime |
-    PBatchSize Int |
+    PDigestAt [(Int, Int)] |
+    PDigestEvery NominalDiffTime |
+    PDigestSize Int |
     PBlacklist (S.Set T.Text) |
     PDisableWebview Bool |
     PPaused Bool |
     PPin Bool |
     PSearchKws (S.Set T.Text) |
     PSearchLinks (S.Set T.Text) |
-    PShareLink Bool
+    PShareLink Bool |
+    PFollow Bool
     deriving (Show, Eq)
 
 data UserAction
@@ -256,26 +259,26 @@ data DbAction
   | GetFeed FeedLink
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
-  | PruneOneMonthBatches
+  | PruneOneMonthDigests
   | PruneOldItems UTCTime
-  | ReadBatch Int
+  | ReadDigest Int
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
   | View [FeedLink] UTCTime UTCTime
-  | WriteBatch Batch
+  | WriteDigest Digest
   deriving (Show, Eq)
 
 data DbRes = DbFeeds [Feed]
   | DbChats [SubChat]
   | DbNoChat
   | DbNoFeed
-  | DbNoBatch
+  | DbNoDigest
   | DbErr DbError
   | DbOk
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime 
-  | DbBatch Batch
+  | DbDigest Digest
 
 data DbError
   = PipeNotAcquired
@@ -312,8 +315,8 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedBatches (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
-    | FeedLinkBatch [(FeedLink, [Item])]
+    | FeedDigests (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
+    | FeedLinkDigest [(FeedLink, [Item])]
 
 {- Logs -}
 

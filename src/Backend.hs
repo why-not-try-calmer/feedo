@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Backend where
 import AppTypes
@@ -10,7 +11,7 @@ import qualified Data.HashMap.Strict as HMS
 import Data.List (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (UTCTime)
+import Data.Time (UTCTime, addUTCTime)
 import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parsing (getFeedFromHref, rebuildFeed)
@@ -24,10 +25,10 @@ withChat action cid = ask >>= \env -> liftIO $ do
     afterDb hmap env = case HMS.lookup cid hmap of
         Nothing -> case action of
             Sub links ->
-                let created_c = SubChat cid Nothing Nothing (S.fromList links) defaultChatSettings
+                let created_c = SubChat cid Nothing Nothing Nothing (S.fromList links) defaultChatSettings
                 in  getCurrentTime >>= \now ->
-                        let updated_c = created_c { sub_next_notification =
-                                Just $ findNextTime now (settings_batch_interval . sub_settings $ created_c)
+                        let updated_c = created_c { sub_next_digest =
+                                Just $ findNextTime now (settings_digest_interval . sub_settings $ created_c)
                             }
                             inserted_m = HMS.insert cid updated_c hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
@@ -73,10 +74,10 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
-                    updated_next_notification now = Just . findNextTime now . settings_batch_interval $ updated_settings
+                    updated_next_notification now = Just . findNextTime now . settings_digest_interval $ updated_settings
                 in  getCurrentTime >>= \now ->
                         let updated_c = c {
-                                sub_next_notification = updated_next_notification now,
+                                sub_next_digest = updated_next_notification now,
                                 sub_settings = updated_settings
                             }
                             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
@@ -101,7 +102,7 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
             _ -> pure chats_hmap
     where
         update_chats chats now = HMS.fromList $ map (\c ->
-            let c' = c { sub_next_notification = Just $ findNextTime now (settings_batch_interval . sub_settings $ c) }
+            let c' = c { sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c) }
             in  (sub_chatid c, c')) chats
 
 evalFeeds :: MonadIO m => FeedsAction -> App m FeedsRes
@@ -146,7 +147,7 @@ evalFeeds (RemoveF links) = ask >>= \env -> do
 evalFeeds (GetAllXDays links days) = do
     env <- ask
     (feeds, now) <- liftIO $ (,) <$> (readMVar . feeds_state $ env) <*> getCurrentTime
-    pure . FeedLinkBatch . foldFeeds feeds $ now
+    pure . FeedLinkDigest . foldFeeds feeds $ now
     where
         foldFeeds feeds now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect now f acc) [] feeds
         collect now f acc =
@@ -161,11 +162,11 @@ evalFeeds (IncReadsF links) = ask >>= \env -> do
 evalFeeds Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     now <- getCurrentTime
-    let (due_chats, flinks) = dueChatsFeeds chats now
+    let (due_for_digest, to_rebuild_flinks, due_for_follow) = collectDue chats now
     -- stop here if no chat is due
-    if null due_chats then pure FeedsOk else do
+    if null due_for_digest && null due_for_follow then pure FeedsOk else do
         -- else rebuilding all feeds with any subscribers
-        eitherUpdated <- mapConcurrently rebuildFeed flinks
+        eitherUpdated <- mapConcurrently rebuildFeed to_rebuild_flinks
         let (failed, succeeded) = partitionEither eitherUpdated
         -- handling case of some feeds not rebuilding
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $
@@ -179,34 +180,40 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                     to_keep_in_memory = HMS.union fresh_feeds old_feeds
                     -- creating update notification payload
-                    notif = notifFor to_keep_in_memory due_chats
+                    [digest_notif, follow_notif] = map (notifFor to_keep_in_memory) [due_for_digest, due_for_follow]
                     -- preparing search notification payload
                     scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
                         let keywords = match_searchset . settings_word_matches . sub_settings $ chat
                             scope = match_only_search_results . settings_word_matches . sub_settings $ chat
-                        in  if S.null keywords then hmap else HMS.insert cid (keywords, scope) hmap) HMS.empty due_chats
+                        in  if S.null keywords
+                            then hmap
+                            else HMS.insert cid (keywords, scope) hmap) HMS.empty due_for_digest
                 in do
                 -- performing db search
                 dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 -- returning to calling thread
-                pure (to_keep_in_memory, FeedBatches notif dbres)
+                pure (to_keep_in_memory, FeedDigests digest_notif follow_notif dbres)
 
-dueChatsFeeds :: SubChats -> UTCTime -> (SubChats, [FeedLink])
-dueChatsFeeds chats now =
-    let (chats', links') = foldl' (\(!hmap, !links) c ->
-            let chat_id = sub_chatid c
-                settings = sub_settings c
-                next_notif = sub_next_notification c
-                last_notif = sub_last_notification c
-                c_links = sub_feeds_links c
-                interval = settings_batch_interval settings
-            in  if (not . settings_paused $ settings) && 
-                    nextIsNow last_notif next_notif interval
-            then (HMS.insert chat_id c hmap, S.union c_links links)
-            else (hmap, links)) (HMS.empty, S.empty) chats
-    in  (chats', S.toList links')
+collectDue :: SubChats -> UTCTime -> (SubChats, [FeedLink], SubChats)
+collectDue chats now =
+    let (chats', links', follow') = foldl' (\(!digests, !links, !follows) c@SubChat{..} ->
+            let nochange = (digests, links, follows)
+                interval = settings_digest_interval sub_settings
+                unioned = S.union sub_feeds_links links
+                inserted = HMS.insert sub_chatid c follows
+            in  if settings_paused sub_settings then nochange else
+                if nextIsNow sub_last_digest sub_next_digest interval
+                then (inserted, unioned, follows)
+                else case sub_last_follow of
+                    Nothing -> nochange
+                    Just t ->     
+                        if addUTCTime 1200 t < now 
+                        then (digests, unioned, inserted)
+                        else nochange
+                ) (HMS.empty, S.empty, HMS.empty) chats
+    in  (chats', S.toList links', follow')
     where
         nextIsNow Nothing Nothing _ = True
         nextIsNow Nothing (Just next_t) _ = next_t < now

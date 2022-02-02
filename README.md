@@ -1,20 +1,27 @@
 # feedfarer
 A fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
 
+## Contents
+- [What this package provides](#what-this-package-provides)
+- [Bot features](#features)
+- [Usage](#usage)
+- [Beta testing](#beta-testing)
+- [Roadmap](#roadmap)
+- [Test builds](#test-builds)
+- [Deployment](#deployment)
+- [Support this project](#support-this-project)
+
 ## What this package provides
 - a Telegram bot able to post updates to any web feed (Atom or RSS) feed a chat is subscribed to; the bot is also replies directly to commands for consuming feeds at one's favorite pace
-- a library consumed by the said bot so that any user can host and play with it.
+- a server-side application consumed by the said bot so that any user can host and play with it.
 
-## Features of the bot
-- web feed notifications on updates as they come or in batches
+## Features
+- web feed notifications on updates as they come or in digestes
 - subscription management
 - filters, blacklists
 - full-text search
 - supports all Telegram group types
 - does not require permissions
-
-## Usage
-The bot is offered as a service to any Telegram user; just summon up [@feedfarer_bot](https://t.me/feedfarer_bot).
 
 All chats types are supported:
 - one-to-one chats (with the bot)
@@ -23,14 +30,30 @@ All chats types are supported:
 
 The bot does not require any permission; it just need to be a member of the group to which it posts updates.
 
-For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/dev/COMMANDS.md).
+For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).
+
+For typical settings, see [that one](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).
+
+## Usage
+
+### As a service
+The bot is offered as a service to any Telegram user; just summon up [@feedfarer_bot](https://t.me/feedfarer_bot).
 
 __Getting started__:
 
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). The bot listens only to messages using commands defined for it.
-2. Subscribe the chat and have fun with the other commands. By default updates are checked and posted every 20 minutes.
+2. Subscribe the chat to a bunch of web feeds with `/sub <url1 url2 ur3>`.
+3. Adjust your settings with `/set`, as in:
+```
+/set  # mind the linebreak!
+digest_at: 12:00 
+```
 
-## Deployment 
+for a daily noon digest.
+
+For more typical settings, see [that one](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).
+
+### As an application 
 The bot relies upon the Haskell `warp` server. By default it provides an endpoint at `https://<your.nice.domain>/webhook/bot<your token>` handling inbound and outbound HTTP requests from / to Telegram services via webhooks (only webhooks are supported as they provide a more resource-efficient communication method). 
 
 This application is written from scratch, using exclusively HTTP requests-responses as specified by the [Telegram Bot API](https://core.telegram.org/bots/api). It relies on no Telegram SDK or third-party library.
@@ -40,7 +63,7 @@ Ask for an invite with https://t.me/+zMdPlkeEu7w2NjM0.
 
 Check out our channel for more info: https://t.me/feedfarer.
 
-## Roadmap & todo
+## Roadmap
 - [x] Architecture, business logic
 - [x] Implementation
 - [x] Tests
@@ -49,7 +72,7 @@ Check out our channel for more info: https://t.me/feedfarer.
 - [x] Tests in deployment
 - [...] Factoring out database details to avoid depending on mongoDB
 
-## Test build and run (stack)
+## Test builds
 
 __Build__
 
@@ -71,7 +94,8 @@ stack build
 stack exec feedfarer-exe
 ```
 
-## Deployment (docker / podman)
+## Deployment
+
 ### Local
 
 This step requires having an `.env` file in the root directory set as appropriate (see below). Substitute `docker` for `podman` in the instructions if you don't use _podman_.
@@ -98,7 +122,7 @@ Make sure to use the appropriate method to provide the containerized app the pro
 
 Also keep in mind that Telegram requires HTTPS for sending and receiving, but this application _does not_ do any of that. You will need to make sure that the host to which the application is deployed takes care of the HTTPS business.
 
-## Configuration
+### Configuration
 The application expects the following environment variables:
 ```
 ALERT_CHATID=<Telegram chat id>
@@ -117,5 +141,5 @@ WEBHOOK_URL=https://mydomain.org/path/to/wehbook
 
 ```
 
-## Support this bot
+## Support this project
 I am hosting the bot on my own. If you want to [pay me a coffee or a beer](https://paypal.me/WhyNotTryCalmer) to show your appreciation, that will help me maintain the code and pay the electricity bills...

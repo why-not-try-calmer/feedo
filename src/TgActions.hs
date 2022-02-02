@@ -265,7 +265,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
             let subscribed = S.toList . sub_feeds_links $ c
             in  if null subscribed then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else evalFeeds (GetAllXDays subscribed n) >>= \case
-                FeedLinkBatch feeds -> do
+                FeedLinkDigest feeds -> do
                     liftIO $ writeChan (postjobs env) (JobIncReadsJob $ map fst feeds)
                     pure . Right $ toReply (FromFeedLinkItems feeds) (Just $ sub_settings c)
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."

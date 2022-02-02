@@ -191,18 +191,18 @@ evalMongo env (GetFeed link) =
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
-evalMongo env PruneOneMonthBatches =
+evalMongo env PruneOneMonthDigests =
     let oneMonth = liftIO $ getCurrentTime <&> addUTCTime (-2592000)
-        action t = deleteAll "batches" [(["batch_created" =: ["$lt" =: t]], [])]
+        action t = deleteAll "digestes" [(["digest_created" =: ["$lt" =: t]], [])]
     in  oneMonth >>= withMongo env . action >> pure DbOk
 evalMongo env (PruneOldItems t) =
     let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
     in  withMongo env action >> pure DbOk
-evalMongo env (ReadBatch _id) =
-    let action = findOne (select ["batch_id" =: _id] "batches")
+evalMongo env (ReadDigest _id) =
+    let action = findOne (select ["digest_id" =: _id] "digestes")
     in  withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "Batch" "ReadBatch refused to read from the database."
-        Right doc -> maybe (pure DbNoBatch) (pure . DbBatch . bsonToBatch) doc
+        Left _ -> pure . DbErr $ FailedToUpdate "digest" "Readdigest refused to read from the database."
+        Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . bsonTodigest) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     in  action >>= \case
@@ -226,10 +226,10 @@ evalMongo env (View flinks start end) =
     in  withMongo env query >>= \case
         Left _ -> pure $ DbErr FailedToLoadFeeds
         Right is -> pure $ DbView (map bsonToItem is) start end
-evalMongo env (WriteBatch batch) =
-    let action = insert "batches" $ batchToBson batch
+evalMongo env (WriteDigest digest) =
+    let action = insert "digestes" $ digestToBson digest
     in  withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "Batch" "Db refused to insert batch items"
+        Left _ -> pure . DbErr $ FailedToUpdate "digest" "Db refused to insert digest items"
         Right _ -> pure DbOk
 
 {- Items -}
@@ -281,10 +281,10 @@ bsonToChat doc =
     let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
         feeds_settings_docs = Settings {
-            settings_batch_size = fromJust $ M.lookup "settings_batch_size" settings_doc :: Int,
-            settings_batch_interval =
-                let every = M.lookup "settings_batch_every_secs" settings_doc :: Maybe NominalDiffTime
-                    hm_docs = M.lookup "settings_batch_at" settings_doc :: Maybe [Document]
+            settings_digest_size = fromJust $ M.lookup "settings_digest_size" settings_doc :: Int,
+            settings_digest_interval =
+                let every = M.lookup "settings_digest_every_secs" settings_doc :: Maybe NominalDiffTime
+                    hm_docs = M.lookup "settings_digest_at" settings_doc :: Maybe [Document]
                     adjust n
                         | n < 6 && n > 0 = n * 10
                         | otherwise = n
@@ -296,7 +296,7 @@ bsonToChat doc =
                             in  case sequence [h, m] of
                                 Nothing -> []
                                 Just hm -> acc ++ [(head hm, adjust $ last hm)]) [] docs
-                in  BatchInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs),
+                in  DigestInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs),
             settings_word_matches = WordMatches
                 (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
                 (maybe S.empty S.fromList $ M.lookup "settings_searchset" settings_doc)
@@ -304,18 +304,20 @@ bsonToChat doc =
             settings_paused = fromMaybe False $ M.lookup "settings_paused" doc,
             settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" doc,
             settings_pin = fromMaybe False $ M.lookup "settings_pin" doc,
-            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" doc
+            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" doc,
+            settings_follow = fromMaybe False $ M.lookup "settings_follow" doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
-            sub_last_notification = M.lookup "sub_last_notification" doc,
-            sub_next_notification = M.lookup "sub_next_notification" doc,
+            sub_last_digest = M.lookup "sub_last_digest" doc,
+            sub_next_digest = M.lookup "sub_next_digest" doc,
+            sub_last_follow = M.lookup "sub_last_follow" doc,
             sub_feeds_links = S.fromList feeds_links,
             sub_settings = feeds_settings_docs
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_notification next_notification flinks settings) =
+chatToBson (SubChat chat_id last_digest next_digest last_follow flinks settings) =
     let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
         searchset = S.toList . match_searchset . settings_word_matches $ settings
         only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
@@ -323,41 +325,44 @@ chatToBson (SubChat chat_id last_notification next_notification flinks settings)
             "settings_blacklist" =: blacklist,
             "settings_searchset" =: searchset,
             "settings_only_search_results" =: only_search_results,
-            "settings_batch_size" =: settings_batch_size settings,
+            "settings_digest_size" =: settings_digest_size settings,
             "settings_paused" =: settings_paused settings,
             "settings_disable_web_view" =: settings_disable_web_view settings,
-            "settings_pin" =: settings_pin settings
+            "settings_pin" =: settings_pin settings,
+            "settings_share_link" =: settings_share_link settings,
+            "settings_follow" =: settings_follow settings
             ]
         with_secs = maybe []
-            (\secs -> ["settings_batch_every_secs" =: secs])
-            (batch_every_secs . settings_batch_interval $ settings)
+            (\secs -> ["settings_digest_every_secs" =: secs])
+            (digest_every_secs . settings_digest_interval $ settings)
         with_at = maybe []
-            (\hm -> ["settings_batch_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm])
-            (batch_at . settings_batch_interval $ settings)
+            (\hm -> ["settings_digest_at" =: map (\(h, m) -> ["hour" =: h, "minute" =: m]) hm])
+            (digest_at . settings_digest_interval $ settings)
     in  [
             "sub_chatid" =: chat_id,
-            "sub_last_notification" =: last_notification,
-            "sub_next_notification" =: next_notification,
+            "sub_last_digest" =: last_digest,
+            "sub_next_digest" =: next_digest,
+            "sub_last_follow" =: last_follow,
             "sub_feeds_links" =: S.toList flinks,
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
 
-{- Batches -}
+{- digestes -}
 
-bsonToBatch :: Document -> Batch
-bsonToBatch doc =
-    let items = map bsonToItem . fromJust $ M.lookup "batch_items" doc
-        created = fromJust $ M.lookup "batch_created" doc
-        _id = fromJust $ M.lookup "batch_id" doc
-        flinks = fromJust $ M.lookup "batch_flinks" doc
-    in  Batch _id created items flinks
+bsonTodigest :: Document -> Digest
+bsonTodigest doc =
+    let items = map bsonToItem . fromJust $ M.lookup "digest_items" doc
+        created = fromJust $ M.lookup "digest_created" doc
+        _id = fromJust $ M.lookup "digest_id" doc
+        flinks = fromJust $ M.lookup "digest_flinks" doc
+    in  Digest _id created items flinks
 
-batchToBson :: Batch -> Document
-batchToBson Batch{..} = [
-    "batch_id" =: batch_id,
-    "batch_created" =: (batch_created :: UTCTime),
-    "batch_items" =: map itemToBson batch_items,
-    "batch_flinks" =: (S.toList . S.fromList . map i_feed_link $ batch_items :: [T.Text])
+digestToBson :: Digest -> Document
+digestToBson Digest{..} = [
+    "digest_id" =: digest_id,
+    "digest_created" =: (digest_created :: UTCTime),
+    "digest_items" =: map itemToBson digest_items,
+    "digest_flinks" =: (S.toList . S.fromList . map i_feed_link $ digest_items :: [T.Text])
     ]
 
 {- Logs -}
@@ -438,3 +443,11 @@ purgeCollections env colls =
         Right res ->
             if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
             else pure $ Right ()
+
+{- Remapping -}
+
+remapChats :: (MonadIO m, Db m) => AppConfig -> SubChats -> m (Either String ())
+remapChats env chats =
+    let selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) $ HMS.elems chats
+        action =  updateAll "chats" selector
+    in  withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()

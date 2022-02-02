@@ -149,22 +149,36 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     Just pairs ->
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
         if null not_parsed then Right parsed
-        else Left $ T.intercalate ", " not_parsed
+        else Left $ T.intercalate ", " not_parsed `T.append` 
+            "Make sure to use only valid keys: " `T.append` 
+                T.intercalate ", " [
+                    "blacklist",
+                    "digest_at",
+                    "digest_every",
+                    "digest_size",
+                    "disable_webview",
+                    "follow",
+                    "only_search_notif",
+                    "paused",
+                    "pin",
+                    "search_notif",
+                    "share_link"
+                    ]
     where
         intoParsing (!not_parsed, !parsed) (!k, !txt)
-            | k == "batch_at" =
+            | k == "digest_at" =
                 let failure l = (l:not_parsed, parsed)
-                    success r = (not_parsed, PBatchAt r:parsed)
+                    success r = (not_parsed, PDigestAt r:parsed)
                     collected = sortTimePairs . foldr into_hm [] . T.words $ txt
                 in  if "reset" `T.isInfixOf` txt then success [] else
                     if null collected
-                    then failure "Unable to parse 'batch_at' values. \
+                    then failure "Unable to parse 'digest_at' values. \
                         \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
                         \ Use ':' to separate hours from minutes and whitespaces to separate many time values: '00:00 12:00' for midgnight and noon."
                     else success collected
-            | k == "batch_every" =
+            | k == "digest_every" =
                 let failure l = (l:not_parsed, parsed)
-                    success r = (not_parsed, PBatchEvery r:parsed)
+                    success r = (not_parsed, PDigestEvery r:parsed)
                     int = T.init txt
                     t_tag = T.singleton . T.last $ txt
                     triage n t
@@ -172,19 +186,19 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                         | "m" == t = Right $ n * 60
                         | "h" == t = Right $ n * 3600
                         | "d" == t = Right $ n * 86400
-                        | otherwise = Left "'batch_every' needs a number of minutes, hours or days. Example: batch_at: 1d, batch_at: 6h, batch_at: 40m."
+                        | otherwise = Left "'digest_every' needs a number of minutes, hours or days. Example: digest_at: 1d, digest_at: 6h, digest_at: 40m."
                 in  if "reset" `T.isInfixOf` txt then success 0 else
-                    if T.length txt < 2 then failure "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)" else
+                    if T.length txt < 2 then failure "The first character(s) must represent a valid integer, as in digest_every: 1d (one day)" else
                     case readMaybe . T.unpack $ int :: Maybe Int of
-                        Nothing -> failure "The first character(s) must represent a valid integer, as in batch_every: 1d (one day)"
+                        Nothing -> failure "The first character(s) must represent a valid integer, as in digest_every: 1d (one day)"
                         Just n -> case triage n t_tag of
                             Left t -> failure t
                             Right s -> success $ realToFrac s
-            | k == "batch_size" =
-                if "reset" `T.isInfixOf` txt then (not_parsed, PBatchSize 10:parsed)
+            | k == "digest_size" =
+                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestSize 10:parsed)
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
-                    Just n -> (not_parsed, PBatchSize n:parsed)
+                    Just n -> (not_parsed, PDigestSize n:parsed)
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else
@@ -207,7 +221,9 @@ parseSettings lns = case foldr mkPairs Nothing lns of
             | k == "pin" =
                 if "true" `T.isInfixOf` txt then (not_parsed, PPin True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False:parsed) else ("'pin' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "share_link" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPaused False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
+            | k == "follow" =
+                if "true" `T.isInfixOf` txt then (not_parsed, PFollow True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False:parsed) else ("'follow' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | otherwise = (k:not_parsed, parsed)
         into_hm val acc =
             let [hh, mm] = T.splitOn ":" val

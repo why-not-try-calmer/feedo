@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Replies (render, Reply(..), toReply, ToReply(..), mkViewUrl, mkBatchUrl) where
+module Replies (render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -52,8 +52,8 @@ mkViewUrl items =
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
-mkBatchUrl :: Int -> T.Text
-mkBatchUrl = T.append "https://feedfarer-webapp.azurewebsites.net/batches/" . T.pack . show . abs
+mkDigestUrl :: Int -> T.Text
+mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digestes/" . T.pack . show . abs
 
 class Renderable e where
     render :: e -> T.Text
@@ -74,13 +74,13 @@ instance Renderable Feed where
 instance Renderable SubChat where
     render SubChat{..} =
         let adjust c = if c == "0" then "00" else c
-            at = case batch_at . settings_batch_interval $ sub_settings of
+            at = case digest_at . settings_digest_interval $ sub_settings of
                 Nothing -> mempty
                 Just ts -> "every day at " `T.append` foldl' (\s (!h, !m) ->
                         let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
                             s' = if s == mempty then s else s `T.append` ", "
                         in  s' `T.append` body) mempty ts
-            every = maybe mempty secsToReadable (batch_every_secs . settings_batch_interval $ sub_settings)
+            every = maybe mempty secsToReadable (digest_every_secs . settings_digest_interval $ sub_settings)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
                 in  if null bl then "none" else T.intercalate "," bl
@@ -94,11 +94,13 @@ instance Renderable SubChat where
             [   ("Chat id", T.pack . show $ sub_chatid),
                 ("Status", if settings_paused sub_settings then "paused" else "active"),
                 ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
-                ("Batch every", if T.null every then " not defined" else every),
-                ("Batch at", if T.null at then " not defined" else at),
-                ("Batch size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
-                ("Last notification", maybe " none" (T.pack . show) sub_last_notification),
-                ("Next notication", maybe " none scheduled" (T.pack . show) sub_next_notification),
+                ("Digest step", if T.null every then " not defined" else every),
+                ("Digest at", if T.null at then " not defined" else at),
+                ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
+                ("Last digest", maybe " none" (T.pack . show) sub_last_digest),
+                ("Next digest", maybe " none scheduled" (T.pack . show) sub_next_digest),
+                ("Follow", if settings_follow sub_settings then " enabled" else " disabed"),
+                ("Last follow", maybe " none" (T.pack . show) sub_last_follow),
                 ("Blacklist", blacklist),
                 ("Searches", searches),
                 ("Ignore unless search results", only_search_results),
@@ -173,12 +175,10 @@ toReply (FromFeedItems f) _ =
             f_items $ f
     in  defaultReply rendered_items
 toReply (FromFeedsItems f_items mb_link) mbs =
-    let batch_link = case mb_link of
-            Just link ->
-                let tme_link = "https://t.me/iv?url=" `T.append` encodeText link
-                in  toHrefEntities Nothing "share this batch" tme_link
+    let digest_link = case mb_link of
+            Just link -> toHrefEntities Nothing "share this digest" link
             Nothing -> mempty
-        payload = render f_items `T.append` "\nYou can now " `T.append` batch_link `T.append ` "."
+        payload = render f_items `T.append` "You can now " `T.append` digest_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
             reply_contents = payload,
