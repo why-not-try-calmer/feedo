@@ -449,3 +449,12 @@ remapChats env chats =
     let selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) $ HMS.elems chats
         action =  updateAll "chats" selector
     in  withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()
+
+remapDigests :: (MonadIO m, Db m) => AppConfig -> m (Either String ())
+remapDigests env =
+    let selector ds = map (\d -> (["digest_id" =: digest_id d], digestToBson d, [Upsert])) ds
+        get_digests = find (select [] "digests")
+        set_digests ds = updateAll "digests" $ selector ds
+    in  withMongo env (get_digests >>= rest >>= set_digests . map bsonTodigest) >>= \res -> 
+        if any failed res then pure $ Left "Failed"
+        else pure $ Right () 
