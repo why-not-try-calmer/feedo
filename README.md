@@ -5,7 +5,6 @@ A fast, efficient network app for subscribing Telegram chats to web feeds, using
 - [What this package provides](#what-this-package-provides)
 - [Bot features](#features)
 - [Usage](#usage)
-- [Service](#service)
 - [Beta testing](#beta-testing)
 - [Roadmap](#roadmap)
 - [Test build](#test-build)
@@ -24,9 +23,6 @@ A fast, efficient network app for subscribing Telegram chats to web feeds, using
 - supports all Telegram group types
 - does not require permissions
 
-## Usage
-The bot is offered as a service to any Telegram user; just summon up [@feedfarer_bot](https://t.me/feedfarer_bot).
-
 All chats types are supported:
 - one-to-one chats (with the bot)
 - group private
@@ -34,14 +30,30 @@ All chats types are supported:
 
 The bot does not require any permission; it just need to be a member of the group to which it posts updates.
 
-For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/dev/COMMANDS.md).
+For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).
+
+For typical settings, see [that one](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).
+
+## Usage
+
+### As a service
+The bot is offered as a service to any Telegram user; just summon up [@feedfarer_bot](https://t.me/feedfarer_bot).
 
 __Getting started__:
 
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). The bot listens only to messages using commands defined for it.
-2. Subscribe the chat and have fun with the other commands. By default updates are checked and posted every 20 minutes.
+2. Subscribe the chat to a bunch of web feeds with `/sub <url1 url2 ur3>`.
+3. Adjust your settings with `/set`, as in:
+```
+/set
+digest_at: 12:00 
+```
 
-## Service
+for a daily noon digest.
+
+For more typical settings, see [that one](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).
+
+### As an application 
 The bot relies upon the Haskell `warp` server. By default it provides an endpoint at `https://<your.nice.domain>/webhook/bot<your token>` handling inbound and outbound HTTP requests from / to Telegram services via webhooks (only webhooks are supported as they provide a more resource-efficient communication method). 
 
 This application is written from scratch, using exclusively HTTP requests-responses as specified by the [Telegram Bot API](https://core.telegram.org/bots/api). It relies on no Telegram SDK or third-party library.
