@@ -202,7 +202,7 @@ evalMongo env (ReadDigest _id) =
     let action = findOne (select ["digest_id" =: _id] "digestes")
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "digest" "Readdigest refused to read from the database."
-        Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . bsonTodigest) doc
+        Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . bsonToDigest) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
     in  action >>= \case
@@ -347,8 +347,8 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
 
 {- digestes -}
 
-bsonTodigest :: Document -> Digest
-bsonTodigest doc =
+bsonToDigest :: Document -> Digest
+bsonToDigest doc =
     let items = map bsonToItem . fromJust $ M.lookup "digest_items" doc
         created = fromJust $ M.lookup "digest_created" doc
         _id = fromJust $ M.lookup "digest_id" doc
@@ -449,12 +449,3 @@ remapChats env chats =
     let selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) $ HMS.elems chats
         action =  updateAll "chats" selector
     in  withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()
-
-remapDigests :: (MonadIO m, Db m) => AppConfig -> m (Either String ())
-remapDigests env =
-    let selector ds = map (\d -> (["digest_id" =: digest_id d], digestToBson d, [Upsert])) ds
-        get_digests = find (select [] "digests")
-        set_digests ds = updateAll "digests" $ selector ds
-    in  withMongo env (get_digests >>= rest >>= set_digests . map bsonTodigest) >>= \res -> 
-        if any failed res then pure $ Left "Failed"
-        else pure $ Right () 
