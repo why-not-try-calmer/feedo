@@ -279,14 +279,14 @@ bsonToItem doc = Item
 feedToBson :: Feed -> Document
 feedToBson Feed {..} =
     [
-        "f_type" =: show f_type,
+        "f_avg_interval" =: (realToFrac <$> f_avg_interval :: Maybe NominalDiffTime),
         "f_desc" =: f_desc,
-        "f_title" =: f_title,
-        "f_link" =: f_link,
         "f_items" =: map writeDoc (take 30 . sortOn (Down . i_pubdate) $ f_items),
-        "f_avg_interval" =: (realToFrac <$> f_avg_interval :: Maybe Double),
         "f_last_refresh" =: f_last_refresh,
-        "f_reads" =: f_reads
+        "f_link" =: f_link,
+        "f_reads" =: f_reads,
+        "f_title" =: f_title,
+        "f_type" =: (T.pack . show $ f_type)
     ]
 
 bsonToFeed :: Document -> Feed
@@ -294,14 +294,14 @@ bsonToFeed doc =
     let raw_items = fromJust $ M.lookup "f_items" doc
         items = map readDoc raw_items
     in  Feed {
-            f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom,
+            f_avg_interval = M.lookup "f_avg_interval" doc,
             f_desc = fromJust $ M.lookup "f_desc" doc,
-            f_title = fromJust $ M.lookup "f_title" doc,
-            f_link = fromJust $ M.lookup "f_link" doc,
             f_items = items,
-            f_avg_interval = M.lookup "f_avgInterval" doc,
-            f_last_refresh = M.lookup "f_desc" doc,
-            f_reads = fromJust $ M.lookup "f_reads" doc
+            f_last_refresh = M.lookup "f_last_refresh" doc,
+            f_link = fromJust $ M.lookup "f_link" doc,
+            f_reads = fromJust $ M.lookup "f_reads" doc,
+            f_title = fromJust $ M.lookup "f_title" doc,
+            f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom
         }
 
 {- Chats, Settings -}
@@ -331,11 +331,11 @@ bsonToChat doc =
                 (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
                 (maybe S.empty S.fromList $ M.lookup "settings_searchset" settings_doc)
                 (maybe S.empty S.fromList $ M.lookup "settings_only_search_results" settings_doc),
-            settings_paused = fromMaybe False $ M.lookup "settings_paused" doc,
-            settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" doc,
-            settings_pin = fromMaybe False $ M.lookup "settings_pin" doc,
-            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" doc,
-            settings_follow = fromMaybe False $ M.lookup "settings_follow" doc
+            settings_paused = fromMaybe False $ M.lookup "settings_paused" settings_doc,
+            settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" settings_doc,
+            settings_pin = fromMaybe False (M.lookup "settings_pin" settings_doc),
+            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" settings_doc,
+            settings_follow = fromMaybe False $ M.lookup "settings_follow" settings_doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -484,11 +484,11 @@ checkDbMapper :: MonadIO m => m ()
 checkDbMapper = do
     now <- liftIO getCurrentTime
     let item = Item mempty mempty mempty mempty now
-        digest_interval = DigestInterval Nothing Nothing
-        word_matches = WordMatches S.empty S.empty S.empty
-        settings = Settings digest_interval 0 False False False word_matches False False
-        chat = SubChat 0 Nothing Nothing S.empty settings
-        feed = Feed Rss mempty mempty mempty [item] Nothing Nothing 0
+        digest_interval = DigestInterval (Just 0) (Just [(1,20)])
+        word_matches = WordMatches S.empty S.empty (S.fromList ["1","2","3"])
+        settings = Settings digest_interval 0 True False False word_matches False False
+        chat = SubChat 0 (Just now) (Just now) S.empty settings
+        feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         -- log' = LogPerf mempty now 0 0 0 0
         digest = Digest 0 now [] []
         equalities = [
@@ -498,4 +498,6 @@ checkDbMapper = do
             ("chat", chat == (readDoc . writeDoc $ chat))] :: [(T.Text, Bool)]
     if all snd equalities
     then pure () 
-    else liftIO . throwIO . userError . show $ equalities
+    else liftIO $ throwIO . userError $ 
+        "Mapper failed. " ++ (show . filter (not . snd) $ equalities)
+        
