@@ -1,5 +1,4 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Database where
@@ -25,6 +24,30 @@ import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
 
 {- Interface -}
+
+class MongoDoc v where
+    readDoc :: Document -> v
+    writeDoc :: v -> Document
+
+instance MongoDoc SubChat where
+    readDoc = bsonToChat
+    writeDoc = chatToBson
+
+instance MongoDoc Feed where
+    readDoc = bsonToFeed
+    writeDoc = feedToBson
+
+instance MongoDoc Item where
+    readDoc = bsonToItem
+    writeDoc = itemToBson
+
+instance MongoDoc Digest where
+    readDoc = bsonToDigest
+    writeDoc = digestToBson
+
+instance MongoDoc LogItem where
+    readDoc = bsonToLog 
+    writeDoc = undefined
 
 class Db m where
     openDbHandle :: AppConfig -> m ()
@@ -135,7 +158,7 @@ searchKeywords ws =
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (ArchiveItems feeds) =
-    let selector = foldMap (map (\i -> (["i_link" =: i_link i], itemToBson i, [Upsert])) . f_items) feeds
+    let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
     in  action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
@@ -174,14 +197,14 @@ evalMongo env Get100Feeds =
         Left () -> pure $ DbErr $ FailedToUpdate mempty "Get100Feeds failed"
         Right docs ->
             if null docs then pure DbNoFeed
-            else pure . DbFeeds $ map bsonToFeed docs
+            else pure . DbFeeds $ map readDoc docs
 evalMongo env GetAllChats =
     let action = find (select [] "chats")
     in  withMongo env (action >>= rest) >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllChats failed"
         Right docs ->
             if null docs then pure DbNoChat
-            else pure $ DbChats . map bsonToChat $ docs
+            else pure $ DbChats . map readDoc $ docs
 evalMongo env (GetFeed link) =
     let action = withMongo env $ findOne (select ["f_link" =: link] "feeds")
     in  action >>= \case
@@ -202,21 +225,21 @@ evalMongo env (ReadDigest _id) =
     let action = findOne (select ["digest_id" =: _id] "digests")
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
-        Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . bsonToDigest) doc
+        Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
 evalMongo env (UpsertChat chat) =
-    let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
+    let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
         Right _ -> pure DbOk
 evalMongo env (UpsertChats chatshmap) =
     let chats = HMS.elems chatshmap
-        selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) chats
+        selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
         action = withMongo env $ updateAll "chats" selector
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
         Right res -> writeOrRetry res env action
 evalMongo env (UpsertFeeds feeds) =
-    let selector = map (\f -> (["f_link" =: f_link f], feedToBson f, [Upsert])) feeds
+    let selector = map (\f -> (["f_link" =: f_link f], writeDoc f, [Upsert])) feeds
         action = withMongo env $ updateAll "feeds" selector
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
@@ -225,9 +248,9 @@ evalMongo env (View flinks start end) =
     let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
     in  withMongo env query >>= \case
         Left _ -> pure $ DbErr FailedToLoadFeeds
-        Right is -> pure $ DbView (map bsonToItem is) start end
+        Right is -> pure $ DbView (map readDoc is) start end
 evalMongo env (WriteDigest digest) =
-    let action = insert "digests" $ digestToBson digest
+    let action = insert "digests" $ writeDoc digest
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "digest" "Db refused to insert digest items"
         Right _ -> pure DbOk
@@ -235,7 +258,13 @@ evalMongo env (WriteDigest digest) =
 {- Items -}
 
 itemToBson :: Item -> Document
-itemToBson i = ["i_title" =: i_title i, "i_desc" =: i_desc i, "i_feed_link" =: i_feed_link i, "i_link" =: i_link i, "i_pubdate" =: i_pubdate i]
+itemToBson i = [
+    "i_title" =: i_title i, 
+    "i_desc" =: i_desc i, 
+    "i_feed_link" =: i_feed_link i, 
+    "i_link" =: i_link i, 
+    "i_pubdate" =: i_pubdate i
+    ]
 
 bsonToItem :: Document -> Item
 bsonToItem doc = Item
@@ -249,11 +278,12 @@ bsonToItem doc = Item
 
 feedToBson :: Feed -> Document
 feedToBson Feed {..} =
-    [ "f_type" =: show f_type,
+    [ 
+        "f_type" =: show f_type,
         "f_desc" =: f_desc,
         "f_title" =: f_title,
         "f_link" =: f_link,
-        "f_items" =: map itemToBson (take 30 . sortOn (Down . i_pubdate) $ f_items),
+        "f_items" =: map writeDoc (take 30 . sortOn (Down . i_pubdate) $ f_items),
         "f_avg_interval" =: (realToFrac <$> f_avg_interval :: Maybe Double),
         "f_last_refresh" =: f_last_refresh,
         "f_reads" =: f_reads
@@ -262,7 +292,7 @@ feedToBson Feed {..} =
 bsonToFeed :: Document -> Feed
 bsonToFeed doc =
     let raw_items = fromJust $ M.lookup "f_items" doc
-        items = map bsonToItem raw_items
+        items = map readDoc raw_items
     in  Feed {
             f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom,
             f_desc = fromJust $ M.lookup "f_desc" doc,
@@ -349,7 +379,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
 
 bsonToDigest :: Document -> Digest
 bsonToDigest doc =
-    let items = map bsonToItem . fromJust $ M.lookup "digest_items" doc
+    let items = map readDoc . fromJust $ M.lookup "digest_items" doc
         created = fromJust $ M.lookup "digest_created" doc
         _id = fromJust $ M.lookup "digest_id" doc
         flinks = fromJust $ M.lookup "digest_flinks" doc
@@ -359,7 +389,7 @@ digestToBson :: Digest -> Document
 digestToBson Digest{..} = [
     "digest_id" =: digest_id,
     "digest_created" =: (digest_created :: UTCTime),
-    "digest_items" =: map itemToBson digest_items,
+    "digest_items" =: map writeDoc digest_items,
     "digest_flinks" =: (S.toList . S.fromList . map i_feed_link $ digest_items :: [T.Text])
     ]
 
@@ -413,8 +443,8 @@ collectLogStats env = do
     case res of
         Left _ -> pure "Failed to collectLogStats"
         Right (docs_logs, feeds_docs) ->
-            let logs = sortOn log_at . filter (not . T.null . log_message) . map bsonToLog $ docs_logs
-                feeds_counts = map (\d -> let f = bsonToFeed d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
+            let logs = sortOn log_at . filter (not . T.null . log_message) . map readDoc $ docs_logs
+                feeds_counts = map (\d -> let f = readDoc d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
             in  pure $ foldl' (\acc (k, v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
     where
         mkStats logs =
@@ -446,6 +476,6 @@ purgeCollections env colls =
 
 remapChats :: (MonadIO m, Db m) => AppConfig -> SubChats -> m (Either String ())
 remapChats env chats =
-    let selector = map (\c -> (["sub_chatid" =: sub_chatid c], chatToBson c, [Upsert])) $ HMS.elems chats
+    let selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) $ HMS.elems chats
         action =  updateAll "chats" selector
     in  withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()
