@@ -28,7 +28,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 let created_c = SubChat cid Nothing Nothing Nothing (S.fromList links) defaultChatSettings
                 in  getCurrentTime >>= \now ->
                         let updated_c = created_c { sub_next_digest =
-                                Just $ findNextTime now (settings_batch_interval . sub_settings $ created_c)
+                                Just $ findNextTime now (settings_digest_interval . sub_settings $ created_c)
                             }
                             inserted_m = HMS.insert cid updated_c hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
@@ -74,7 +74,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                 _ -> pure (HMS.delete cid hmap, Right ())
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
-                    updated_next_notification now = Just . findNextTime now . settings_batch_interval $ updated_settings
+                    updated_next_notification now = Just . findNextTime now . settings_digest_interval $ updated_settings
                 in  getCurrentTime >>= \now ->
                         let updated_c = c {
                                 sub_next_digest = updated_next_notification now,
@@ -102,7 +102,7 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
             _ -> pure chats_hmap
     where
         update_chats chats now = HMS.fromList $ map (\c ->
-            let c' = c { sub_next_digest = Just $ findNextTime now (settings_batch_interval . sub_settings $ c) }
+            let c' = c { sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c) }
             in  (sub_chatid c, c')) chats
 
 evalFeeds :: MonadIO m => FeedsAction -> App m FeedsRes
@@ -147,7 +147,7 @@ evalFeeds (RemoveF links) = ask >>= \env -> do
 evalFeeds (GetAllXDays links days) = do
     env <- ask
     (feeds, now) <- liftIO $ (,) <$> (readMVar . feeds_state $ env) <*> getCurrentTime
-    pure . FeedLinkBatch . foldFeeds feeds $ now
+    pure . FeedLinkDigest . foldFeeds feeds $ now
     where
         foldFeeds feeds now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect now f acc) [] feeds
         collect now f acc =
@@ -194,13 +194,13 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 -- returning to calling thread
-                pure (to_keep_in_memory, FeedBatches digest_notif follow_notif dbres)
+                pure (to_keep_in_memory, FeedDigests digest_notif follow_notif dbres)
 
 collectDue :: SubChats -> UTCTime -> (SubChats, [FeedLink], SubChats)
 collectDue chats now =
     let (chats', links', follow') = foldl' (\(!digests, !links, !follows) c@SubChat{..} ->
             let nochange = (digests, links, follows)
-                interval = settings_batch_interval sub_settings
+                interval = settings_digest_interval sub_settings
                 unioned = S.union sub_feeds_links links
                 inserted = HMS.insert sub_chatid c follows
             in  if settings_paused sub_settings then nochange else

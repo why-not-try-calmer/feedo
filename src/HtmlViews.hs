@@ -25,18 +25,18 @@ import Utils (getTime)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
-    DbNoBatch -> "No item found for this batch. Make sure to use a valid reference to batches."
-    DbBatch Batch{..} ->
+    DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digestes."
+    DbDigest Digest{..} ->
         H.docTypeHtml $ do
         H.head $ do
-            H.title . toHtml $ "feedfarer_bot/view/batch/" `T.append` batch_id_txt batch_id
+            H.title . toHtml $ "feedfarer_bot/view/digest/" `T.append` digest_id_txt digest_id
             H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
         H.body $ do
-            H.h2 . toHtml $ "Batch id: " `T.append` batch_id_txt batch_id
-            H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks batch_items `T.append` ")"
-            H.ul $ forM_ (flinks batch_items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
-            H.h3 . toHtml $ "Items (" `T.append` nbOf batch_items `T.append` ")"
-            H.ul $ forM_ (ordered_items batch_items) (\is -> do
+            H.h2 . toHtml $ "digest id: " `T.append` digest_id_txt digest_id
+            H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks digest_items `T.append` ")"
+            H.ul $ forM_ (flinks digest_items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
+            H.h3 . toHtml $ "Items (" `T.append` nbOf digest_items `T.append` ")"
+            H.ul $ forM_ (ordered_items digest_items) (\is -> do
                 H.p . toHtml $ (i_feed_link . head $ is) `T.append` " (" `T.append` nbOf is `T.append` ") items"
                 H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
             H.p "To get your favorite web feeds posted to your Telegram account, start talking to "
@@ -59,7 +59,7 @@ renderDbRes res = case res of
             H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
     _ -> "Invalid operation."
     where
-        batch_id_txt = T.pack . show
+        digest_id_txt = T.pack . show
         nbOf = T.pack . show . length
         nbOfFlinks items = nbOf . flinks $ items
         flinks items = S.toList . S.fromList $ map i_feed_link items
@@ -95,8 +95,8 @@ home = pure . H.docTypeHtml $ do
         H.p "But mostly useful, start talking to "
             >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
-batches :: MonadIO m => Int -> App m Markup
-batches _id = ask >>= \env -> evalDb env (ReadBatch _id) <&> renderDbRes
+digests :: MonadIO m => Int -> App m Markup
+digests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
 
 view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
 view Nothing _ _ = pure "Missing a anti-slash-separated list of urls. Example of a full query: \

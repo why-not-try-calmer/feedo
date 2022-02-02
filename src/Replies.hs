@@ -74,13 +74,13 @@ instance Renderable Feed where
 instance Renderable SubChat where
     render SubChat{..} =
         let adjust c = if c == "0" then "00" else c
-            at = case batch_at . settings_batch_interval $ sub_settings of
+            at = case digest_at . settings_digest_interval $ sub_settings of
                 Nothing -> mempty
                 Just ts -> "every day at " `T.append` foldl' (\s (!h, !m) ->
                         let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
                             s' = if s == mempty then s else s `T.append` ", "
                         in  s' `T.append` body) mempty ts
-            every = maybe mempty secsToReadable (batch_every_secs . settings_batch_interval $ sub_settings)
+            every = maybe mempty secsToReadable (digest_every_secs . settings_digest_interval $ sub_settings)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
                 in  if null bl then "none" else T.intercalate "," bl
@@ -96,7 +96,7 @@ instance Renderable SubChat where
                 ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
                 ("Digest step", if T.null every then " not defined" else every),
                 ("Digest at", if T.null at then " not defined" else at),
-                ("Digest size", (T.pack . show . settings_batch_size $ sub_settings) `T.append` " items"),
+                ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
                 ("Last digest", maybe " none" (T.pack . show) sub_last_digest),
                 ("Next digest", maybe " none scheduled" (T.pack . show) sub_next_digest),
                 ("Follow", if settings_follow sub_settings then " enabled" else " disabed"),

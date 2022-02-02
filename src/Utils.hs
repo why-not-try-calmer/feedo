@@ -105,10 +105,10 @@ freshLastXDays days now items =
         x_days_ago = posixSecondsToUTCTime $ utcTimeToPOSIXSeconds now - x
     in  filter (\i -> i_pubdate i > x_days_ago) items
 
-findNextTime :: UTCTime -> BatchInterval -> UTCTime
-findNextTime now (BatchInterval Nothing Nothing) = addUTCTime 9000 now
-findNextTime now (BatchInterval (Just xs) Nothing) = addUTCTime xs now
-findNextTime now (BatchInterval mbxs (Just ts)) =
+findNextTime :: UTCTime -> DigestInterval -> UTCTime
+findNextTime now (DigestInterval Nothing Nothing) = addUTCTime 9000 now
+findNextTime now (DigestInterval (Just xs) Nothing) = addUTCTime xs now
+findNextTime now (DigestInterval mbxs (Just ts)) =
     let from_midnight = realToFrac $ utctDayTime now
         times = foldl' (\acc (!h, !m) ->
             let t = toNominalDifftime h m
@@ -156,8 +156,8 @@ scanTimeSlices (x:xs) = fst $ foldl' step ([], x) xs
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {
         settings_word_matches = WordMatches S.empty S.empty S.empty,
-        settings_batch_size = 10,
-        settings_batch_interval = BatchInterval (Just 86400) Nothing,
+        settings_digest_size = 10,
+        settings_digest_interval = DigestInterval (Just 86400) Nothing,
         settings_paused = False,
         settings_disable_web_view = False,
         settings_pin = False,
@@ -170,15 +170,15 @@ updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
     where
         inject p o = case p of
-            PBatchAt v ->
-                let bi = settings_batch_interval o
-                    bi' = bi { batch_at = Just v }
-                in  o { settings_batch_interval = bi' }
-            PBatchEvery v ->
-                let bi = settings_batch_interval o
-                    bi' = bi { batch_every_secs = Just v}
-                in  o { settings_batch_interval = bi' }
-            PBatchSize v -> o { settings_batch_size = v }
+            PDigestAt v ->
+                let bi = settings_digest_interval o
+                    bi' = bi { digest_at = Just v }
+                in  o { settings_digest_interval = bi' }
+            PDigestEvery v ->
+                let bi = settings_digest_interval o
+                    bi' = bi { digest_every_secs = Just v}
+                in  o { settings_digest_interval = bi' }
+            PDigestSize v -> o { settings_digest_size = v }
             PBlacklist v ->
                 let wm = settings_word_matches o
                     wm' = wm { match_blacklist = v}
@@ -214,10 +214,10 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
         blacklist filters i = not . any
             (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters
         filterItemsWith Settings{..} Nothing items =
-            take settings_batch_size .
+            take settings_digest_size .
             filter (with_filters [blacklist (match_blacklist settings_word_matches)]) $ items
         filterItemsWith Settings{..} (Just last_time) items =
-            take settings_batch_size .
+            take settings_digest_size .
             filter (with_filters [blacklist (match_blacklist settings_word_matches), fresh]) $ items
             where
                 fresh i = last_time < i_pubdate i

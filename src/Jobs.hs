@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp, Batch (Batch))
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp, Digest (Digest))
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -61,10 +61,10 @@ notifier = do
                 let _id = hash . show $ now
                     items = foldMap snd feed_items
                     flinks = map (f_link . fst) feed_items
-                    batch = Batch _id now items flinks
+                    batch = Digest _id now items flinks
                     mb_batch_link res = case res of DbOk -> Just $ mkBatchUrl _id; _ -> Nothing 
                 in  do
-                    res <- evalDb env $ WriteBatch batch
+                    res <- evalDb env $ WriteDigest batch
                     reply tok cid 
                         (toReply (FromFeedsItems feed_items $ mb_batch_link res)
                         (Just settings))
@@ -73,7 +73,7 @@ notifier = do
         updated_notified_chats notified_chats chats now =
             HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
                 sub_last_digest = Just now,
-                sub_next_digest = Just $ findNextTime now (settings_batch_interval . sub_settings $ c)
+                sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c)
             } else c) chats
         notify = do
             now <- getCurrentTime
@@ -81,7 +81,7 @@ notifier = do
             -- rebuilding feeds and dispatching notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
-                FeedBatches digest_notif follow_notif search_notif -> do
+                FeedDigests digest_notif follow_notif search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending update & search notifications
                     notified_chats_feeds <- send_notifs digest_notif search_notif follow_notif now

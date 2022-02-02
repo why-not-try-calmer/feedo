@@ -168,7 +168,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         intoParsing (!not_parsed, !parsed) (!k, !txt)
             | k == "digest_at" =
                 let failure l = (l:not_parsed, parsed)
-                    success r = (not_parsed, PBatchAt r:parsed)
+                    success r = (not_parsed, PDigestAt r:parsed)
                     collected = sortTimePairs . foldr into_hm [] . T.words $ txt
                 in  if "reset" `T.isInfixOf` txt then success [] else
                     if null collected
@@ -178,7 +178,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     else success collected
             | k == "digest_every" =
                 let failure l = (l:not_parsed, parsed)
-                    success r = (not_parsed, PBatchEvery r:parsed)
+                    success r = (not_parsed, PDigestEvery r:parsed)
                     int = T.init txt
                     t_tag = T.singleton . T.last $ txt
                     triage n t
@@ -195,10 +195,10 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                             Left t -> failure t
                             Right s -> success $ realToFrac s
             | k == "digest_size" =
-                if "reset" `T.isInfixOf` txt then (not_parsed, PBatchSize 10:parsed)
+                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestSize 10:parsed)
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
-                    Just n -> (not_parsed, PBatchSize n:parsed)
+                    Just n -> (not_parsed, PDigestSize n:parsed)
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else
