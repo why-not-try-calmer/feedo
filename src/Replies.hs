@@ -53,7 +53,7 @@ mkViewUrl items =
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
 mkDigestUrl :: Int -> T.Text
-mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digestes/" . T.pack . show . abs
+mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/" . T.pack . show . abs
 
 class Renderable e where
     render :: e -> T.Text

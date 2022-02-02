@@ -193,15 +193,15 @@ evalMongo env (IncReads links) =
     in  traverse_ action links >> pure DbOk
 evalMongo env PruneOneMonthDigests =
     let oneMonth = liftIO $ getCurrentTime <&> addUTCTime (-2592000)
-        action t = deleteAll "digestes" [(["digest_created" =: ["$lt" =: t]], [])]
+        action t = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
     in  oneMonth >>= withMongo env . action >> pure DbOk
 evalMongo env (PruneOldItems t) =
     let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
     in  withMongo env action >> pure DbOk
 evalMongo env (ReadDigest _id) =
-    let action = findOne (select ["digest_id" =: _id] "digestes")
+    let action = findOne (select ["digest_id" =: _id] "digests")
     in  withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "digest" "Readdigest refused to read from the database."
+        Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
         Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . bsonToDigest) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ chatToBson chat
@@ -227,7 +227,7 @@ evalMongo env (View flinks start end) =
         Left _ -> pure $ DbErr FailedToLoadFeeds
         Right is -> pure $ DbView (map bsonToItem is) start end
 evalMongo env (WriteDigest digest) =
-    let action = insert "digestes" $ digestToBson digest
+    let action = insert "digests" $ digestToBson digest
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "digest" "Db refused to insert digest items"
         Right _ -> pure DbOk
@@ -345,7 +345,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
 
-{- digestes -}
+{- digests -}
 
 bsonToDigest :: Document -> Digest
 bsonToDigest doc =

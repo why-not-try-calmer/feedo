@@ -25,11 +25,11 @@ import Utils (getTime)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
-    DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digestes."
+    DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
     DbDigest Digest{..} ->
         H.docTypeHtml $ do
         H.head $ do
-            H.title . toHtml $ "feedfarer_bot/view/digest/" `T.append` digest_id_txt digest_id
+            H.title . toHtml $ "feedfarer_bot/digest/" `T.append` digest_id_txt digest_id
             H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
         H.body $ do
             H.h2 . toHtml $ "digest id: " `T.append` digest_id_txt digest_id
@@ -45,7 +45,7 @@ renderDbRes res = case res of
     DbView items f t ->
         let (from, to) = (T.pack . show $ f, T.pack . show $ t) in H.docTypeHtml $ do
         H.head $ do
-            H.title "feedfarer_bot/view/results"
+            H.title "feedfarer_bot/view/"
             H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
         H.body $ do
             H.h3 . toHtml $ "Feeds found (" `T.append` nbOfFlinks items `T.append` ")"
