@@ -99,8 +99,6 @@ renderAvgInterval (Just i) =
     where
         go !hs !d = if hs < 24 then (d, hs) else go (hs-24 :: Integer) (d+1 :: Integer)
 
-
-
 freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]
 freshLastXDays days now items =
     let x = fromIntegral $ days * 86400
@@ -154,21 +152,6 @@ scanTimeSlices (x:xs) = fst $ foldl' step ([], x) xs
         step (!acc, !x') y = (acc ++ [y-x'], y)
 
 {- Settings -}
-
-validSettingsKeys :: [T.Text]
-validSettingsKeys = [
-    "batch_at",
-    "batch_every",
-    "batch_size",
-    "blacklist",
-    "disable_webview",
-    "search_notif",
-    "only_search_notif",
-    "paused",
-    "pin",
-    "share_link",
-    "follow"
-    ]
 
 defaultChatSettings :: Settings
 defaultChatSettings = Settings {

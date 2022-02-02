@@ -149,10 +149,24 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     Just pairs ->
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
         if null not_parsed then Right parsed
-        else Left $ T.intercalate ", " not_parsed
+        else Left $ T.intercalate ", " not_parsed `T.append` 
+            "Make sure to use only valid keys: " `T.append` 
+                T.intercalate ", " [
+                    "blacklist",
+                    "digest_at",
+                    "digest_every",
+                    "digest_size",
+                    "disable_webview",
+                    "follow",
+                    "only_search_notif",
+                    "paused",
+                    "pin",
+                    "search_notif",
+                    "share_link"
+                    ]
     where
         intoParsing (!not_parsed, !parsed) (!k, !txt)
-            | k == "batch_at" =
+            | k == "digest_at" =
                 let failure l = (l:not_parsed, parsed)
                     success r = (not_parsed, PBatchAt r:parsed)
                     collected = sortTimePairs . foldr into_hm [] . T.words $ txt
@@ -162,7 +176,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                         \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
                         \ Use ':' to separate hours from minutes and whitespaces to separate many time values: '00:00 12:00' for midgnight and noon."
                     else success collected
-            | k == "batch_every" =
+            | k == "digest_every" =
                 let failure l = (l:not_parsed, parsed)
                     success r = (not_parsed, PBatchEvery r:parsed)
                     int = T.init txt
@@ -180,7 +194,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                         Just n -> case triage n t_tag of
                             Left t -> failure t
                             Right s -> success $ realToFrac s
-            | k == "batch_size" =
+            | k == "digest_size" =
                 if "reset" `T.isInfixOf` txt then (not_parsed, PBatchSize 10:parsed)
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
