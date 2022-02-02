@@ -100,7 +100,6 @@ instance Renderable SubChat where
                 ("Last digest", maybe " none" (T.pack . show) sub_last_digest),
                 ("Next digest", maybe " none scheduled" (T.pack . show) sub_next_digest),
                 ("Follow", if settings_follow sub_settings then " enabled" else " disabed"),
-                ("Last follow", maybe " none" (T.pack . show) sub_last_follow),
                 ("Blacklist", blacklist),
                 ("Searches", searches),
                 ("Ignore unless search results", only_search_results),
