@@ -56,24 +56,27 @@ returns  | error or success message
 - `blacklist: term term, ...`
     - excludes feed items where a term is found in either their url or description
     - example: `blacklist: itsmycode, butIamproudofit`
-- `batch_at: HH:MM HH:MM, ...`
-    - batch all updates and post them at the given times
-    - example: `batch_at: 0800 1200 1800`
-- `batch_every: <integer><m | h | d>`
-    - batch all updates and post them every n-minute, n-hour or n-day
+- `digest_at: HH:MM HH:MM, ...`
+    - digest all updates and post a summary (digest) at the given times
+    - example: `digest_at: 0800 1200 1800`
+- `digest_every: <integer><m | h | d>`
+    - digest all updates and post a summary (digest) every n-minute, n-hour or n-day
     - examples:
-        - `batch_every: 20m` (= 20 minutes)
-        - `batch_every: 6h` (= 6 hours)
-        - `batch_every: 1d` (= 1 day)
+        - `digest_every: 20m` (= 20 minutes)
+        - `digest_every: 6h` (= 6 hours)
+        - `digest_every: 1d` (= 1 day)
 
-_Notice_: As of the latest version, this settings _is_ compatible with `batch_at` provided that the value of `batch_every` is 1 or more __days__. If the value of `batch_every` is expressed in minutes or hours and `batch_at` is defined in the settings, the application will ignore `batch_every` and use only `batch_at`.
+_Notice_: If the value of `digest_every` is set to less than 1 day, the application will ignore `digest_every` and use only `digest_at`.
 
-- `batch_size: <integer>`
-    - the number of items to fetch for any single feed
+- `digest_size: <integer>`
+    - the number of items per feed to send in a single digest
 - `disable_webview: "true" or "false"`
-    - allow Telegram to display the last shown items in disable_webview mode
+    - whether Telegram is prevented from displaying the last shown items in webview mode
+- `follow: "true" or "false"`
+    - polls every feed at short interval and notifies on new items
+    - this feature works independently from the digest-like feature
 - `only_search_notif: <list of urls>`
-    - ignore the feeds matching the urls when sending regular updates
+    - if an url of a feed is on the list, items from it will be ignored from all messages except for search notifications
 - `paused: "true" or "false"`
     - suspend all notifications to the chat
 - `pin: "true" or "false"`,

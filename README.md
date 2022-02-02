@@ -1,11 +1,22 @@
 # feedfarer
 A fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
 
+## Contents
+- [What this package provides](#what-this-package-provides)
+- [Bot features](#features)
+- [Usage](#usage)
+- [Service](#service)
+- [Beta testing](#beta-testing)
+- [Roadmap](#roadmap)
+- [Test build](#test-build)
+- [Deployment](#deployment)
+- [Support this project](#support-this-project)
+
 ## What this package provides
 - a Telegram bot able to post updates to any web feed (Atom or RSS) feed a chat is subscribed to; the bot is also replies directly to commands for consuming feeds at one's favorite pace
 - a library consumed by the said bot so that any user can host and play with it.
 
-## Features of the bot
+## Features
 - web feed notifications on updates as they come or in batches
 - subscription management
 - filters, blacklists
@@ -30,7 +41,7 @@ __Getting started__:
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). The bot listens only to messages using commands defined for it.
 2. Subscribe the chat and have fun with the other commands. By default updates are checked and posted every 20 minutes.
 
-## Deployment 
+## Service
 The bot relies upon the Haskell `warp` server. By default it provides an endpoint at `https://<your.nice.domain>/webhook/bot<your token>` handling inbound and outbound HTTP requests from / to Telegram services via webhooks (only webhooks are supported as they provide a more resource-efficient communication method). 
 
 This application is written from scratch, using exclusively HTTP requests-responses as specified by the [Telegram Bot API](https://core.telegram.org/bots/api). It relies on no Telegram SDK or third-party library.
@@ -98,7 +109,7 @@ Make sure to use the appropriate method to provide the containerized app the pro
 
 Also keep in mind that Telegram requires HTTPS for sending and receiving, but this application _does not_ do any of that. You will need to make sure that the host to which the application is deployed takes care of the HTTPS business.
 
-## Configuration
+### Configuration
 The application expects the following environment variables:
 ```
 ALERT_CHATID=<Telegram chat id>
@@ -117,5 +128,5 @@ WEBHOOK_URL=https://mydomain.org/path/to/wehbook
 
 ```
 
-## Support this bot
+## Support this project
 I am hosting the bot on my own. If you want to [pay me a coffee or a beer](https://paypal.me/WhyNotTryCalmer) to show your appreciation, that will help me maintain the code and pay the electricity bills...
