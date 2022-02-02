@@ -166,7 +166,8 @@ validSettingsKeys = [
     "only_search_notif",
     "paused",
     "pin",
-    "share_link"
+    "share_link",
+    "follow"
     ]
 
 defaultChatSettings :: Settings
@@ -177,7 +178,8 @@ defaultChatSettings = Settings {
         settings_paused = False,
         settings_disable_web_view = False,
         settings_pin = False,
-        settings_share_link = True
+        settings_share_link = True,
+        settings_follow = False
     }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
@@ -210,6 +212,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
                     wm' = wm { match_only_search_results = v}
                 in  o { settings_word_matches = wm' }
             PShareLink v -> o { settings_share_link = v }
+            PFollow v -> o { settings_follow = v }
 
 notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds

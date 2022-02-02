@@ -207,7 +207,9 @@ parseSettings lns = case foldr mkPairs Nothing lns of
             | k == "pin" =
                 if "true" `T.isInfixOf` txt then (not_parsed, PPin True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False:parsed) else ("'pin' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "share_link" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPaused False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
+            | k == "follow" =
+                if "true" `T.isInfixOf` txt then (not_parsed, PFollow True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False:parsed) else ("'follow' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | otherwise = (k:not_parsed, parsed)
         into_hm val acc =
             let [hh, mm] = T.splitOn ":" val

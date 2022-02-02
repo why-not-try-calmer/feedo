@@ -304,7 +304,8 @@ bsonToChat doc =
             settings_paused = fromMaybe False $ M.lookup "settings_paused" doc,
             settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" doc,
             settings_pin = fromMaybe False $ M.lookup "settings_pin" doc,
-            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" doc
+            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" doc,
+            settings_follow = fromMaybe False $ M.lookup "settings_follow" doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,

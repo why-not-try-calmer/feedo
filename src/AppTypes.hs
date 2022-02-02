@@ -100,7 +100,8 @@ data Settings = Settings {
     settings_paused :: Bool,
     settings_pin :: Bool,
     settings_word_matches :: WordMatches,
-    settings_share_link :: Bool
+    settings_share_link :: Bool,
+    settings_follow :: Bool
 } deriving (Show, Eq)
 
 data SubChat = SubChat
@@ -150,7 +151,8 @@ data ParsingSettings =
     PPin Bool |
     PSearchKws (S.Set T.Text) |
     PSearchLinks (S.Set T.Text) |
-    PShareLink Bool
+    PShareLink Bool |
+    PFollow Bool
     deriving (Show, Eq)
 
 data UserAction
