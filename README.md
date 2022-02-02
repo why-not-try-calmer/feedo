@@ -7,7 +7,7 @@ A fast, efficient network app for subscribing Telegram chats to web feeds, using
 - [Usage](#usage)
 - [Beta testing](#beta-testing)
 - [Roadmap](#roadmap)
-- [Test build](#test-build)
+- [Test builds](#test-builds)
 - [Deployment](#deployment)
 - [Support this project](#support-this-project)
 
@@ -63,7 +63,7 @@ Ask for an invite with https://t.me/+zMdPlkeEu7w2NjM0.
 
 Check out our channel for more info: https://t.me/feedfarer.
 
-## Roadmap & todo
+## Roadmap
 - [x] Architecture, business logic
 - [x] Implementation
 - [x] Tests
@@ -72,7 +72,7 @@ Check out our channel for more info: https://t.me/feedfarer.
 - [x] Tests in deployment
 - [...] Factoring out database details to avoid depending on mongoDB
 
-## Test build and run (stack)
+## Test builds
 
 __Build__
 
@@ -94,7 +94,8 @@ stack build
 stack exec feedfarer-exe
 ```
 
-## Deployment (docker / podman)
+## Deployment
+
 ### Local
 
 This step requires having an `.env` file in the root directory set as appropriate (see below). Substitute `docker` for `podman` in the instructions if you don't use _podman_.
