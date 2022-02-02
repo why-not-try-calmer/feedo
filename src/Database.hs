@@ -46,7 +46,7 @@ instance MongoDoc Digest where
     writeDoc = digestToBson
 
 instance MongoDoc LogItem where
-    readDoc = bsonToLog 
+    readDoc = bsonToLog
     writeDoc = undefined
 
 class Db m where
@@ -259,10 +259,10 @@ evalMongo env (WriteDigest digest) =
 
 itemToBson :: Item -> Document
 itemToBson i = [
-    "i_title" =: i_title i, 
-    "i_desc" =: i_desc i, 
-    "i_feed_link" =: i_feed_link i, 
-    "i_link" =: i_link i, 
+    "i_title" =: i_title i,
+    "i_desc" =: i_desc i,
+    "i_feed_link" =: i_feed_link i,
+    "i_link" =: i_link i,
     "i_pubdate" =: i_pubdate i
     ]
 
@@ -278,7 +278,7 @@ bsonToItem doc = Item
 
 feedToBson :: Feed -> Document
 feedToBson Feed {..} =
-    [ 
+    [
         "f_type" =: show f_type,
         "f_desc" =: f_desc,
         "f_title" =: f_title,
@@ -304,7 +304,7 @@ bsonToFeed doc =
             f_reads = fromJust $ M.lookup "f_reads" doc
         }
 
-{- Chats -}
+{- Chats, Settings -}
 
 bsonToChat :: Document -> SubChat
 bsonToChat doc =
@@ -352,14 +352,14 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
         only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
         settings' = [
             "settings_blacklist" =: blacklist,
-            "settings_searchset" =: searchset,
-            "settings_only_search_results" =: only_search_results,
-            "settings_digest_size" =: settings_digest_size settings,
-            "settings_paused" =: settings_paused settings,
             "settings_disable_web_view" =: settings_disable_web_view settings,
+            "settings_digest_size" =: settings_digest_size settings,
+            "settings_follow" =: settings_follow settings,
+            "settings_only_search_results" =: only_search_results,
+            "settings_paused" =: settings_paused settings,
             "settings_pin" =: settings_pin settings,
-            "settings_share_link" =: settings_share_link settings,
-            "settings_follow" =: settings_follow settings
+            "settings_searchset" =: searchset,
+            "settings_share_link" =: settings_share_link settings
             ]
         with_secs = maybe []
             (\secs -> ["settings_digest_every_secs" =: secs])
@@ -472,10 +472,30 @@ purgeCollections env colls =
             if any failed res then pure . Left $ "Failed to purge collections " ++ show colls
             else pure $ Right ()
 
-{- Remapping -}
+{- Mapping -}
 
 remapChats :: (MonadIO m, Db m) => AppConfig -> SubChats -> m (Either String ())
 remapChats env chats =
     let selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) $ HMS.elems chats
-        action =  updateAll "chats" selector
+        action = updateAll "chats" selector
     in  withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()
+
+checkDbMapper :: MonadIO m => m ()
+checkDbMapper = do
+    now <- liftIO getCurrentTime
+    let item = Item mempty mempty mempty mempty now
+        digest_interval = DigestInterval Nothing Nothing
+        word_matches = WordMatches S.empty S.empty S.empty
+        settings = Settings digest_interval 0 False False False word_matches False False
+        chat = SubChat 0 Nothing Nothing S.empty settings
+        feed = Feed Rss mempty mempty mempty [item] Nothing Nothing 0
+        -- log' = LogPerf mempty now 0 0 0 0
+        digest = Digest 0 now [] []
+        equalities = [
+            ("item", item == (readDoc . writeDoc $ item)),
+            ("digest", digest == (readDoc . writeDoc $ digest)),
+            ("feed", feed == (readDoc . writeDoc $ feed)),
+            ("chat", chat == (readDoc . writeDoc $ chat))] :: [(T.Text, Bool)]
+    if all snd equalities
+    then pure () 
+    else liftIO . throwIO . userError . show $ equalities

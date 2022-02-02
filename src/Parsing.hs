@@ -150,7 +150,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
         if null not_parsed then Right parsed
         else Left $ T.intercalate ", " not_parsed `T.append` 
-            "Make sure to use only valid keys: " `T.append` 
+            " Make sure to use only valid keys: " `T.append` 
                 T.intercalate ", " [
                     "blacklist",
                     "digest_at",
