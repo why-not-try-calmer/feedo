@@ -13,7 +13,7 @@ A fast, efficient network app for subscribing Telegram chats to web feeds, using
 
 ## What this package provides
 - a Telegram bot able to post updates to any web feed (Atom or RSS) feed a chat is subscribed to; the bot is also replies directly to commands for consuming feeds at one's favorite pace
-- a library consumed by the said bot so that any user can host and play with it.
+- a server-side application consumed by the said bot so that any user can host and play with it.
 
 ## Features
 - web feed notifications on updates as they come or in batches
@@ -45,7 +45,7 @@ __Getting started__:
 2. Subscribe the chat to a bunch of web feeds with `/sub <url1 url2 ur3>`.
 3. Adjust your settings with `/set`, as in:
 ```
-/set
+/set  # mind the linebreak!
 digest_at: 12:00 
 ```
 
