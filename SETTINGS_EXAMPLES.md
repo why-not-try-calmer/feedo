@@ -1,5 +1,7 @@
 ## Quick examples
 
+For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).
+
 1 digest every day at noon (UTC):
 
 ```
