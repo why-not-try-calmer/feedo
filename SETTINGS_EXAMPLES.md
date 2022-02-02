@@ -27,6 +27,15 @@ follow: true
 share_link: true
 ```
 
+Exclude the words _meanWord_ from all messages, and set search notifications on items from the feed at `https://www.phoronix.com/scan.php/feed` containing the words _linux kernel_:
+
+```
+/set
+blacklist: meanword
+search_notif: linux kernel
+only_search_notif: https://www.phoronix.com/scan.php/feed
+```
+
 ## Detailed explanation of the default settings
 Here are the default settings, that come into play as soon as you subscribe a chat to a web feed:
 ```

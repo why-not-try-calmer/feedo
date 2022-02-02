@@ -16,7 +16,7 @@ A fast, efficient network app for subscribing Telegram chats to web feeds, using
 - a server-side application consumed by the said bot so that any user can host and play with it.
 
 ## Features
-- web feed notifications on updates as they come or in batches
+- web feed notifications on updates as they come or in digestes
 - subscription management
 - filters, blacklists
 - full-text search

@@ -39,12 +39,12 @@ command  | argument
          |   ":"-separated key-value pairs 
 ---------+-----------------------------------------------
 examples | /set
-         | batch_at: 08:00 12:00 19:00
+         | digest_at: 08:00 12:00 19:00
          | pin: true
          | disable_webview: true 
          |
          | /set -25154554
-         | batch_every: 9000
+         | digest_every: 9000
          | pin: true
          | disable_webview: true
 ---------+-----------------------------------------------
@@ -80,11 +80,11 @@ _Notice_: If the value of `digest_every` is set to less than 1 day, the applicat
 - `paused: "true" or "false"`
     - suspend all notifications to the chat
 - `pin: "true" or "false"`,
-    - have the bot try to pin every batch message
+    - have the bot try to pin every digest message
 - `search_notif: <list of space-separated keywords>`
     - have the bot send an extra notification whenever a feed to which the current chat is subscribed has items in which the keywords are found
 - `share_link: "true" or "false"`
-    - appends a link at the end of each batch update to a web rendered view
+    - appends a link at the end of each digest update to a web rendered view
 
 _Notice_: The last two settings allow to completely ignore certain feeds from the regular updates, while still getting notifications on matches.
 

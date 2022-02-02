@@ -61,12 +61,12 @@ notifier = do
                 let _id = hash . show $ now
                     items = foldMap snd feed_items
                     flinks = map (f_link . fst) feed_items
-                    batch = Digest _id now items flinks
-                    mb_batch_link res = case res of DbOk -> Just $ mkDigestUrl _id; _ -> Nothing 
+                    digest = Digest _id now items flinks
+                    mb_digest_link res = case res of DbOk -> Just $ mkDigestUrl _id; _ -> Nothing 
                 in  do
-                    res <- evalDb env $ WriteDigest batch
+                    res <- evalDb env $ WriteDigest digest
                     reply tok cid 
-                        (toReply (FromFeedsItems feed_items $ mb_batch_link res)
+                        (toReply (FromFeedsItems feed_items $ mb_digest_link res)
                         (Just settings))
                         (postjobs env)
                     pure (cid, map (f_link . fst) feed_items)

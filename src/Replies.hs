@@ -53,7 +53,7 @@ mkViewUrl items =
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
 mkDigestUrl :: Int -> T.Text
-mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/batches/" . T.pack . show . abs
+mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digestes/" . T.pack . show . abs
 
 class Renderable e where
     render :: e -> T.Text
@@ -175,10 +175,10 @@ toReply (FromFeedItems f) _ =
             f_items $ f
     in  defaultReply rendered_items
 toReply (FromFeedsItems f_items mb_link) mbs =
-    let batch_link = case mb_link of
-            Just link -> toHrefEntities Nothing "share this batch" link
+    let digest_link = case mb_link of
+            Just link -> toHrefEntities Nothing "share this digest" link
             Nothing -> mempty
-        payload = render f_items `T.append` "You can now " `T.append` batch_link `T.append ` "."
+        payload = render f_items `T.append` "You can now " `T.append` digest_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
             reply_contents = payload,
