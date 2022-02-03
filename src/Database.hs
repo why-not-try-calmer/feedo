@@ -9,7 +9,6 @@ import Control.Exception
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (foldl'), traverse_)
-import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
 import Data.List (sortOn)
