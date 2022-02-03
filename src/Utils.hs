@@ -133,8 +133,11 @@ nomDiffToReadable t =
     let (days, time) = timeToDaysAndTimeOfDay t
     in  (T.pack . show $ days) `T.append` " day(s), " `T.append` (T.pack . show $ time) `T.append` " hour(s)"
 
-utcToReadable :: UTCTime -> T.Text
-utcToReadable = T.pack . formatTime defaultTimeLocale "%Y-%m-%d"
+utcToYmd :: UTCTime -> T.Text
+utcToYmd = T.pack . formatTime defaultTimeLocale "%Y-%m-%d"
+
+utcToYmdHMS :: UTCTime -> T.Text
+utcToYmdHMS = T.pack . formatTime defaultTimeLocale "%Y-%m-%d %T"
 
 sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
 sortTimePairs = go []
