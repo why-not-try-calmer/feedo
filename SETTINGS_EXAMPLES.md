@@ -27,13 +27,13 @@ follow: true
 share_link: true
 ```
 
-Exclude the words _meanWord_ from all messages, and set search notifications on items from the feed at `https://www.phoronix.com/scan.php/feed` containing the words _linux kernel_:
+Exclude the words _meanword_ from all messages, and set search notifications on items from the feed at `https://news.ycombinator.com/rss` for just the items that contain the string _pop\_os_:
 
 ```
 /set
 blacklist: meanword
-search_notif: linux kernel
-only_search_notif: https://www.phoronix.com/scan.php/feed
+search_notif: pop_os
+only_search_notif: https://news.ycombinator.com/rss
 ```
 
 ## Detailed explanation of the default settings
