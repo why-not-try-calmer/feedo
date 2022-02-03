@@ -21,7 +21,7 @@ import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
 import qualified Data.HashSet as S
 import Parsing (eitherUrlScheme)
-import Utils (getTime)
+import Utils (mbTime)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
@@ -118,7 +118,7 @@ view (Just flinks_txt) (Just fr) m_to = do
     where
         parsed = foldl' (\acc m -> case m of
             Nothing -> acc
-            Just v -> acc ++ [getTime . T.unpack $ v]) [] [Just fr, m_to]
+            Just v -> acc ++ [mbTime . T.unpack $ v]) [] [Just fr, m_to]
         flinks = case traverse (eitherUrlScheme . decodeText) $ T.splitOn "\\" flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks

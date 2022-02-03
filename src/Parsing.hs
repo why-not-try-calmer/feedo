@@ -22,7 +22,7 @@ import Requests (fetchFeed)
 import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
-import Utils (averageInterval, getTime, sortTimePairs)
+import Utils (averageInterval, mbTime, sortTimePairs)
 
 {- Feeds, Items -}
 
@@ -48,7 +48,7 @@ buildFeed ty url = do
                                 (T.concat $ child el >>= element "description" >>= child >>= content)
                                 (T.concat $ child el >>= element "link" >>= child >>= content)
                                 (renderUrl url)
-                                (fromMaybe now . getTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content))
+                                (fromMaybe now . mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content))
                             items = map get_item_data $ descendant root >>= element "item"
                             interval = averageInterval $ map i_pubdate items
                             res = Feed
@@ -73,7 +73,7 @@ buildFeed ty url = do
                                 (T.concat $ child el >>= laxElement "content" >>= child >>= content)
                                 (T.concat . attribute "href" . head $ child el >>= laxElement "link")
                                 (renderUrl url)
-                                (fromMaybe now . getTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content))
+                                (fromMaybe now . mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content))
                             items = map get_item_data $ descendant root >>= laxElement "entry"
                             interval = averageInterval $ map i_pubdate items
                             res = Feed

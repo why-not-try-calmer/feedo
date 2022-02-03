@@ -10,7 +10,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
-import Utils (secsToReadable, renderAvgInterval)
+import Utils (nomDiffToReadable, renderAvgInterval, utcToReadable)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -38,9 +38,9 @@ mkViewUrl items =
         flinks_txt = "?flinks=" `T.append` encodeText (T.intercalate "\\" flinks)
         from_to_txt =
             "&from=" `T.append`
-            (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . head $ ts) `T.append`
+            (utcToReadable . head $ ts) `T.append`
             "&to=" `T.append`
-            (T.pack . formatTime defaultTimeLocale "%Y-%m-%d" . last $ ts)
+            (utcToReadable . last $ ts)
     in  if length ts < 2 || null flinks
         then Nothing
         else Just $ base_url `T.append` flinks_txt `T.append` from_to_txt
@@ -67,7 +67,7 @@ instance Renderable Feed where
                 ("Title", f_desc),
                 ("Current items", T.pack . show $ length f_items),
                 ("Avg. interval between items", renderAvgInterval f_avg_interval),
-                ("Last refresh", maybe "None" (T.pack . show) f_last_refresh),
+                ("Last refresh", maybe "None" utcToReadable f_last_refresh),
                 ("Total reads", T.pack . show $ f_reads)
             ]
 
@@ -80,7 +80,7 @@ instance Renderable SubChat where
                         let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
                             s' = if s == mempty then s else s `T.append` ", "
                         in  s' `T.append` body) mempty ts
-            every = maybe mempty secsToReadable (digest_every_secs . settings_digest_interval $ sub_settings)
+            every = maybe mempty nomDiffToReadable (digest_every_secs . settings_digest_interval $ sub_settings)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
                 in  if null bl then "none" else T.intercalate "," bl
@@ -97,8 +97,8 @@ instance Renderable SubChat where
                 ("Digest step", if T.null every then " not defined" else every),
                 ("Digest at", if T.null at then " not defined" else at),
                 ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                ("Last digest", maybe " none" (T.pack . show) sub_last_digest),
-                ("Next digest", maybe " none scheduled" (T.pack . show) sub_next_digest),
+                ("Last digest", maybe " none" utcToReadable sub_last_digest),
+                ("Next digest", maybe " none scheduled" utcToReadable sub_next_digest),
                 ("Follow", if settings_follow sub_settings then " enabled" else " disabed"),
                 ("Blacklist", blacklist),
                 ("Searches", searches),

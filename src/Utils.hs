@@ -9,7 +9,7 @@ import Data.List (foldl', sort)
 import Data.Maybe (isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, defaultTimeLocale, diffUTCTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
+import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, defaultTimeLocale, diffUTCTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay, formatTime)
 import Data.Time.Clock.POSIX
   ( posixSecondsToUTCTime,
     utcTimeToPOSIXSeconds,
@@ -66,9 +66,9 @@ hash = abs . foldl' (\h c -> 33*h `xor` fromEnum c) 5381
 
 {- Time -}
 
-getTime :: String -> Maybe UTCTime
+mbTime :: String -> Maybe UTCTime
 -- tries to parse input string against various time formats
-getTime s = if isNothing first_pass then iso8601ParseM s else first_pass
+mbTime s = if isNothing first_pass then iso8601ParseM s else first_pass
     where
         first_pass = foldr step Nothing formats
         step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
@@ -128,10 +128,13 @@ findNextTime now (DigestInterval mbxs (Just ts)) =
     where
         toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
 
-secsToReadable :: NominalDiffTime -> T.Text
-secsToReadable t =
+nomDiffToReadable :: NominalDiffTime -> T.Text
+nomDiffToReadable t =
     let (days, time) = timeToDaysAndTimeOfDay t
     in  (T.pack . show $ days) `T.append` " day(s), " `T.append` (T.pack . show $ time) `T.append` " hour(s)"
+
+utcToReadable :: UTCTime -> T.Text
+utcToReadable = T.pack . formatTime defaultTimeLocale "%Y-%m-%d"
 
 sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
 sortTimePairs = go []
