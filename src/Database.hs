@@ -47,7 +47,7 @@ instance MongoDoc Digest where
 
 instance MongoDoc LogItem where
     readDoc = bsonToLog
-    writeDoc = undefined
+    writeDoc = logToBson
 
 class Db m where
     openDbHandle :: AppConfig -> m ()
@@ -405,17 +405,18 @@ bsonToLog doc = LogPerf {
     log_total = fromMaybe 0 $ M.lookup "log_total" doc
     }
 
+logToBson :: LogItem -> Document 
+logToBson LogPerf{..} = [
+    "log_message" =: log_message,
+    "log_at" =: log_at,
+    "log_refresh" =: log_refresh,
+    "log_sending_notif" =: log_sending_notif,
+    "log_update" =: log_updating,
+    "log_total" =: log_total 
+    ]
+
 saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env LogPerf{..} = withMongo env (insert "logs" doc) >> pure ()
-    where
-        doc = [
-            "log_message" =: log_message,
-            "log_at" =: log_at,
-            "log_refresh" =: log_refresh,
-            "log_sending_notif" =: log_sending_notif,
-            "log_update" =: log_updating,
-            "log_total" =: log_total
-            ]
+saveToLog env logitem = withMongo env (insert "logs" $ writeDoc logitem) >> pure ()
 
 cleanLogs :: (Db m, MonadIO m) => AppConfig -> m (Either String ())
 cleanLogs env = do
@@ -489,15 +490,18 @@ checkDbMapper = do
         settings = Settings digest_interval 0 True False False word_matches False False
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
-        -- log' = LogPerf mempty now 0 0 0 0
-        digest = Digest 0 now [] []
+        log' = LogPerf mempty now 0 0 0 0
+        digest = Digest 0 now [item] [mempty]
         equalities = [
             ("item", item == (readDoc . writeDoc $ item)),
             ("digest", digest == (readDoc . writeDoc $ digest)),
             ("feed", feed == (readDoc . writeDoc $ feed)),
-            ("chat", chat == (readDoc . writeDoc $ chat))] :: [(T.Text, Bool)]
+            ("chat", chat == (readDoc . writeDoc $ chat)),
+            ("log", log' == (readDoc . writeDoc $ log'))] :: [(T.Text, Bool)]
     if all snd equalities
     then pure () 
-    else liftIO $ throwIO . userError $ 
-        "Mapper failed. " ++ (show . filter (not . snd) $ equalities)
+    else liftIO $ do
+        print digest
+        print (readDoc . writeDoc $ digest :: Digest)
+        throwIO . userError $ "Mapper failed. " ++ (show . filter (not . snd) $ equalities)
         
