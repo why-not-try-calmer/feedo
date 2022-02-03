@@ -23,6 +23,7 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Utils (averageInterval, mbTime, sortTimePairs)
+import Replies (mkdDoubles)
 
 {- Feeds, Items -}
 
@@ -208,7 +209,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 if "true" `T.isInfixOf` txt then (not_parsed, PDisableWebview True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False:parsed) else ("'disable_webview' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "search_notif" =
                 if T.length txt < 3 then ("'search_notif' cannot be shorter than 3 characters.":not_parsed, parsed)
-                else
+                else if any (`T.isPrefixOf` txt) mkdDoubles then ("'search_notif' accepts only alphanumeric symbols":not_parsed, parsed) else
                     let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
                     in (not_parsed, PSearchKws v:parsed)
             | k == "only_search_notif" =

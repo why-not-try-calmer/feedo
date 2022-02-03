@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Replies (render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
+module Replies (mkdSingles, mkdDoubles, render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -76,33 +76,38 @@ instance Renderable SubChat where
         let adjust c = if c == "0" then "00" else c
             at = case digest_at . settings_digest_interval $ sub_settings of
                 Nothing -> mempty
-                Just ts -> "every day at " `T.append` foldl' (\s (!h, !m) ->
-                        let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
-                            s' = if s == mempty then s else s `T.append` ", "
-                        in  s' `T.append` body) mempty ts
-            every = maybe mempty nomDiffToReadable (digest_every_secs . settings_digest_interval $ sub_settings)
+                Just ts -> foldl' (\s (!h, !m) ->
+                    let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
+                        s' = if s == mempty then s else s `T.append` ", "
+                    in  s' `T.append` body) mempty ts
+            at_txt = ("Digest time(s)", if T.null at then "none" else at)
+            every_txt = case digest_every_secs . settings_digest_interval $ sub_settings of
+                Nothing -> (mempty, mempty)
+                Just e ->
+                    if not $ T.null at && e < 86400 then (mempty, mempty)
+                    else ("Digest step (time between two digests)", if e == 0 then "none" else nomDiffToReadable e)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
-                in  if null bl then "none" else T.intercalate "," bl
+                in  if null bl then "none" else T.intercalate ", " bl
             searches =
                 let se = S.toList $ match_searchset . settings_word_matches $ sub_settings
-                in  if null se then "none" else T.intercalate "," se
+                in  if null se then "none" else T.intercalate ", " se
             only_search_results =
                 let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
-                in  if null sr then "none" else T.intercalate "," sr
+                in  if null sr then "none" else T.intercalate ", " sr
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
             [   ("Chat id", T.pack . show $ sub_chatid),
                 ("Status", if settings_paused sub_settings then "paused" else "active"),
                 ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
-                ("Digest step", if T.null every then " not defined" else every),
-                ("Digest at", if T.null at then " not defined" else at),
+                at_txt,
+                every_txt,
                 ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                ("Last digest", maybe " none" utcToYmdHMS sub_last_digest),
-                ("Next digest", maybe " none scheduled" utcToYmdHMS sub_next_digest),
-                ("Follow", if settings_follow sub_settings then " enabled" else " disabed"),
+                ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
+                ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
+                ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
                 ("Blacklist", blacklist),
-                ("Searches", searches),
-                ("Ignore unless search results", only_search_results),
+                ("Feeds ignored unless a search keyword matches", only_search_results),
+                ("Search keywords", searches),
                 ("Webview", if settings_disable_web_view sub_settings then " disabled" else " enabled"),
                 ("Pin new updates", if settings_pin sub_settings then " enabled" else " disabled")
             ]
@@ -131,7 +136,7 @@ instance Renderable (S.Set T.Text, [SearchResult]) where
     render (keys, items) =
         let body t = toHrefEntities Nothing (sr_title t) (sr_link t)
         in  "Results from your search with keywords "
-                `T.append` T.intercalate ", " (S.toList keys)
+                `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
                 `T.append` ":\n"
                 `T.append` foldl' (\acc t -> acc `T.append` " " `T.append` body t `T.append` "\n") mempty items
 
@@ -165,6 +170,7 @@ toReply (FromChatFeeds _ feeds) _ =
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
     in  defaultReply payload
+toReply (FromChat chat) _ = ServiceReply $ render chat
 toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =

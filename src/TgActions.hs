@@ -127,7 +127,6 @@ interpretCmd contents
     | cmd == "/set" =
         let body = tail . T.lines . T.toLower $ contents in
         if null args then Right GetSubchatSettings else
-        --if length args == 1 then case Right GetSubchannelSettings
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> case parseSettings body of
                 Left err -> Left . BadInput $ err
@@ -382,7 +381,8 @@ evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->
             if not verdict then exitNotAuth uid
             else withChat (SetChatSettings settings) chan_id >>= \case
                 Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
-                Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
+                Right (ChatUpdated c) -> pure . Right . toReply (FromChat c) $ Nothing
+                _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
 evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case

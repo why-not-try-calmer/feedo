@@ -178,11 +178,11 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
         inject p o = case p of
             PDigestAt v ->
                 let bi = settings_digest_interval o
-                    bi' = bi { digest_at = Just v }
+                    bi' = bi { digest_at = if null v then Nothing else Just v }
                 in  o { settings_digest_interval = bi' }
             PDigestEvery v ->
                 let bi = settings_digest_interval o
-                    bi' = bi { digest_every_secs = Just v}
+                    bi' = bi { digest_every_secs = if v == 0 then Nothing else Just v}
                 in  o { settings_digest_interval = bi' }
             PDigestSize v -> o { settings_digest_size = v }
             PBlacklist v ->

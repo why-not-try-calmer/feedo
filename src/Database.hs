@@ -27,26 +27,32 @@ import GHC.IORef (atomicSwapIORef)
 class MongoDoc v where
     readDoc :: Document -> v
     writeDoc :: v -> Document
+    checks :: v -> Bool
 
 instance MongoDoc SubChat where
     readDoc = bsonToChat
     writeDoc = chatToBson
+    checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc Feed where
     readDoc = bsonToFeed
     writeDoc = feedToBson
+    checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc Item where
     readDoc = bsonToItem
     writeDoc = itemToBson
+    checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc Digest where
     readDoc = bsonToDigest
     writeDoc = digestToBson
+    checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc LogItem where
     readDoc = bsonToLog
     writeDoc = logToBson
+    checks v = v == (readDoc . writeDoc $ v)
 
 class Db m where
     openDbHandle :: AppConfig -> m ()
@@ -59,9 +65,7 @@ instance MonadIO m => Db (App m) where
     evalDb = evalMongo
 
 instance Db IO where
-    openDbHandle config = initConnectionMongo (db_config config) >>= \case
-        Left err -> print $ renderDbError err
-        Right p -> installPipe p config
+    openDbHandle = openDbHandle
     evalDb = evalMongo
 
 installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
@@ -489,11 +493,11 @@ checkDbMapper = do
         log' = LogPerf mempty now 0 0 0 0
         digest = Digest 0 now [item] [mempty]
         equalities = [
-            ("item", item == (readDoc . writeDoc $ item)),
-            ("digest", digest == (readDoc . writeDoc $ digest)),
-            ("feed", feed == (readDoc . writeDoc $ feed)),
-            ("chat", chat == (readDoc . writeDoc $ chat)),
-            ("log", log' == (readDoc . writeDoc $ log'))] :: [(T.Text, Bool)]
+            ("item", checks item),
+            ("digest", checks digest),
+            ("feed", checks feed),
+            ("chat", checks chat),
+            ("log", checks log')] :: [(T.Text, Bool)]
     if all snd equalities
     then pure () 
     else liftIO $ do

@@ -18,9 +18,14 @@ import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
 
-withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ())
-withChat action cid = ask >>= \env -> liftIO $ do
-    modifyMVar (subs_state env) (`afterDb` env)
+withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
+withChat action cid = do
+    env <- ask
+    res <- liftIO $ modifyMVar (subs_state env) (`afterDb` env)
+    case res of
+        Left err -> pure $ Left err
+        Right ChatOk -> pure $ Right ChatOk
+        Right r -> pure . Right $ r
     where
     afterDb hmap env = case HMS.lookup cid hmap of
         Nothing -> case action of
@@ -33,7 +38,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                             inserted_m = HMS.insert cid updated_c hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
                             DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                            _ -> pure (inserted_m, Right ())
+                            _ -> pure (inserted_m, Right ChatOk)
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
         Just c -> case action of
             Migrate to ->
@@ -41,24 +46,24 @@ withChat action cid = ask >>= \env -> liftIO $ do
                     update_m = HMS.update(\_ -> Just updated_c) cid hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
-                        _ -> pure (update_m, Right ())
+                        _ -> pure (update_m, Right ChatOk)
             Reset ->
                 let updated_c = c { sub_settings = defaultChatSettings }
                     update_m = HMS.update (\_ -> Just updated_c) cid hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
-                        _ -> pure (update_m, Right ())
+                        _ -> pure (update_m, Right ChatOk)
             Sub links ->
                 let updated_c = c { sub_feeds_links = S.fromList $ links ++ (S.toList . sub_feeds_links $ c)}
                     updated_m = HMS.insert cid updated_c hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                        _ -> pure (updated_m, Right ())
+                        _ -> pure (updated_m, Right ChatOk)
             UnSub refs -> do
                 let (byurls, byids) = foldl' (\(!us, !is) v -> case v of ByUrl u -> (u:us, is); ById i -> (us, i:is)) ([],[]) refs
                     update_db c' = evalDb env (UpsertChat c') >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                        _ -> pure (HMS.insert cid c' hmap, Right ())
+                        _ -> pure (HMS.insert cid c' hmap, Right ChatOk)
                 if not (null byurls) && not (null byids) then pure (hmap, Left . BadInput $ "You cannot mix references by urls and by ids in the same command.")
                 else
                     if null byurls then case removeByUserIdx (S.toList . sub_feeds_links $ c) byids of
@@ -71,7 +76,7 @@ withChat action cid = ask >>= \env -> liftIO $ do
                         in  update_db updated_c
             Purge -> evalDb env (DeleteChat cid) >>= \case
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                _ -> pure (HMS.delete cid hmap, Right ())
+                _ -> pure (HMS.delete cid hmap, Right ChatOk)
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
                     updated_next_notification now = Just . findNextTime now . settings_digest_interval $ updated_settings
@@ -83,15 +88,17 @@ withChat action cid = ask >>= \env -> liftIO $ do
                             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
                             DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
-                            _ -> pure (updated_cs, Right ())
+                            _ -> pure (updated_cs, Right . ChatUpdated $ updated_c)
             Pause pause_or_resume ->
                 let updated_sets = (sub_settings c) { settings_paused = pause_or_resume }
                     updated_c = c { sub_settings = updated_sets }
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                in  evalDb env (UpsertChat updated_c) >>= \case
-                    DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
-                    _ -> pure (updated_cs, Right ())
-            _ -> pure (hmap, Right ())
+                in  do
+                    res <- evalDb env (UpsertChat updated_c)
+                    case res of
+                        DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
+                        _ -> pure (updated_cs, Right ChatOk)
+            _ -> pure (hmap, Right ChatOk)
 
 loadChats :: MonadIO m => App m ()
 loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $

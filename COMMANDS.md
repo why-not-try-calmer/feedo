@@ -66,7 +66,7 @@ returns  | error or success message
         - `digest_every: 6h` (= 6 hours)
         - `digest_every: 1d` (= 1 day)
 
-_Notice_: If the value of `digest_every` is set to less than 1 day, the application will ignore `digest_every` and use only `digest_at`.
+_Notice_: If `digest_at` is set and `digest_every` is set to less than 1 day, the application will ignore `digest_every` and use only `digest_at`.
 
 - `digest_size: <integer>`
     - the number of items per feed to send in a single digest

@@ -212,10 +212,15 @@ renderUserError NotSubscribed = "The feed your were looking for could not be fou
 renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
 
+data ChatRes = 
+    ChatUpdated SubChat |
+    ChatOk
+
 {- Replies -}
 
 data ToReply = FromChangelog
     | FromChatFeeds SubChat [Feed]
+    | FromChat SubChat
     | FromFeedDetails Feed
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
