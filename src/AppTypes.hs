@@ -258,8 +258,7 @@ data DbAction
   | GetFeed FeedLink
   | IncReads [FeedLink]
   | DbSearch Keywords Scope
-  | PruneOneMonthDigests
-  | PruneOldItems UTCTime
+  | PruneOld UTCTime
   | ReadDigest Int
   | UpsertChat SubChat
   | UpsertChats SubChats

@@ -146,7 +146,7 @@ postProcJobs = ask >>= \env ->
                         `T.append` renderDbError err
                     _ -> pure ()
                 -- cleaning more than 1 month old archives
-                void $ evalDb env (PruneOldItems $ addUTCTime (-2592000) now)
+                void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)
             JobIncReadsJob links -> fork $ runApp env $ evalFeeds (IncReadsF links)
             JobLog item -> fork $ saveToLog env item
             JobPin cid mid -> fork $ do

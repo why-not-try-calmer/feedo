@@ -214,13 +214,10 @@ evalMongo env (GetFeed link) =
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
-evalMongo env PruneOneMonthDigests =
-    let oneMonth = liftIO $ getCurrentTime <&> addUTCTime (-2592000)
-        action t = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
-    in  oneMonth >>= withMongo env . action >> pure DbOk
-evalMongo env (PruneOldItems t) =
-    let action = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
-    in  withMongo env action >> pure DbOk
+evalMongo env (PruneOld t) =
+    let del_items = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
+        del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
+    in  withMongo env (del_items >> del_digests) >> pure DbOk
 evalMongo env (ReadDigest _id) =
     let action = findOne (select ["digest_id" =: _id] "digests")
     in  withMongo env action >>= \case
