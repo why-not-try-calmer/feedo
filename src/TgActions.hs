@@ -373,16 +373,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
                 else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope)) >>= \case
                     DbSearchRes keys sc -> pure . Right $ toReply (FromSearchRes keys sc) Nothing
                     _ -> pure . Left . BadInput $ "The database was not able to run your query."
-evalTgAct uid (SetChannelSettings chan_id settings) _ = ask >>= \env ->
-    let tok = bot_token . tg_config $ env in
-    checkIfAdmin tok uid chan_id >>= \case
-        Nothing -> pure . Left $ TelegramErr
-        Just verdict ->
-            if not verdict then exitNotAuth uid
-            else withChat (SetChatSettings settings) chan_id >>= \case
-                Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
-                Right (ChatUpdated c) -> pure . Right . toReply (FromChat c) $ Nothing
-                _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
+evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case
@@ -391,7 +382,8 @@ evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
             if not verdict then exitNotAuth uid
             else withChat (SetChatSettings settings) cid >>= \case
                 Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
-                Right _ -> pure . Right . ServiceReply $ "Settings applied successfully."
+                Right (ChatUpdated c) -> pure . Right . toReply (FromChat c) $ Nothing
+                _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
 evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
