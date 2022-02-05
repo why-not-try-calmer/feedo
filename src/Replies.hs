@@ -139,8 +139,9 @@ instance Renderable ([(Feed, [Item])], Bool) where
                 `T.append` f_title f
                 `T.append` "* ("
                 `T.append` (T.pack . show . length $ i)
-                `T.append` " new items). Last 2: "
+                `T.append` " new, last 2):\n"
                 `T.append` (render . take 2 . sortOn (Down . i_pubdate) $ i)
+                `T.append` "\n"
         in  foldl' (if not collapse then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
