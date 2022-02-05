@@ -199,6 +199,8 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
                     Just n -> (not_parsed, PDigestSize n:parsed)
+            | k == "digest_collapse" =
+                if "true" `T.isInfixOf` txt then (not_parsed, PDigestCollapse True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDigestCollapse False:parsed) else ("'digest_collapse' takes only 'true' or 'false' as values.":not_parsed, parsed)                    
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else

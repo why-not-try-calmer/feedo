@@ -94,6 +94,7 @@ data WordMatches = WordMatches {
 } deriving (Show, Eq)
 
 data Settings = Settings {
+    settings_digest_collapse :: Bool,
     settings_digest_interval :: DigestInterval,
     settings_digest_size :: Int,
     settings_disable_web_view :: Bool,
@@ -148,6 +149,7 @@ data ParsingSettings =
     PDisableWebview Bool |
     PPaused Bool |
     PPin Bool |
+    PDigestCollapse Bool |
     PSearchKws (S.Set T.Text) |
     PSearchLinks (S.Set T.Text) |
     PShareLink Bool |
