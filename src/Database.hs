@@ -156,7 +156,6 @@ buildSearchQuery ws mb_last_time =
                 "i_title" =: (1 :: Int),
                 "i_feed_link" =: (1 :: Int),
                 "i_link"=: (1 :: Int),
-                "i_pubdate" =: (1::Int),
                 "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
     in  case mb_last_time of
