@@ -127,7 +127,7 @@ instance Renderable [Item] where
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
 instance Renderable ([(Feed, [Item])], Bool) where
-    render (f_items, collapse) =
+    render (!f_items, !collapse) =
         let into_list acc (!f, !i) = acc 
                 `T.append` "*" 
                 `T.append` f_title f 
