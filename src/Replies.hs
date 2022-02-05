@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Replies (mkdSingles, mkdDoubles, render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
+module Replies (defaultReply, mkdSingles, mkdDoubles, render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -145,7 +145,7 @@ instance Renderable ([(Feed, [Item])], Int) where
                 `T.append` (T.pack . show . length $ i)
                 `T.append` " new, last "
                 `T.append` (T.pack . show $ collapse_size)
-                `T.append` "):\n"
+                `T.append` " items):\n"
                 `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
                 `T.append` "\n"
         in  foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
@@ -188,7 +188,9 @@ toReply (FromChatFeeds _ feeds) _ =
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
     in  defaultReply payload
-toReply (FromChat chat confirmation) _ = ServiceReply $ confirmation `T.append` "\n" `T.append` render chat
+toReply (FromChat chat confirmation) _ = ServiceReply $ confirmation 
+    `T.append` "\n" 
+    `T.append` render chat
 toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =
@@ -198,10 +200,10 @@ toReply (FromFeedItems f) _ =
             f_items $ f
     in  defaultReply rendered_items
 toReply (FromFeedsItems f_items mb_link) mbs =
-    let digest_link = case mb_link of
-            Just link -> toHrefEntities Nothing "here" link
-            Nothing -> mempty
-        payload collapse = render (f_items, collapse) `T.append` "You can head the full digest " `T.append` digest_link `T.append ` "."
+    let digest_link = maybe mempty (toHrefEntities Nothing "here") mb_link
+        payload collapse = render (f_items, collapse) 
+            `T.append` "You can read the full digest "
+            `T.append` digest_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
             reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
