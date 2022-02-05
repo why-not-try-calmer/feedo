@@ -149,8 +149,7 @@ buildSearchQuery ws mb_last_time =
                     "fuzzy" =: ([] :: Document),
                     "path" =: (["i_desc", "i_title"] :: [T.Text])
                 ]]]
-        match Nothing = mempty 
-        match (Just t) = ["$match" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]]]
+        match t = ["$match" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]]]
         project = [
             "$project" =: [
                 "_id" =: (0 :: Int),
@@ -160,7 +159,9 @@ buildSearchQuery ws mb_last_time =
                 "i_pubdate" =: (1::Int),
                 "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
-    in  [search, match mb_last_time, project]
+    in  case mb_last_time of
+            Nothing -> [search, project]
+            Just t -> [search, match t, project]
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
