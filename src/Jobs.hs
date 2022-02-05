@@ -32,8 +32,8 @@ import Utils (findNextTime, scanTimeSlices, hash)
 runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
 runForever_ action handler = void . async . forever $ catch action handler
 
-notifier :: MonadIO m => App m ()
-notifier = do
+procNotif :: MonadIO m => App m ()
+procNotif = do
     env <- ask
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
@@ -41,27 +41,26 @@ notifier = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
         -- to send search notifications
-        send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
+        send_tg_search search_payload = forConcurrently_ (HMS.toList search_payload) $
             \(cid, DbSearchRes keys results) -> reply tok cid (toReply (FromSearchRes keys results) Nothing) (postjobs env)
-        -- to send digest notifications
-        send_notifs digest search follow now = do
-            send_tg_follow follow
-            fst <$> concurrently (send_tg_notif digest now) (send_tg_search search)
         -- to send follow notifications
-        send_tg_follow follow = forConcurrently_ (HMS.toList follow) $
+        send_tg_follow follow_payload = forConcurrently_ (HMS.toList follow_payload) $
             \(cid, (settings, feeds_items)) -> reply tok cid 
                 (toReply (FromFeedsItems feeds_items Nothing)
                 (Just settings))
                 (postjobs env)
         -- writing the last digest to the db
         -- sending digest notifications
-        send_tg_notif payload now = forConcurrently (HMS.toList payload) $
+        -- to send digest notifications
+        send_tg_notif digest_payload now = forConcurrently (HMS.toList digest_payload) $
             \(cid, (settings, feed_items)) ->
                 let _id = hash . show $ now
                     items = foldMap snd feed_items
                     flinks = map (f_link . fst) feed_items
                     digest = Digest _id now items flinks
-                    mb_digest_link res = case res of DbOk -> Just $ mkDigestUrl _id; _ -> Nothing 
+                    mb_digest_link res = case res of 
+                        DbOk -> Just $ mkDigestUrl _id
+                        _ -> Nothing 
                 in  do
                     res <- evalDb env $ WriteDigest digest
                     reply tok cid 
@@ -74,6 +73,9 @@ notifier = do
                 sub_last_digest = Just now,
                 sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c)
             } else c) chats
+        dispatch digest follow search now = do
+            send_tg_follow follow
+            fst <$> concurrently (send_tg_notif digest now) (send_tg_search search)
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
@@ -83,7 +85,7 @@ notifier = do
                 FeedDigests digest_notif follow_notif search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending update & search notifications
-                    notified_chats_feeds <- send_notifs digest_notif search_notif follow_notif now
+                    notified_chats_feeds <- dispatch digest_notif follow_notif search_notif now
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds

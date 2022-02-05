@@ -110,7 +110,7 @@ initStart config mb_urls = case mb_urls of
         putStrLn "Found urls. Trying to build feeds..."
         runApp config $ evalFeeds (InitF urls) >> startup
     where
-        startup = evalFeeds LoadF >> loadChats >> notifier >> postProcJobs
+        startup = evalFeeds LoadF >> loadChats >> procNotif >> postProcJobs
 
 startApp :: IO ()
 startApp = do
