@@ -198,7 +198,7 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                             else HMS.insert cid (keywords, scope) hmap) HMS.empty due_for_digest
                 in do
                 -- performing db search
-                dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc
+                dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 -- returning to calling thread
@@ -213,6 +213,7 @@ collectDue chats last_run now =
                 inserted = HMS.insert sub_chatid c follows
             in  if settings_paused sub_settings then nochange else
                 if nextIsNow sub_last_digest sub_next_digest interval
+                -- daily digests override follow digests
                 then (inserted, unioned, follows)
                 else case last_run of
                     Nothing -> (digests, links, inserted)

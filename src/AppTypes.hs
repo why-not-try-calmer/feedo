@@ -262,7 +262,7 @@ data DbAction
   | GetAllChats
   | GetFeed FeedLink
   | IncReads [FeedLink]
-  | DbSearch Keywords Scope
+  | DbSearch Keywords Scope (Maybe UTCTime)
   | PruneOld UTCTime
   | ReadDigest Int
   | UpsertChat SubChat

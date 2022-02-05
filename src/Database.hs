@@ -139,26 +139,28 @@ writeOrRetry res env action =
                 " If the connector timed out, one retry will be carried out."
             pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
 
-searchKeywords :: S.Set T.Text -> [Document]
-searchKeywords ws =
+buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
+buildSearchQuery ws mb_last_time =
     let search = [
             "$search" =: [
-            "index" =: ("default" :: T.Text),
-            "text" =: [
-                "query" =: S.toList ws,
-                "fuzzy" =: ([] :: Document),
-                "path" =: (["i_desc", "i_title"] :: [T.Text])
-            ]]]
+                "index" =: ("default" :: T.Text),
+                "text" =: [
+                    "query" =: S.toList ws,
+                    "fuzzy" =: ([] :: Document),
+                    "path" =: (["i_desc", "i_title"] :: [T.Text])
+                ]]]
+        match Nothing = mempty 
+        match (Just t) = ["$match" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]]]
         project = [
             "$project" =: [
                 "_id" =: (0 :: Int),
                 "i_title" =: (1 :: Int),
                 "i_feed_link" =: (1 :: Int),
                 "i_link"=: (1 :: Int),
+                "i_pubdate" =: (1::Int),
                 "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
-    in [search, project]
-
+    in  [search, match mb_last_time, project]
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
@@ -166,8 +168,8 @@ evalMongo env (ArchiveItems feeds) =
     in  action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
         Right res -> writeOrRetry res env action
-evalMongo env (DbSearch keywords scope) =
-    let action = aggregate "items" $ searchKeywords keywords
+evalMongo env (DbSearch keywords scope last_time) =
+    let action = aggregate "items" $ buildSearchQuery keywords last_time
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate mempty "DbSearch failed"
         Right res  ->
@@ -179,13 +181,13 @@ evalMongo env (DbSearch keywords scope) =
                     in  case sequence [title, link, f_link] :: Maybe [T.Text] of
                         Just [t, l, fl] -> case score :: Maybe Double of
                             Nothing -> Nothing
-                            Just s -> Just $ SearchResult t l fl s
+                            Just s -> Just $ SearchResult t l fl s 
                         _ -> Nothing
                 sort_limit = take 10 . sortOn (Down . sr_score)
                 rescind = filter (\sr -> sr_feedlink sr `elem` scope)
                 payload r =
                     if null scope then sort_limit r
-                    else rescind . sort_limit $ r
+                    else sort_limit . rescind $ r
             in  case traverse mkSearchRes res of
                 Nothing -> pure $ DbSearchRes S.empty []
                 Just r -> pure . DbSearchRes keywords . payload $ r

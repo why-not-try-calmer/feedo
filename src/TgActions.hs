@@ -370,7 +370,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
             let scope = S.toList . sub_feeds_links $ c
             in  if null scope
                 then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
-                else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope)) >>= \case
+                else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
                     DbSearchRes keys sc -> pure . Right $ toReply (FromSearchRes keys sc) Nothing
                     _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings settings) chan_id

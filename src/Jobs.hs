@@ -42,12 +42,11 @@ notifier = do
             writeChan (postjobs env) . JobTgAlert $ report
         -- to send search notifications
         send_tg_search res_hmap = forConcurrently_ (HMS.toList res_hmap) $
-            \(cid, DbSearchRes keys scope) -> reply tok cid (toReply (FromSearchRes keys scope) Nothing) (postjobs env)
+            \(cid, DbSearchRes keys results) -> reply tok cid (toReply (FromSearchRes keys results) Nothing) (postjobs env)
         -- to send digest notifications
-        send_notifs digest search follow now =
-            send_tg_follow follow >> fst <$> concurrently
-                (send_tg_notif digest now)
-                (send_tg_search search)
+        send_notifs digest search follow now = do
+            send_tg_follow follow
+            fst <$> concurrently (send_tg_notif digest now) (send_tg_search search)
         -- to send follow notifications
         send_tg_follow follow = forConcurrently_ (HMS.toList follow) $
             \(cid, (settings, feeds_items)) -> reply tok cid 
