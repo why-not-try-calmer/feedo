@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Replies (mkdSingles, mkdDoubles, render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
@@ -125,12 +126,23 @@ instance Renderable [Item] where
                     finish (i_title i) (i_link i), d')
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
-instance Renderable [(Feed, [Item])] where
-    render f_items = 
-        let step = (\acc (!f, !i) -> acc `T.append` "*" `T.append` f_title f `T.append` "*:\n"
+instance Renderable ([(Feed, [Item])], Bool) where
+    render (!f_items, !collapse) =
+        let into_list acc (!f, !i) = acc 
+                `T.append` "*" 
+                `T.append` f_title f 
+                `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
-                `T.append` "\n")
-        in  foldl' step mempty f_items
+                `T.append` "\n"
+            into_folder acc (!f, !i) = acc
+                `T.append` "*"
+                `T.append` f_title f
+                `T.append` "* ("
+                `T.append` (T.pack . show . length $ i)
+                `T.append` " new, last 2):\n"
+                `T.append` (render . take 2 . sortOn (Down . i_pubdate) $ i)
+                `T.append` "\n"
+        in  foldl' (if not collapse then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
     render (keys, items) =
@@ -181,18 +193,18 @@ toReply (FromFeedItems f) _ =
     in  defaultReply rendered_items
 toReply (FromFeedsItems f_items mb_link) mbs =
     let digest_link = case mb_link of
-            Just link -> toHrefEntities Nothing "share this digest" link
+            Just link -> toHrefEntities Nothing "here" link
             Nothing -> mempty
-        payload = render f_items `T.append` "You can now " `T.append` digest_link `T.append ` "."
+        payload collapse = render (f_items, collapse) `T.append` "You can head the full digest " `T.append` digest_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
-            reply_contents = payload,
+            reply_contents = payload $ settings_digest_collapse s,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
             reply_disable_webview = settings_disable_web_view s,
             reply_share_link = settings_share_link s
         }
-        Nothing -> ServiceReply payload
+        Nothing -> ServiceReply $ payload False
 toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems

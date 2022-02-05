@@ -67,7 +67,6 @@ hash = abs . foldl' (\h c -> 33*h `xor` fromEnum c) 5381
 {- Time -}
 
 mbTime :: String -> Maybe UTCTime
--- tries to parse input string against various time formats
 mbTime s = if isNothing first_pass then iso8601ParseM s else first_pass
     where
         first_pass = foldr step Nothing formats
@@ -122,7 +121,8 @@ findNextTime now (DigestInterval mbxs (Just ts)) =
         until_midnight = addUTCTime to_midnight now
         next_day = addUTCTime (toNominalDifftime early_h early_m) until_midnight
         still_today = addUTCTime (minimum times) now
-    in  if null times then maybe next_day
+    in  if null times
+        then maybe next_day
             (\xs -> if xs >= 86401 then xs `addUTCTime` next_day else next_day) mbxs
         else still_today
     where
@@ -168,7 +168,8 @@ defaultChatSettings = Settings {
         settings_disable_web_view = False,
         settings_pin = False,
         settings_share_link = True,
-        settings_follow = False
+        settings_follow = False,
+        settings_digest_collapse = False
     }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
@@ -176,6 +177,7 @@ updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
     where
         inject p o = case p of
+            PDigestCollapse v -> o { settings_digest_collapse = v }
             PDigestAt v ->
                 let bi = settings_digest_interval o
                     bi' = bi { digest_at = if null v then Nothing else Just v }
