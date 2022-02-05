@@ -103,6 +103,7 @@ instance Renderable SubChat where
                 at_txt,
                 every_txt,
                 ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
+                ("Digest collapse", if settings_digest_collapse sub_settings then " enabled" else " disabled"),
                 ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                 ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
                 ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
