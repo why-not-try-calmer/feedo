@@ -83,11 +83,11 @@ instance Renderable SubChat where
                     in  s' `T.append` body) mempty ts
             at_txt = ("Digest time(s)", if T.null at then "none" else at)
             every_txt = 
-                let k = "Digest step (time between two digests):"
+                let k = "Digest step (time between two digests)"
                 in  case digest_every_secs . settings_digest_interval $ sub_settings of
                     Nothing -> (mempty, mempty)
                     Just e ->
-                        if not $ T.null at && e < 86400 then (k, " overriden by 'digest_at'")
+                        if not $ T.null at && e < 86400 then (k, "overriden by 'digest_at'")
                         else if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
@@ -98,9 +98,6 @@ instance Renderable SubChat where
             only_search_results =
                 let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
                 in  if null sr then "none" else T.intercalate ", " sr
-            collapse = case settings_digest_collapse sub_settings of
-                Nothing -> " disabled"
-                Just v -> T.pack . show $ v
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
             [   ("Chat id", T.pack . show $ sub_chatid),
                 ("Status", if settings_paused sub_settings then "paused" else "active"),
@@ -108,15 +105,15 @@ instance Renderable SubChat where
                 at_txt,
                 every_txt,
                 ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                ("Digest collapse", collapse),
+                ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
                 ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                 ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
                 ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
                 ("Blacklist", blacklist),
                 ("Feeds ignored unless a search keyword matches", only_search_results),
                 ("Search keywords", searches),
-                ("Webview", if settings_disable_web_view sub_settings then " disabled" else " enabled"),
-                ("Pin new updates", if settings_pin sub_settings then " enabled" else " disabled")
+                ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
+                ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
             ]
 
 instance Renderable [Item] where
