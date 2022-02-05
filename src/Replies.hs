@@ -195,7 +195,7 @@ toReply (FromFeedsItems f_items mb_link) mbs =
     let digest_link = case mb_link of
             Just link -> toHrefEntities Nothing "here" link
             Nothing -> mempty
-        payload collapse = render (f_items, collapse) `T.append` "Click " `T.append` digest_link `T.append ` " to read the full digest."
+        payload collapse = render (f_items, collapse) `T.append` "You can head the full digest " `T.append` digest_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
             reply_contents = payload $ settings_digest_collapse s,
