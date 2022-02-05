@@ -70,6 +70,9 @@ _Notice_: If `digest_at` is set and `digest_every` is set to less than 1 day, th
 
 - `digest_size: <integer>`
     - the number of items per feed to send in a single digest
+- `digest_collapse: "true" or "false"`
+    - whether digests are reduced to a list of feed names along with the number of new items plus the last 2 items
+    - a link to read the full digest is appended.
 - `disable_webview: "true" or "false"`
     - whether Telegram is prevented from displaying the last shown items in webview mode
 - `follow: "true" or "false"`

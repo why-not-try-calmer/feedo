@@ -155,6 +155,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 T.intercalate ", " [
                     "blacklist <keyword keyword ...>",
                     "digest_at <HH:MM HH:MM ...>",
+                    "digest_collapse <true|false",
                     "digest_every <n> <m|h|d>",
                     "digest_size <n>",
                     "disable_webview <false|true>",
