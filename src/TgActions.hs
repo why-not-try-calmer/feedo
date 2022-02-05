@@ -383,7 +383,7 @@ evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
             else withChat (SetChatSettings settings) cid >>= \case
                 Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
                 Right (ChatUpdated c) -> pure . Right . toReply 
-                        (FromChat c "Settings applied successfully.") $ Nothing
+                        (FromChat c "Ok. New settings below.\n---\n") $ Nothing
                 _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
 evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env
