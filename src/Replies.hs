@@ -82,11 +82,13 @@ instance Renderable SubChat where
                         s' = if s == mempty then s else s `T.append` ", "
                     in  s' `T.append` body) mempty ts
             at_txt = ("Digest time(s)", if T.null at then "none" else at)
-            every_txt = case digest_every_secs . settings_digest_interval $ sub_settings of
-                Nothing -> (mempty, mempty)
-                Just e ->
-                    if not $ T.null at && e < 86400 then (mempty, mempty)
-                    else ("Digest step (time between two digests)", if e == 0 then "none" else nomDiffToReadable e)
+            every_txt = 
+                let k = "Digest step (time between two digests):"
+                in  case digest_every_secs . settings_digest_interval $ sub_settings of
+                    Nothing -> (mempty, mempty)
+                    Just e ->
+                        if not $ T.null at && e < 86400 then (k, " overriden by 'digest_at'")
+                        else if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
                 in  if null bl then "none" else T.intercalate ", " bl
@@ -96,6 +98,9 @@ instance Renderable SubChat where
             only_search_results =
                 let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
                 in  if null sr then "none" else T.intercalate ", " sr
+            collapse = case settings_digest_collapse sub_settings of
+                Nothing -> " disabled"
+                Just v -> T.pack . show $ v
         in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
             [   ("Chat id", T.pack . show $ sub_chatid),
                 ("Status", if settings_paused sub_settings then "paused" else "active"),
@@ -103,7 +108,7 @@ instance Renderable SubChat where
                 at_txt,
                 every_txt,
                 ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                ("Digest collapse", if settings_digest_collapse sub_settings then " enabled" else " disabled"),
+                ("Digest collapse", collapse),
                 ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                 ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
                 ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
@@ -127,11 +132,11 @@ instance Renderable [Item] where
                     finish (i_title i) (i_link i), d')
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
-instance Renderable ([(Feed, [Item])], Bool) where
-    render (!f_items, !collapse) =
-        let into_list acc (!f, !i) = acc 
-                `T.append` "*" 
-                `T.append` f_title f 
+instance Renderable ([(Feed, [Item])], Int) where
+    render (!f_items, !collapse_size) =
+        let into_list acc (!f, !i) = acc
+                `T.append` "*"
+                `T.append` f_title f
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
                 `T.append` "\n"
@@ -140,10 +145,12 @@ instance Renderable ([(Feed, [Item])], Bool) where
                 `T.append` f_title f
                 `T.append` "* ("
                 `T.append` (T.pack . show . length $ i)
-                `T.append` " new, last 2):\n"
-                `T.append` (render . take 2 . sortOn (Down . i_pubdate) $ i)
+                `T.append` " new, last "
+                `T.append` (T.pack . show $ collapse_size)
+                `T.append` "):\n"
+                `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
                 `T.append` "\n"
-        in  foldl' (if not collapse then into_list else into_folder) mempty f_items
+        in  foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
     render (keys, items) =
@@ -199,13 +206,13 @@ toReply (FromFeedsItems f_items mb_link) mbs =
         payload collapse = render (f_items, collapse) `T.append` "You can head the full digest " `T.append` digest_link `T.append ` "."
     in  case mbs of
         Just s -> ChatReply {
-            reply_contents = payload $ settings_digest_collapse s,
+            reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
             reply_disable_webview = settings_disable_web_view s,
             reply_share_link = settings_share_link s
         }
-        Nothing -> ServiceReply $ payload False
+        Nothing -> ServiceReply $ payload (0 :: Int)
 toReply (FromFeedLinkItems flinkitems) _ =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems

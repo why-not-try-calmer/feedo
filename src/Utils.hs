@@ -169,7 +169,7 @@ defaultChatSettings = Settings {
         settings_pin = False,
         settings_share_link = True,
         settings_follow = False,
-        settings_digest_collapse = False
+        settings_digest_collapse = Nothing
     }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
@@ -177,7 +177,7 @@ updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
     where
         inject p o = case p of
-            PDigestCollapse v -> o { settings_digest_collapse = v }
+            PDigestCollapse v -> o { settings_digest_collapse = if v == 0 then Nothing else Just v }
             PDigestAt v ->
                 let bi = settings_digest_interval o
                     bi' = bi { digest_at = if null v then Nothing else Just v }

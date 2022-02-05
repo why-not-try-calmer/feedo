@@ -9,13 +9,13 @@ For the exhaustive list of commands, see this [document](https://github.com/why-
 digest_at: 12:00 
 ```
 
-1 digest every day at noon (UTC) with frequent updates as soon as new updates are found, presented as a condensed list of feed titles, showing only the last two items and a link to view the full digest:
+1 digest every day at noon (UTC) with frequent updates as soon as new updates are found, presented as a condensed list of feed titles, showing only the last 3 items and a link to view the full digest:
 
 ```
 /set
 digest_at: 12:00
 follow: true
-digest_collapse: true
+digest_collapse: 3
 ```
 
 1 digest every other day at noon (UTC) with frequent updates as soon as new items are found across all feeds, with a shareable link for non-Telegram users:

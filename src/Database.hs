@@ -181,7 +181,7 @@ evalMongo env (DbSearch keywords scope last_time) =
                     in  case sequence [title, link, f_link] :: Maybe [T.Text] of
                         Just [t, l, fl] -> case score :: Maybe Double of
                             Nothing -> Nothing
-                            Just s -> Just $ SearchResult t l fl s 
+                            Just s -> Just $ SearchResult t l fl s
                         _ -> Nothing
                 sort_limit = take 10 . sortOn (Down . sr_score)
                 rescind = filter (\sr -> sr_feedlink sr `elem` scope)
@@ -313,7 +313,7 @@ bsonToChat doc =
     let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
         feeds_settings_docs = Settings {
-            settings_digest_collapse = fromMaybe False $ M.lookup "settings_digest_collapse" settings_doc,
+            settings_digest_collapse = M.lookup "settings_digest_collapse" settings_doc,
             settings_digest_size = fromJust $ M.lookup "settings_digest_size" settings_doc :: Int,
             settings_digest_interval =
                 let every = M.lookup "settings_digest_every_secs" settings_doc :: Maybe NominalDiffTime
@@ -409,14 +409,14 @@ bsonToLog doc = LogPerf {
     log_total = fromMaybe 0 $ M.lookup "log_total" doc
     }
 
-logToBson :: LogItem -> Document 
+logToBson :: LogItem -> Document
 logToBson LogPerf{..} = [
     "log_message" =: log_message,
     "log_at" =: log_at,
     "log_refresh" =: log_refresh,
     "log_sending_notif" =: log_sending_notif,
     "log_update" =: log_updating,
-    "log_total" =: log_total 
+    "log_total" =: log_total
     ]
 
 saveToLog :: (Db m, MonadIO m) => AppConfig -> LogItem -> m ()
@@ -491,7 +491,7 @@ checkDbMapper = do
     let item = Item mempty mempty mempty mempty now
         digest_interval = DigestInterval (Just 0) (Just [(1,20)])
         word_matches = WordMatches S.empty S.empty (S.fromList ["1","2","3"])
-        settings = Settings True digest_interval 0 True False False word_matches False False
+        settings = Settings (Just 3) digest_interval 0 True False False word_matches False False
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
@@ -503,7 +503,7 @@ checkDbMapper = do
             ("chat", checks chat),
             ("log", checks log')] :: [(T.Text, Bool)]
     if all snd equalities
-    then pure () 
+    then pure ()
     else liftIO $ do
         print digest
         print (readDoc . writeDoc $ digest :: Digest)

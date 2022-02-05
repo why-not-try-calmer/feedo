@@ -155,7 +155,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 T.intercalate ", " [
                     "blacklist <keyword keyword ...>",
                     "digest_at <HH:MM HH:MM ...>",
-                    "digest_collapse <true|false",
+                    "digest_collapse <n>",
                     "digest_every <n> <m|h|d>",
                     "digest_size <n>",
                     "disable_webview <false|true>",
@@ -201,7 +201,10 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     Nothing -> (k:not_parsed, parsed)
                     Just n -> (not_parsed, PDigestSize n:parsed)
             | k == "digest_collapse" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PDigestCollapse True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDigestCollapse False:parsed) else ("'digest_collapse' takes only 'true' or 'false' as values.":not_parsed, parsed)                    
+                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestCollapse 0:parsed)
+                else case readMaybe . T.unpack $ txt :: Maybe Int of
+                    Nothing -> (k:not_parsed, parsed)
+                    Just n -> (not_parsed, PDigestCollapse n:parsed)                    
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else
