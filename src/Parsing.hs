@@ -151,19 +151,18 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
         if null not_parsed then Right parsed
         else Left $ T.intercalate ", " not_parsed `T.append` 
-            " Make sure to use only valid keys: " `T.append` 
+            ". Make sure to use only valid key-value pairs: " `T.append` 
                 T.intercalate ", " [
-                    "blacklist",
-                    "digest_at",
-                    "digest_every",
-                    "digest_size",
-                    "disable_webview",
-                    "follow",
-                    "only_search_notif",
-                    "paused",
-                    "pin",
-                    "search_notif",
-                    "share_link"
+                    "blacklist <keyword keyword ...>",
+                    "digest_at <HH:MM HH:MM ...>",
+                    "digest_every <n> <m|h|d>",
+                    "digest_size <n>",
+                    "disable_webview <false|true>",
+                    "follow <false|true>",
+                    "only_search_notif <url1 url2 ...>",
+                    "pin: <false|true>",
+                    "search_notif <keyword keyword ...>",
+                    "share_link <false|true>"
                     ]
     where
         intoParsing (!not_parsed, !parsed) (!k, !txt)

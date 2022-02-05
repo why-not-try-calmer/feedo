@@ -220,7 +220,7 @@ data ChatRes =
 
 data ToReply = FromChangelog
     | FromChatFeeds SubChat [Feed]
-    | FromChat SubChat
+    | FromChat SubChat T.Text
     | FromFeedDetails Feed
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
