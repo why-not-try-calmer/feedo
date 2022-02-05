@@ -98,23 +98,24 @@ instance Renderable SubChat where
             only_search_results =
                 let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
                 in  if null sr then "none" else T.intercalate ", " sr
-        in  T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
-            [   ("Chat id", T.pack . show $ sub_chatid),
-                ("Status", if settings_paused sub_settings then "paused" else "active"),
-                ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
-                at_txt,
-                every_txt,
-                ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
-                ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
-                ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
-                ("Blacklist", blacklist),
-                ("Feeds ignored unless a search keyword matches", only_search_results),
-                ("Search keywords", searches),
-                ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
-                ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
-            ]
+            rendered = T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
+                [   ("Chat id", T.pack . show $ sub_chatid),
+                    ("Status", if settings_paused sub_settings then "paused" else "active"),
+                    ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
+                    at_txt,
+                    every_txt,
+                    ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
+                    ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
+                    ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
+                    ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
+                    ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
+                    ("Blacklist", blacklist),
+                    ("Feeds ignored unless a search keyword matches", only_search_results),
+                    ("Search keywords", searches),
+                    ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
+                    ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
+                ]
+            in T.append rendered "\n\nToo many settings? Check out the docs for examples: https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md"
 
 instance Renderable [Item] where
     render = fst . foldl' into_timeline (mempty, 0)
