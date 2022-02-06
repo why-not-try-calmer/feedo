@@ -188,9 +188,7 @@ toReply (FromChatFeeds _ feeds) _ =
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
     in  defaultReply payload
-toReply (FromChat chat confirmation) _ = ServiceReply $ confirmation 
-    `T.append` "\n" 
-    `T.append` render chat
+toReply (FromChat chat confirmation) _ = ServiceReply $ confirmation `T.append` render chat
 toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
 toReply (FromFeedItems f) _ =
     let rendered_items =

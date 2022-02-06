@@ -199,10 +199,11 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 in do
                 -- performing db search
                 dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
+                let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres 
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 -- returning to calling thread
-                pure (to_keep_in_memory, FeedDigests digest_notif follow_notif dbres)
+                pure (to_keep_in_memory, FeedDigests digest_notif follow_notif not_null_dbres)
 
 collectDue :: SubChats -> Maybe UTCTime -> UTCTime -> (SubChats, [FeedLink], SubChats)
 collectDue chats last_run now =
