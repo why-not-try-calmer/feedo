@@ -51,47 +51,44 @@ examples | /set
 returns  | error or success message                                   
 ---------+-----------------------------------------------
 ```
-#### Available settings:
 
-- `blacklist: term term, ...`
-    - excludes feed items where a term is found in either their url or description
-    - example: `blacklist: itsmycode, butIamproudofit`
-- `digest_at: HH:MM HH:MM, ...`
-    - digest all updates and post a summary (digest) at the given times
-    - example: `digest_at: 0800 1200 1800`
-- `digest_every: <integer><m | h | d>`
-    - digest all updates and post a summary (digest) every n-minute, n-hour or n-day
-    - examples:
-        - `digest_every: 20m` (= 20 minutes)
-        - `digest_every: 6h` (= 6 hours)
-        - `digest_every: 1d` (= 1 day)
+__Available settings__
 
-_Notice_: If `digest_at` is set and `digest_every` is set to less than 1 day, the application will ignore `digest_every` and use only `digest_at`.
-
-- `digest_size: <integer>`
-    - the number of items per feed to send in a single digest
-- `digest_collapse: <integer>`
-    - whether digests are reduced to a list of feed names along with the number of new items plus the last <integer> items
-    - a link to read the full digest is appended.
-- `disable_title: <title>`
-    - set a custom title to digest notifications
-- `disable_webview: "true" or "false"`
-    - whether Telegram is prevented from displaying the last shown items in webview mode
-- `follow: "true" or "false"`
-    - polls every feed at short interval and notifies on new items
-    - this feature works independently from the digest-like feature
-- `only_search_notif: <list of urls>`
-    - if an url of a feed is on the list, items from it will be ignored from all messages except for search notifications
-- `paused: "true" or "false"`
-    - suspend all notifications to the chat
-- `pin: "true" or "false"`,
-    - have the bot try to pin every digest message
-- `search_notif: <list of space-separated keywords>`
-    - have the bot send an extra notification whenever a feed to which the current chat is subscribed has items in which the keywords are found
-- `share_link: "true" or "false"`
-    - appends a link at the end of each digest update to a web rendered view
-
-_Notice_: The last two settings allow to completely ignore certain feeds from the regular updates, while still getting notifications on matches.
+Here are the default settings, that come into play as soon as you subscribe a chat to a web feed:
+```
+blacklist: undefined
+    # list of keywords that exclude items
+    # containing any of them from notifications
+digest_every: 1d
+    # every day, post a digest (summmary) of
+    # all new items across all feeds this chat is subscribed to
+    # since last time
+digest_at: undefined
+    # the time of the day at which digests are sent
+digest_size: 10
+    # have the digest (summary) contain max. 10 items per feed
+disable_web_view: false
+    # do not prevent Telegram from rendering the first item using the
+    # InstantView feature
+follow: false
+    # do not try to post every new item between digest
+    # as as soon as they are found
+only_search: undefined
+    # list of feeds whose items should be ignored from notifications unless they match search
+    # keywords
+paused: false
+    # not paused
+pin: false
+    # do not try to pin digests
+search_notif: undefined
+    # the list of keywords used for 'only_search'
+share_link: true
+    # append at the end of the digest (summary)
+    # a link for sharing with non-Telegram users
+```
+_NB_: 
+- if `digest_at` is set and `digest_every` is set to less than 1 day, the application will ignore `digest_every` and use only `digest_at`.
+- the last two settings allow to completely ignore certain feeds from the regular updates, while still getting notifications on matches.
 
 ### List subscribed to web feeds
 

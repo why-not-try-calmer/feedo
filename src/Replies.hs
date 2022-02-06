@@ -101,31 +101,31 @@ instance Renderable SubChat where
                 let mapper = T.intercalate "\n" . map (\(k, v) -> k `T.append` ": " `T.append` v)
                     status_part = mapper 
                         [
-                            ("- Chat id", T.pack . show $ sub_chatid),
-                            ("- Status", if settings_paused sub_settings then "paused" else "active"),
-                            ("- Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links)
+                            ("Chat id", T.pack . show $ sub_chatid),
+                            ("Status", if settings_paused sub_settings then "paused" else "active"),
+                            ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links)
                         ]
                     digest_part = mapper
                         [
-                            ("- Digest time(s)", if T.null at then "none" else at),
+                            ("Digest time(s)", if T.null at then "none" else at),
                             every_txt,
-                            ("- Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                            ("- Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
-                            ("- Digest title", settings_digest_title sub_settings),
-                            ("- Last digest", maybe "none" utcToYmdHMS sub_last_digest),
-                            ("- Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                            ("- Follow", if settings_follow sub_settings then "enabled" else "disabled")
+                            ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
+                            ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
+                            ("Digest title", settings_digest_title sub_settings),
+                            ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
+                            ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
+                            ("Follow", if settings_follow sub_settings then "enabled" else "disabled")
                         ]
                     search_part = mapper
                         [
-                            ("- Blacklist", blacklist),
-                            ("- Feeds ignored unless a search keyword matches", only_search_results),
-                            ("- Search keywords", searches)
+                            ("Blacklist", blacklist),
+                            ("Feeds ignored unless a search keyword matches", only_search_results),
+                            ("Search keywords", searches)
                         ]
                     telegram_part = mapper 
                         [
-                            ("- Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
-                            ("- Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
+                            ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
+                            ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
                         ]
                 in  status_part 
                     `T.append` "\n--\n"
