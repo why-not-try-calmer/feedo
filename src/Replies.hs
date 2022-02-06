@@ -108,7 +108,7 @@ instance Renderable SubChat where
                     ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
                     ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                     ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                    ("Follow", if settings_follow sub_settings then "enabled" else " disabled"),
+                    ("Follow", if settings_follow sub_settings then "enabled" else "disabled"),
                     ("Blacklist", blacklist),
                     ("Feeds ignored unless a search keyword matches", only_search_results),
                     ("Search keywords", searches),

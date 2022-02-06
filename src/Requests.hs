@@ -66,7 +66,7 @@ reply tok cid rep chan =
                 out_parse_mode = if reply_markdown then Just "Markdown" else Nothing,
                 out_disable_web_page_preview = if reply_disable_webview then Just True else Nothing
             }
-        fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing Nothing
+        fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True)
         redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing Nothing
         non_empty txt = if T.null txt then "No result for this command." else txt
         triage_replies msg@ChatReply{..}
