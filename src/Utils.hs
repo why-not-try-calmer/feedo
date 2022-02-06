@@ -9,14 +9,13 @@ import Data.List (foldl', sort)
 import Data.Maybe (isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, defaultTimeLocale, diffUTCTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay, formatTime)
+import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, defaultTimeLocale, diffUTCTime, formatTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
 import Data.Time.Clock.POSIX
   ( posixSecondsToUTCTime,
     utcTimeToPOSIXSeconds,
   )
 import Data.Time.Format.ISO8601
 import TgramOutJson (ChatId)
-
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
@@ -164,6 +163,7 @@ defaultChatSettings = Settings {
         settings_word_matches = WordMatches S.empty S.empty S.empty,
         settings_digest_size = 10,
         settings_digest_interval = DigestInterval (Just 86400) Nothing,
+        settings_digest_title = "A new digest is available",
         settings_paused = False,
         settings_disable_web_view = False,
         settings_pin = False,
@@ -187,6 +187,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
                     bi' = bi { digest_every_secs = if v == 0 then Nothing else Just v}
                 in  o { settings_digest_interval = bi' }
             PDigestSize v -> o { settings_digest_size = v }
+            PDigestTitle v -> o { settings_digest_title = v }
             PBlacklist v ->
                 let wm = settings_word_matches o
                     wm' = wm { match_blacklist = v}

@@ -98,6 +98,7 @@ data Settings = Settings {
     settings_digest_collapse :: Maybe Int,
     settings_digest_interval :: DigestInterval,
     settings_digest_size :: Int,
+    settings_digest_title :: T.Text,
     settings_disable_web_view :: Bool,
     settings_paused :: Bool,
     settings_pin :: Bool,
@@ -146,6 +147,7 @@ data ParsingSettings =
     PDigestAt [(Int, Int)] |
     PDigestEvery NominalDiffTime |
     PDigestSize Int |
+    PDigestTitle T.Text |
     PBlacklist (S.Set T.Text) |
     PDisableWebview Bool |
     PPaused Bool |

@@ -8,7 +8,7 @@ import AppTypes
     Item (Item, i_pubdate),
     ParsingSettings (..),
     UserError (BadFeedUrl, BadInput, ParseError),
-    renderUserError,
+    renderUserError, Settings (settings_digest_title)
   )
 import Control.Exception
 import Control.Monad.IO.Class
@@ -18,12 +18,12 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import Network.HTTP.Req
+import Replies (mkdDoubles)
 import Requests (fetchFeed)
 import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
-import Utils (averageInterval, mbTime, sortTimePairs)
-import Replies (mkdDoubles)
+import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
 
 {- Feeds, Items -}
 
@@ -158,6 +158,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     "digest_collapse <n>",
                     "digest_every <n> <m|h|d>",
                     "digest_size <n>",
+                    "digest_title <title>",
                     "disable_webview <false|true>",
                     "follow <false|true>",
                     "only_search_notif <url1 url2 ...>",
@@ -212,6 +213,8 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     in (not_parsed, PBlacklist v:parsed)
             | k == "disable_webview" =
                 if "true" `T.isInfixOf` txt then (not_parsed, PDisableWebview True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False:parsed) else ("'disable_webview' takes only 'true' or 'false' as values.":not_parsed, parsed)
+            | k == "digest_title" =
+                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings):parsed) else (not_parsed, PDigestTitle txt:parsed) 
             | k == "search_notif" =
                 if T.length txt < 3 then ("'search_notif' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else if any (`T.isPrefixOf` txt) mkdDoubles then ("'search_notif' accepts only alphanumeric symbols":not_parsed, parsed) else

@@ -21,6 +21,7 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
+import Utils (defaultChatSettings)
 
 {- Interface -}
 
@@ -315,6 +316,7 @@ bsonToChat doc =
         feeds_settings_docs = Settings {
             settings_digest_collapse = M.lookup "settings_digest_collapse" settings_doc,
             settings_digest_size = fromJust $ M.lookup "settings_digest_size" settings_doc :: Int,
+            settings_digest_title = fromMaybe (settings_digest_title defaultChatSettings) $ M.lookup "settings_digest_title" settings_doc,
             settings_digest_interval =
                 let every = M.lookup "settings_digest_every_secs" settings_doc :: Maybe NominalDiffTime
                     hm_docs = M.lookup "settings_digest_at" settings_doc :: Maybe [Document]
@@ -358,6 +360,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
             "settings_digest_collapse" =: settings_digest_collapse settings,
             "settings_disable_web_view" =: settings_disable_web_view settings,
             "settings_digest_size" =: settings_digest_size settings,
+            "settings_digest_title" =: settings_digest_title settings,
             "settings_follow" =: settings_follow settings,
             "settings_only_search_results" =: only_search_results,
             "settings_paused" =: settings_paused settings,
@@ -493,7 +496,7 @@ checkDbMapper = do
     let item = Item mempty mempty mempty mempty now
         digest_interval = DigestInterval (Just 0) (Just [(1,20)])
         word_matches = WordMatches S.empty S.empty (S.fromList ["1","2","3"])
-        settings = Settings (Just 3) digest_interval 0 True False False word_matches False False
+        settings = Settings (Just 3) digest_interval 0 "title" True False False word_matches False False
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0

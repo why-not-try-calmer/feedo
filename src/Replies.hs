@@ -81,14 +81,13 @@ instance Renderable SubChat where
                     let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
                         s' = if s == mempty then s else s `T.append` ", "
                     in  s' `T.append` body) mempty ts
-            at_txt = ("Digest time(s)", if T.null at then "none" else at)
             every_txt = 
                 let k = "Digest step (time between two digests)"
                 in  case digest_every_secs . settings_digest_interval $ sub_settings of
-                    Nothing -> (mempty, mempty)
-                    Just e ->
-                        if not $ T.null at && e < 86400 then (k, "overriden by 'digest_at'")
-                        else if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
+                        Nothing -> (mempty, mempty)
+                        Just e ->
+                            if not $ T.null at && e < 86400 then (k, "overriden by 'digest_at'")
+                            else if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
                 in  if null bl then "none" else T.intercalate ", " bl
@@ -98,23 +97,43 @@ instance Renderable SubChat where
             only_search_results =
                 let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
                 in  if null sr then "none" else T.intercalate ", " sr
-            rendered = T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v)
-                [   ("Chat id", T.pack . show $ sub_chatid),
-                    ("Status", if settings_paused sub_settings then "paused" else "active"),
-                    ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
-                    at_txt,
-                    every_txt,
-                    ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                    ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
-                    ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
-                    ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                    ("Follow", if settings_follow sub_settings then "enabled" else "disabled"),
-                    ("Blacklist", blacklist),
-                    ("Feeds ignored unless a search keyword matches", only_search_results),
-                    ("Search keywords", searches),
-                    ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
-                    ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
-                ]
+            rendered = 
+                let mapper = T.intercalate "\n" . map (\(k, v) -> k `T.append` ": " `T.append` v)
+                    status_part = mapper 
+                        [
+                            ("- Chat id", T.pack . show $ sub_chatid),
+                            ("- Status", if settings_paused sub_settings then "paused" else "active"),
+                            ("- Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links)
+                        ]
+                    digest_part = mapper
+                        [
+                            ("- Digest time(s)", if T.null at then "none" else at),
+                            every_txt,
+                            ("- Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
+                            ("- Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
+                            ("- Digest title", settings_digest_title sub_settings),
+                            ("- Last digest", maybe "none" utcToYmdHMS sub_last_digest),
+                            ("- Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
+                            ("- Follow", if settings_follow sub_settings then "enabled" else "disabled")
+                        ]
+                    search_part = mapper
+                        [
+                            ("- Blacklist", blacklist),
+                            ("- Feeds ignored unless a search keyword matches", only_search_results),
+                            ("- Search keywords", searches)
+                        ]
+                    telegram_part = mapper 
+                        [
+                            ("- Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
+                            ("- Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
+                        ]
+                in  status_part 
+                    `T.append` "\n--\n"
+                    `T.append` digest_part
+                    `T.append` "\n--\n"
+                    `T.append` search_part
+                    `T.append` "\n--\n"
+                    `T.append` telegram_part  
             in T.append rendered "\n\nToo many settings? Check out the docs for examples: https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md"
 
 instance Renderable [Item] where
@@ -201,7 +220,8 @@ mkReply (FromFollow f_items _) =
     in  ChatReply payload True True True False
 mkReply (FromDigest f_items mb_link s) =
     let digest_link = maybe mempty (toHrefEntities Nothing "here") mb_link
-        payload collapse = "A new digest is available\n--\n"
+        payload collapse = settings_digest_title s
+            `T.append` "\n--\n"
             `T.append` render (f_items, collapse) 
             `T.append` "\n--\nYou can read the full digest "
             `T.append` digest_link `T.append ` "."
