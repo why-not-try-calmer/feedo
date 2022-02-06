@@ -15,7 +15,7 @@ import qualified Data.Text as T
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
-import Replies (render, toReply)
+import Replies (render, mkReply)
 import Requests (reqSend, setWebhook)
 import Text.Read (readMaybe)
 import TgramInJson
@@ -221,14 +221,14 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                 else liftIO (readMVar $ feeds_state env) >>= \feeds_hmap -> case ref of
                     ByUrl u -> case HMS.lookup u feeds_hmap of
                         Nothing -> pure . Left $ NotSubscribed
-                        Just f -> pure . Right $ toReply (FromFeedDetails f) (Just $ sub_settings c)
+                        Just f -> pure . Right $ mkReply (FromFeedDetails f)
                     ById i ->
                         let feed = (`HMS.lookup` feeds_hmap) =<< maybeUserIdx subs i
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
-                            Just f -> pure . Right $ toReply (FromFeedDetails f) (Just $ sub_settings c)
+                            Just f -> pure . Right $ mkReply (FromFeedDetails f)
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
-evalTgAct _ Changelog _ =  pure . Right $ toReply FromChangelog Nothing
+evalTgAct _ Changelog _ =  pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
 evalTgAct _ (GetItems ref) cid = do
     env <- ask
@@ -252,7 +252,7 @@ evalTgAct _ (GetItems ref) cid = do
             Just f ->
                 if hasSubToFeed (f_link f) c_hmap then do
                 liftIO $ writeChan (postjobs env) (JobIncReadsJob [f_link f])
-                pure . Right $ toReply (FromFeedItems f) Nothing
+                pure . Right $ mkReply (FromFeedItems f)
                 else pure . Right . ServiceReply $ "It appears that you are not subscribed to this feed. Use /sub or talk to your chat administrator about it."
         hasSubToFeed flink chats_hmap = maybe False (\c -> flink `elem` sub_feeds_links c) (HMS.lookup cid chats_hmap)
 evalTgAct _ (GetLastXDaysItems n) cid = do
@@ -266,7 +266,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
             else evalFeeds (GetAllXDays subscribed n) >>= \case
                 FeedLinkDigest feeds -> do
                     liftIO $ writeChan (postjobs env) (JobIncReadsJob $ map fst feeds)
-                    pure . Right $ toReply (FromFeedLinkItems feeds) (Just $ sub_settings c)
+                    pure . Right $ mkReply (FromFeedLinkItems feeds)
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
 evalTgAct uid (GetSubchannelSettings channel_id) _ = evalTgAct uid GetSubchatSettings channel_id
 evalTgAct _ GetSubchatSettings cid = ask >>= liftIO . readMVar . subs_state >>= \hmap ->
@@ -286,7 +286,7 @@ evalTgAct _ ListSubs cid = do
                 case traverse (`HMS.lookup` feeds_hmap) subs of
                     Nothing -> pure . Left . NotFoundFeed $
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
-                    Just feeds -> pure . Right $ toReply (FromChatFeeds c feeds) (Just $ sub_settings c)
+                    Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
 evalTgAct uid (ListSubsChannel chan_id) _ = evalTgAct uid ListSubs chan_id
 evalTgAct uid (Migrate to) cid = do
     env <- ask
@@ -350,7 +350,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
             else subFeed env cid feeds_urls
     where
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
-evalTgAct _ RenderCmds _ = pure . Right $ toReply FromStart Nothing
+evalTgAct _ RenderCmds _ = pure . Right $ mkReply FromStart
 evalTgAct uid Reset cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
@@ -371,7 +371,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
             in  if null scope
                 then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
                 else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
-                    DbSearchRes keys sc -> pure . Right $ toReply (FromSearchRes keys sc) Nothing
+                    DbSearchRes keys sc -> pure . Right $ mkReply (FromSearchRes keys sc)
                     _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
@@ -382,8 +382,7 @@ evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
             if not verdict then exitNotAuth uid
             else withChat (SetChatSettings settings) cid >>= \case
                 Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
-                Right (ChatUpdated c) -> pure . Right . toReply 
-                        (FromChat c "Ok. New settings below.\n---\n") $ Nothing
+                Right (ChatUpdated c) -> pure . Right $ mkReply (FromChat c "Ok. New settings below.\n---\n")
                 _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
 evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->
     let tok = bot_token . tg_config $ env

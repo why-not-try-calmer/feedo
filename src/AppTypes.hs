@@ -221,13 +221,14 @@ data ChatRes =
 
 {- Replies -}
 
-data ToReply = FromChangelog
+data Replies = FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
-    | FromFeedsItems [(Feed, [Item])] (Maybe T.Text)
+    | FromDigest [(Feed, [Item])] (Maybe T.Text) Settings
+    | FromFollow [(Feed, [Item])] Settings
     | FromSearchRes Keywords [SearchResult]
     | FromStart
     deriving (Eq, Show)

@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Replies (defaultReply, mkdSingles, mkdDoubles, render, Reply(..), toReply, ToReply(..), mkViewUrl, mkDigestUrl) where
+module Replies (defaultReply, mkdSingles, mkdDoubles, render, Reply(..), mkReply, Replies(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -137,7 +137,6 @@ instance Renderable ([(Feed, [Item])], Int) where
                 `T.append` f_title f
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
-                `T.append` "\n"
             into_folder acc (!f, !i) = acc
                 `T.append` "*"
                 `T.append` f_title f
@@ -147,7 +146,6 @@ instance Renderable ([(Feed, [Item])], Int) where
                 `T.append` (T.pack . show . length $ i)
                 `T.append` " new):\n"
                 `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
-                `T.append` "\n"
         in  foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
@@ -177,9 +175,9 @@ defaultReply payload = ChatReply {
     reply_share_link = False
     }
 
-toReply :: ToReply -> Maybe Settings -> Reply
-toReply FromChangelog _ = ServiceReply "check out https://t.me/feedfarer"
-toReply (FromChatFeeds _ feeds) _ =
+mkReply :: Replies -> Reply
+mkReply FromChangelog = ServiceReply "check out https://t.me/feedfarer"
+mkReply (FromChatFeeds _ feeds) =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
         step = (\(!txt, !counter) f ->
             let link = f_link f
@@ -188,35 +186,39 @@ toReply (FromChatFeeds _ feeds) _ =
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
     in  defaultReply payload
-toReply (FromChat chat confirmation) _ = ServiceReply $ confirmation `T.append` render chat
-toReply (FromFeedDetails feed) _ = ServiceReply $ render feed
-toReply (FromFeedItems f) _ =
+mkReply (FromChat chat confirmation) = ServiceReply $ confirmation `T.append` render chat
+mkReply (FromFeedDetails feed) = ServiceReply $ render feed
+mkReply (FromFeedItems f) =
     let rendered_items =
             render .
             take 25 .
             sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
-toReply (FromFeedsItems f_items mb_link) mbs =
+mkReply (FromFollow f_items _) = 
+    let payload = "Your feeds have updated\n--\n" 
+            `T.append` render (f_items, 0 :: Int)     
+    in  ChatReply payload True True True False
+mkReply (FromDigest f_items mb_link s) =
     let digest_link = maybe mempty (toHrefEntities Nothing "here") mb_link
-        payload collapse = render (f_items, collapse) 
-            `T.append` "You can read the full digest "
+        payload collapse = "A new digest is available\n--\n"
+            `T.append` render (f_items, collapse) 
+            `T.append` "\n--\nYou can read the full digest "
             `T.append` digest_link `T.append ` "."
-    in  case mbs of
-        Just s -> ChatReply {
+    in  ChatReply {
             reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
             reply_disable_webview = settings_disable_web_view s,
             reply_share_link = settings_share_link s
-        }
-        Nothing -> ServiceReply $ payload (0 :: Int)
-toReply (FromFeedLinkItems flinkitems) _ =
+            }
+        -- Nothing -> ServiceReply $ payload (0 :: Int)
+mkReply (FromFeedLinkItems flinkitems) =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-toReply (FromSearchRes keys sr_res) _ = ChatReply (render (keys, sr_res)) True True False False
-toReply FromStart _ = ChatReply renderCmds True True False False
+mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False False
+mkReply FromStart = ChatReply renderCmds True True False False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp)
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -23,7 +23,7 @@ import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, system
 import Database (evalDb, saveToLog)
 import Replies
   ( mkDigestUrl,
-    toReply,
+    mkReply,
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
@@ -44,12 +44,11 @@ procNotif = do
             writeChan (postjobs env) . JobTgAlert $ report
         -- to send search notifications
         send_tg_search search_payload = forConcurrently_ (HMS.toList search_payload) $
-            \(cid, DbSearchRes keys results) -> reply tok cid (toReply (FromSearchRes keys results) Nothing) (postjobs env)
+            \(cid, DbSearchRes keys results) -> reply tok cid (mkReply (FromSearchRes keys results)) (postjobs env)
         -- to send follow notifications
         send_tg_follow follow_payload = forConcurrently_ (HMS.toList follow_payload) $
             \(cid, (settings, feeds_items)) -> reply tok cid 
-                (toReply (FromFeedsItems feeds_items Nothing)
-                (Just settings))
+                (mkReply (FromFollow feeds_items settings))
                 (postjobs env)
         -- writing the last digest to the db
         -- sending digest notifications
@@ -68,8 +67,7 @@ procNotif = do
                 in  do
                     res <- evalDb env $ WriteDigest digest
                     reply tok cid 
-                        (toReply (FromFeedsItems feed_items $ mb_digest_link res)
-                        (Just settings))
+                        (mkReply (FromDigest feed_items (mb_digest_link res) settings))
                         (postjobs env)
                     pure (cid, map (f_link . fst) feed_items)
         updated_notified_chats notified_chats chats now =
