@@ -142,10 +142,10 @@ instance Renderable ([(Feed, [Item])], Int) where
                 `T.append` "*"
                 `T.append` f_title f
                 `T.append` "* ("
-                `T.append` (T.pack . show . length $ i)
-                `T.append` " new, last "
                 `T.append` (T.pack . show $ collapse_size)
-                `T.append` " items):\n"
+                `T.append` " out of "
+                `T.append` (T.pack . show . length $ i)
+                `T.append` " new):\n"
                 `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
                 `T.append` "\n"
         in  foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items

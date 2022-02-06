@@ -387,14 +387,16 @@ bsonToDigest doc =
         created = fromJust $ M.lookup "digest_created" doc
         _id = fromJust $ M.lookup "digest_id" doc
         flinks = fromJust $ M.lookup "digest_flinks" doc
-    in  Digest _id created items flinks
+        ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
+    in  Digest _id created items flinks ftitles
 
 digestToBson :: Digest -> Document
 digestToBson Digest{..} = [
     "digest_id" =: digest_id,
     "digest_created" =: (digest_created :: UTCTime),
     "digest_items" =: map writeDoc digest_items,
-    "digest_flinks" =: (S.toList . S.fromList . map i_feed_link $ digest_items :: [T.Text])
+    "digest_flinks" =: digest_links,
+    "digest_ftitles"=: digest_titles
     ]
 
 {- Logs -}
@@ -495,7 +497,7 @@ checkDbMapper = do
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
-        digest = Digest 0 now [item] [mempty]
+        digest = Digest 0 now [item] [mempty] [mempty]
         equalities = [
             ("item", checks item),
             ("digest", checks digest),

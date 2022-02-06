@@ -60,7 +60,8 @@ data Digest = Digest {
     digest_id :: Int,
     digest_created :: UTCTime,
     digest_items :: [Item],
-    digest_flinks :: [T.Text]
+    digest_links :: [T.Text],
+    digest_titles :: [T.Text]
 } deriving (Show, Eq)
 
 {- Searches -}

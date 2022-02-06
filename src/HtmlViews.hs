@@ -26,7 +26,11 @@ import Utils (mbTime)
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
     DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
-    DbDigest Digest{..} ->
+    DbDigest Digest{..} -> 
+        let flt = 
+                let titles = if null digest_titles then digest_links else digest_titles
+                in Map.fromList $ zip digest_links titles
+        in
         H.docTypeHtml $ do
         H.head $ do
             H.title . toHtml $ "feedfarer_bot/digest/" `T.append` digest_id_txt digest_id
@@ -34,10 +38,10 @@ renderDbRes res = case res of
         H.body $ do
             H.h2 . toHtml $ "digest id: " `T.append` digest_id_txt digest_id
             H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks digest_items `T.append` ")"
-            H.ul $ forM_ (flinks digest_items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
+            H.ul $ forM_ (flinks digest_items) (\fl -> let t = flt Map.! fl in H.li $ H.a ! Attr.href (textValue fl) $ toHtml t)
             H.h3 . toHtml $ "Items (" `T.append` nbOf digest_items `T.append` ")"
             H.ul $ forM_ (ordered_items digest_items) (\is -> do
-                H.p . toHtml $ (i_feed_link . head $ is) `T.append` " (" `T.append` nbOf is `T.append` ") items"
+                H.p . toHtml $ (let fl = i_feed_link . head $ is in flt Map.! fl) `T.append` " (" `T.append` nbOf is `T.append` ") items"
                 H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
             H.p "To get your favorite web feeds posted to your Telegram account, start talking to "
             H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
@@ -95,14 +99,15 @@ home = pure . H.docTypeHtml $ do
         H.p "But mostly useful, start talking to "
             >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
-digests :: MonadIO m => Int -> App m Markup
-digests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
 
-view :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
-view Nothing _ _ = pure "Missing a anti-slash-separated list of urls. Example of a full query: \
+viewDigests :: MonadIO m => Int -> App m Markup
+viewDigests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
+
+viewSearchRes :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
+viewSearchRes Nothing _ _ = pure "Missing a anti-slash-separated list of urls. Example of a full query: \
     \ /view?flinks=https://my_url1.org\\https://myurl2.org&from=2022-01-28&to=2022-01-30"
-view _ Nothing _ = pure "Missing a datestring (format: '2022-01-28')"
-view (Just flinks_txt) (Just fr) m_to = do
+viewSearchRes _ Nothing _ = pure "Missing a datestring (format: '2022-01-28')"
+viewSearchRes (Just flinks_txt) (Just fr) m_to = do
     env <- ask
     if null flinks then abortWith "No links given or invalid links. \
         \ Make sure to pass a string of valid, anti-slash-separated links, respecting URI encoding."

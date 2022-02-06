@@ -35,7 +35,7 @@ botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = home :<|> handleWebhook :<|> digests :<|> view where
+server = home :<|> handleWebhook :<|> viewDigests :<|> viewSearchRes where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->

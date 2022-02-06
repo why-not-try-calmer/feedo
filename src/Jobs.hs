@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Feed (f_link), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp, Digest (Digest))
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), ToReply (..), renderDbError, runApp)
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -14,18 +14,20 @@ import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
+import Data.Foldable (Foldable (foldl'))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (getCurrentTime, addUTCTime)
+import Data.Time (addUTCTime, getCurrentTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
-  ( toReply, mkDigestUrl
+  ( mkDigestUrl,
+    toReply,
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Utils (findNextTime, scanTimeSlices, hash)
+import Utils (findNextTime, hash, scanTimeSlices)
 
 {- Background tasks -}
 
@@ -56,8 +58,10 @@ procNotif = do
             \(cid, (settings, feed_items)) ->
                 let _id = hash . show $ now
                     items = foldMap snd feed_items
-                    flinks = map (f_link . fst) feed_items
-                    digest = Digest _id now items flinks
+                    (ftitles, flinks) = foldl' (\(!ts, !fs) (!f,_) -> (f_title f:ts, f_link f:fs)) ([],[]) feed_items
+                    ftitles' = S.toList . S.fromList $ ftitles
+                    flinks' = S.toList . S.fromList $ flinks
+                    digest = Digest _id now items flinks' ftitles'
                     mb_digest_link res = case res of 
                         DbOk -> Just $ mkDigestUrl _id
                         _ -> Nothing 
