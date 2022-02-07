@@ -32,7 +32,7 @@ type BotAPI =
     "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
     "read_settings" :> Capture "chat_id" Int64 :> Capture "user_id" Int64 :> Get '[HTML] Markup :<|>
-    "write_settings" :> ReqBody '[JSON] AppTypes.Settings :> Post '[HTML] Bool
+    "write_settings" :> ReqBody '[JSON] AppTypes.Settings :> Post '[JSON] WriteRes
 
 botApi :: Proxy BotAPI
 botApi = Proxy

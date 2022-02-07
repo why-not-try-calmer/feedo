@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+
 module HtmlViews where
 
 import AppTypes
@@ -149,5 +150,5 @@ readSettings cid uid = ask >>= \env ->
                 Nothing -> pure "Authorized, but chat not found. Please try again later."
                 Just c -> pure . renderManageSettings . sub_settings $ c
 
-writeSettings :: MonadIO m => Settings -> App m Bool
-writeSettings _ = pure True
+writeSettings :: MonadIO m => Settings -> App m WriteRes
+writeSettings _ = pure $ WriteRes 200 Nothing
