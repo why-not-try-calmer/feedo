@@ -2,9 +2,13 @@
 module HtmlViews where
 
 import AppTypes
+import Control.Concurrent (readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet as S
+import Data.Int (Int64)
 import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -14,13 +18,13 @@ import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTi
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
+import Parsing (eitherUrlScheme)
 import Text.Blaze (Markup, textValue, (!))
 import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
-import qualified Data.HashSet as S
-import Parsing (eitherUrlScheme)
+import TgActions (checkIfAdmin)
 import Utils (mbTime)
 
 renderDbRes :: DbRes -> H.Html
@@ -81,6 +85,9 @@ renderDbRes res = case res of
                 Nothing -> Map.insert flink [i] acc
                 Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty items
 
+renderManageSettings :: Settings -> H.Html
+renderManageSettings _ = mempty
+
 home :: MonadIO m => App m Markup
 home = pure . H.docTypeHtml $ do
     H.head $ do
@@ -128,3 +135,19 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Left _ -> []
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
+
+readSettings :: MonadIO m => Int64 -> Int64 -> App m Markup
+readSettings cid uid = ask >>= \env ->
+    let tok = bot_token $ tg_config env
+        nope = pure "Not authorized."
+    in  checkIfAdmin tok uid cid >>= \case
+        Nothing -> nope
+        Just v ->
+            if not v then nope
+            else liftIO (readMVar $ subs_state env) >>= \subs ->
+                case HMS.lookup cid subs of
+                Nothing -> pure "Authorized, but chat not found. Please try again later."
+                Just c -> pure . renderManageSettings . sub_settings $ c
+
+writeSettings :: MonadIO m => Settings -> App m Bool
+writeSettings _ = pure True

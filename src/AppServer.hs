@@ -24,18 +24,27 @@ import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
+import Data.Int (Int64)
 
 type BotAPI =
     Get '[HTML] Markup :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
     "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
-    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
+    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
+    "read_settings" :> Capture "chat_id" Int64 :> Capture "user_id" Int64 :> Get '[HTML] Markup :<|>
+    "write_settings" :> ReqBody '[JSON] AppTypes.Settings :> Post '[HTML] Bool
 
 botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = home :<|> handleWebhook :<|> viewDigests :<|> viewSearchRes where
+server = 
+    home :<|> 
+    handleWebhook :<|>
+    viewDigests :<|> 
+    viewSearchRes :<|> 
+    readSettings :<|>
+    writeSettings where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->

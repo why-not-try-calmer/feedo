@@ -1,10 +1,12 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module AppTypes where
 
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
+import Data.Aeson.TH (deriveJSON, defaultOptions)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -84,6 +86,8 @@ data DigestInterval = DigestInterval {
     digest_at :: Maybe [(Int, Int)]
 } deriving (Eq, Show)
 
+$(deriveJSON defaultOptions ''DigestInterval)
+
 type FeedLink = T.Text
 
 type BlackList = S.Set T.Text
@@ -93,6 +97,8 @@ data WordMatches = WordMatches {
     match_searchset :: Scope,
     match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions ''WordMatches)
 
 data Settings = Settings {
     settings_digest_collapse :: Maybe Int,
@@ -107,6 +113,8 @@ data Settings = Settings {
     settings_share_link :: Bool,
     settings_follow :: Bool
 } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions ''Settings)
 
 data SubChat = SubChat
   { sub_chatid :: ChatId,
