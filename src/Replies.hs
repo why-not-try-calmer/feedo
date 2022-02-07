@@ -215,7 +215,7 @@ mkReply (FromFeedItems f) =
             f_items $ f
     in  defaultReply rendered_items
 mkReply (FromFollow f_items _) = 
-    let payload = "Your feeds have updated\n--\n" 
+    let payload = "Your feeds have updated.\n--\n" 
             `T.append` render (f_items, 0 :: Int)     
     in  ChatReply payload True True True False
 mkReply (FromDigest f_items mb_link s) =
@@ -223,7 +223,7 @@ mkReply (FromDigest f_items mb_link s) =
         payload collapse = settings_digest_title s
             `T.append` "\n--\n"
             `T.append` render (f_items, collapse) 
-            `T.append` "\n--\nYou can read the full digest "
+            `T.append` "--\nFull digest "
             `T.append` digest_link `T.append ` "."
     in  ChatReply {
             reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
@@ -232,7 +232,6 @@ mkReply (FromDigest f_items mb_link s) =
             reply_disable_webview = settings_disable_web_view s,
             reply_share_link = settings_share_link s
             }
-        -- Nothing -> ServiceReply $ payload (0 :: Int)
 mkReply (FromFeedLinkItems flinkitems) =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems

@@ -150,8 +150,8 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     Just pairs ->
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
         if null not_parsed then Right parsed
-        else Left $ T.intercalate ", " not_parsed `T.append` 
-            ". Make sure to use only valid key-value pairs: " `T.append` 
+        else Left $ T.intercalate ", " not_parsed `T.append`
+            ". Make sure to use only valid key-value pairs: " `T.append`
                 T.intercalate ", " [
                     "blacklist <keyword keyword ...>",
                     "digest_at <HH:MM HH:MM ...>",
@@ -172,7 +172,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 let failure l = (l:not_parsed, parsed)
                     success r = (not_parsed, PDigestAt r:parsed)
                     collected = sortTimePairs . foldr into_hm [] . T.words $ txt
-                in  if "reset" `T.isInfixOf` txt then success [] else
+                in  if "reset" `T.isInfixOf` T.toCaseFold txt then success [] else
                     if null collected
                     then failure "Unable to parse 'digest_at' values. \
                         \ Make sure every time is written as a 5-character string, i.e. '00:00' for midnight and '12:00' for noon. \
@@ -189,7 +189,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                         | "h" == t = Right $ n * 3600
                         | "d" == t = Right $ n * 86400
                         | otherwise = Left "'digest_every' needs a number of minutes, hours or days. Example: digest_at: 1d, digest_at: 6h, digest_at: 40m."
-                in  if "reset" `T.isInfixOf` txt then success 0 else
+                in  if "reset" `T.isInfixOf` T.toCaseFold txt then success 0 else
                     if T.length txt < 2 then failure "The first character(s) must represent a valid integer, as in digest_every: 1d (one day)" else
                     case readMaybe . T.unpack $ int :: Maybe Int of
                         Nothing -> failure "The first character(s) must represent a valid integer, as in digest_every: 1d (one day)"
@@ -197,42 +197,42 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                             Left t -> failure t
                             Right s -> success $ realToFrac s
             | k == "digest_size" =
-                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestSize 10:parsed)
+                if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestSize 10:parsed)
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
                     Just n -> (not_parsed, PDigestSize n:parsed)
             | k == "digest_collapse" =
-                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestCollapse 0:parsed)
+                if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestCollapse 0:parsed)
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
-                    Just n -> (not_parsed, PDigestCollapse n:parsed)                    
+                    Just n -> (not_parsed, PDigestCollapse n:parsed)
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else
-                    let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
+                    let v = if "reset" `T.isInfixOf` T.toCaseFold txt then S.empty else S.fromList . T.words . T.toLower $ txt
                     in (not_parsed, PBlacklist v:parsed)
             | k == "disable_webview" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PDisableWebview True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False:parsed) else ("'disable_webview' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDisableWebview True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False:parsed) else ("'disable_webview' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "digest_title" =
-                if "reset" `T.isInfixOf` txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings):parsed) else (not_parsed, PDigestTitle txt:parsed) 
+                if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings):parsed) else (not_parsed, PDigestTitle txt:parsed)
             | k == "search_notif" =
                 if T.length txt < 3 then ("'search_notif' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else if any (`T.isPrefixOf` txt) mkdDoubles then ("'search_notif' accepts only alphanumeric symbols":not_parsed, parsed) else
-                    let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
+                    let v = if "reset" `T.isInfixOf` T.toCaseFold txt then S.empty else S.fromList . T.words . T.toLower $ txt
                     in (not_parsed, PSearchKws v:parsed)
             | k == "only_search_notif" =
                 if T.length txt < 3 then ("'only_search_notif' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else
-                    let v = if "reset" `T.isInfixOf` txt then S.empty else S.fromList . T.words $ txt
+                    let v = if "reset" `T.isInfixOf` T.toCaseFold txt then S.empty else S.fromList . T.words . T.toLower $ txt
                     in (not_parsed, PSearchLinks v:parsed)
             | k == "paused" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPaused False:parsed) else ("'paused' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPaused False:parsed) else ("'paused' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "pin" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPin True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False:parsed) else ("'pin' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPin True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False:parsed) else ("'pin' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "share_link" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "follow" =
-                if "true" `T.isInfixOf` txt then (not_parsed, PFollow True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False:parsed) else ("'follow' takes only 'true' or 'false' as values.":not_parsed, parsed)
+                if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False:parsed) else ("'follow' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | otherwise = (k:not_parsed, parsed)
         into_hm val acc =
             let [hh, mm] = T.splitOn ":" val
@@ -252,7 +252,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
             | m < 0 || m > 60 = []
             | otherwise = acc ++ [(h, m)]
         mkPairs l acc =
-            let (k, rest) = let (h, r) = T.breakOn ":" l in (h, T.drop 1 r)
+            let (k, rest) = let (h, r) = T.breakOn ":" l in (T.toLower h, T.drop 1 r)
             in  if T.null rest then Nothing else case acc of
                 Nothing -> Just [(k, rest)]
                 Just p -> Just $ (k, rest):p

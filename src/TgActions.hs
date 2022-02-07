@@ -125,7 +125,7 @@ interpretCmd contents
         if null args then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
         else Right . Search $ args
     | cmd == "/set" =
-        let body = tail . T.lines . T.toLower $ contents in
+        let body = tail . T.lines $ contents in
         if null args then Right GetSubchatSettings else
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> case parseSettings body of
