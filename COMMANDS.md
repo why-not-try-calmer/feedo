@@ -59,14 +59,17 @@ Here are the default settings, that come into play as soon as you subscribe a ch
 blacklist: undefined
     # list of keywords that exclude items
     # containing any of them from notifications
+digest_at: undefined
+    # the time of the day at which digests are sent
 digest_every: 1d
     # every day, post a digest (summmary) of
     # all new items across all feeds this chat is subscribed to
     # since last time
-digest_at: undefined
-    # the time of the day at which digests are sent
 digest_size: 10
     # have the digest (summary) contain max. 10 items per feed
+digest_start: undefined
+    # input a datestring in the yyyy-mm-dd format
+    # to use a start date for your digests
 disable_web_view: false
     # do not prevent Telegram from rendering the first item using the
     # InstantView feature
@@ -86,9 +89,29 @@ share_link: true
     # append at the end of the digest (summary)
     # a link for sharing with non-Telegram users
 ```
-_NB_: 
-- if `digest_at` is set and `digest_every` is set to less than 1 day, the application will ignore `digest_every` and use only `digest_at`.
-- the last two settings allow to completely ignore certain feeds from the regular updates, while still getting notifications on matches.
+_Remarks_: 
+- all defaults can be reset to their default value:
+```
+/set
+settings_key: reset`
+```
+- when `digest_at` is set, `digest_every` is used a step in terms of number of days. Values below "1d" are ignored. This means you can set
+```
+/set
+digest_at: 08:00
+digest_every: 2d
+```
+for a morning digest every other day.
+set to less than 1 day, `digest_every` is ignored and use only `digest_at`
+- `follow` tracks all you feeds and send notifications of new updates every 20 minutes 
+- `search_notif` and `only_search` allow to completely ignore certain feeds from digest or follow messages, while still getting notifications on matches. For example:
+```
+digest_every: 1d
+follow: true
+search_notif: kernel
+only_search: url1 url2
+```
+means that the feeds at url1 and url2 will be ignored from your daily digests and 20-minute follows, unless any one of them contains a match for the keyword "kernel".
 
 ### List subscribed to web feeds
 

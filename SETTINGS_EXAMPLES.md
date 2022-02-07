@@ -43,14 +43,17 @@ Here are the default settings, that come into play as soon as you subscribe a ch
 blacklist: undefined
     # list of keywords that exclude items
     # containing any of them from notifications
+digest_at: undefined
+    # the time of the day at which digests are sent
 digest_every: 1d
     # every day, post a digest (summmary) of
     # all new items across all feeds this chat is subscribed to
     # since last time
-digest_at: undefined
-    # the time of the day at which digests are sent
 digest_size: 10
     # have the digest (summary) contain max. 10 items per feed
+digest_start: undefined
+    # input a datestring in the yyyy-mm-dd format
+    # to use a start date for your digests
 disable_web_view: false
     # do not prevent Telegram from rendering the first item using the
     # InstantView feature
