@@ -85,9 +85,7 @@ instance Renderable SubChat where
                 let k = "Digest step (time between two digests)"
                 in  case digest_every_secs . settings_digest_interval $ sub_settings of
                         Nothing -> (mempty, mempty)
-                        Just e ->
-                            if not $ T.null at && e < 86400 then (k, "overriden by 'digest_at'")
-                            else if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
+                        Just e -> if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
             blacklist =
                 let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
                 in  if null bl then "none" else T.intercalate ", " bl
