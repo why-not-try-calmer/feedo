@@ -57,6 +57,9 @@ mkViewUrl items =
 mkDigestUrl :: T.Text -> T.Text
 mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/"
 
+mkAccessSettingsUrl :: T.Text -> T.Text
+mkAccessSettingsUrl = T.append "https://feedfarer-webapp.azurewebsites.net/access_settings/"
+
 class Renderable e where
     render :: e -> T.Text
 
@@ -199,6 +202,7 @@ defaultReply payload = ChatReply {
     }
 
 mkReply :: Replies -> Reply
+mkReply (FromAdmin safe_hash) = ServiceReply . mkAccessSettingsUrl $ safe_hash
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedfarer"
 mkReply (FromChatFeeds _ feeds) =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)

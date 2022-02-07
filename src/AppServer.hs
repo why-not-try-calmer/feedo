@@ -24,15 +24,14 @@ import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
-import Data.Int (Int64)
 
 type BotAPI =
     Get '[HTML] Markup :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
     "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
-    "read_settings" :> Capture "chat_id" Int64 :> Capture "user_id" Int64 :> Get '[HTML] Markup :<|>
-    "write_settings" :> ReqBody '[JSON] AppTypes.Settings :> Post '[JSON] WriteRes
+    "access_settings" :> Capture "token" T.Text :> Get '[HTML] Markup :<|>
+    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteRes
 
 botApi :: Proxy BotAPI
 botApi = Proxy
@@ -43,7 +42,7 @@ server =
     handleWebhook :<|>
     viewDigests :<|> 
     viewSearchRes :<|> 
-    readSettings :<|>
+    accessSettings :<|>
     writeSettings where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
@@ -97,6 +96,7 @@ makeConfig env =
     in do
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
+    mvar3 <- newMVar HMS.empty
     chan <- newChan
     pipe_ref <- initConnectionMongo creds >>= \case
         Left err -> throwIO . userError $ T.unpack $ renderDbError err
@@ -106,6 +106,7 @@ makeConfig env =
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
+        auth_admins = mvar3,
         postjobs = chan,
         worker_interval = interval,
         db_config = creds,

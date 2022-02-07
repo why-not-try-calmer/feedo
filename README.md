@@ -71,6 +71,7 @@ Check out our channel for more info: https://t.me/feedfarer.
 - [x] Deployment
 - [x] Tests in deployment
 - [...] Factoring out database details to avoid depending on mongoDB
+- [...] Factoring out contingent details about urls
 
 ## Test builds
 

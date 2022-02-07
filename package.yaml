@@ -37,6 +37,7 @@ dependencies:
 - blaze-markup
 - blaze-html
 - uri-encode
+- cryptonite
 
 library:
   source-dirs: src

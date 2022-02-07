@@ -3,19 +3,18 @@
 module HtmlViews where
 
 import AppTypes
-import Control.Concurrent (readMVar)
+import Control.Concurrent (readMVar, modifyMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet as S
-import Data.Int (Int64)
 import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
-import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
+import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian, diffUTCTime)
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
@@ -25,8 +24,8 @@ import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
-import TgActions (checkIfAdmin)
 import Utils (mbTime)
+import TgramOutJson (ChatId)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
@@ -86,8 +85,11 @@ renderDbRes res = case res of
                 Nothing -> Map.insert flink [i] acc
                 Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty items
 
-renderManageSettings :: Settings -> H.Html
-renderManageSettings _ = mempty
+renderManageSettings :: ChatId -> Settings -> H.Html
+renderManageSettings cid _ = H.docTypeHtml $ do
+    H.head $ H.title . toHtml $ "feedfarer_bot/access_settings/" `T.append` (T.pack . show $ cid)
+    H.body $ do
+        pure mempty
 
 home :: MonadIO m => App m Markup
 home = pure . H.docTypeHtml $ do
@@ -137,18 +139,29 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
 
-readSettings :: MonadIO m => Int64 -> Int64 -> App m Markup
-readSettings cid uid = ask >>= \env ->
-    let tok = bot_token $ tg_config env
-        nope = pure "Not authorized."
-    in  checkIfAdmin tok uid cid >>= \case
-        Nothing -> nope
-        Just v ->
-            if not v then nope
-            else liftIO (readMVar $ subs_state env) >>= \subs ->
-                case HMS.lookup cid subs of
-                Nothing -> pure "Authorized, but chat not found. Please try again later."
-                Just c -> pure . renderManageSettings . sub_settings $ c
+readSettings :: MonadIO m => AppConfig -> T.Text -> m (Either Markup (ChatId, Settings))
+readSettings env safe_hash = liftIO $ getCurrentTime >>= \now -> modifyMVar (auth_admins env) $ 
+    \admins -> case HMS.lookup safe_hash admins of
+    Nothing -> pure (admins, not_valid)
+    Just (cid, _then) ->
+        if diffUTCTime now _then > 300
+        then pure (HMS.delete safe_hash admins, no_longer_valid)
+        else readMVar (subs_state env) >>= \chats -> 
+        case HMS.lookup cid chats of
+            Nothing -> pure (admins, not_found)
+            Just c -> pure (admins, ok cid c)
+    where
+        ok cid c = Right (cid, sub_settings c)
+        not_found = Left "Chat not found."
+        no_longer_valid = Left "This hash is no longer valid. Please authenticate again."
+        not_valid = Left "This hash is not valid. Please authenticate again." 
 
-writeSettings :: MonadIO m => Settings -> App m WriteRes
-writeSettings _ = pure $ WriteRes 200 Nothing
+accessSettings :: MonadIO m => T.Text -> App m Markup
+accessSettings safe_hash = 
+    ask >>= \env ->
+    readSettings env safe_hash >>= \case
+        Left err -> pure err
+        Right (cid, c) -> pure $ renderManageSettings cid c
+    
+writeSettings :: MonadIO m => WriteReq -> App m WriteRes
+writeSettings WriteReq{..} = pure $ WriteRes 200 Nothing

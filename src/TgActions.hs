@@ -2,7 +2,7 @@
 
 module TgActions where
 import AppTypes
-import Backend (evalFeeds, withChat)
+import Backend (evalFeeds, withChat, withAdmins)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless)
@@ -21,6 +21,10 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, tooManySubs)
+import Crypto.Hash.Algorithms (SHA256(SHA256))
+import Crypto.Hash (hashWith)
+import Data.Time.Clock.System (getSystemTime)
+import qualified Data.ByteString.Char8 as B
 import Data.Functor
 
 registerWebhook :: AppConfig -> IO ()
@@ -64,6 +68,11 @@ exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
 interpretCmd :: T.Text -> Either UserError UserAction
 interpretCmd contents
+    | cmd == "/admin" =
+        if length args /= 1 then Left $ BadInput "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The value passed to /admin could not be parsed into a valid chat_id."
+            Just chat_or_channel_id -> Right $ Admin chat_or_channel_id
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
         if length args == 1 then case toFeedRef args of
@@ -236,6 +245,27 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
                             Just f -> pure . Right $ mkReply (FromFeedDetails f)
+evalTgAct uid (Admin target_id) cid = do
+    env <- ask
+    let tok = bot_token . tg_config $ env
+    checkIfPrivate tok cid >>= \case
+        Nothing -> rep "Unable to determine the type of this chat. Aborting."
+        Just private ->
+            if not private then alert_not_private
+            else checkIfAdmin tok uid target_id >>= \case
+            Nothing -> alert_not_auth
+            Just ok ->
+                if not ok then alert_not_auth else do
+                safe_hash <- mkSafeHash
+                withAdmins safe_hash cid
+                pure . Right . mkReply . FromAdmin $ safe_hash
+    where
+        mkSafeHash = liftIO getSystemTime <&> 
+            T.pack . show . hashWith SHA256 . B.pack . show
+        alert_not_auth = rep "Not authorized."
+        alert_not_private = rep "Cannot share admin credentials in non-private chats. \
+            \ Please use '/admin <target_chat_or_channel_id' in a private chat."
+        rep = pure . Right . mkReply . FromAdmin
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ =  pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id

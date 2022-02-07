@@ -6,7 +6,7 @@ module AppTypes where
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (deriveJSON, defaultOptions)
+import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields, fieldLabelModifier))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -171,6 +171,7 @@ data ParsingSettings =
 
 data UserAction
   = About FeedRef
+  | Admin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
   | GetChannelItems ChatId FeedRef
@@ -234,6 +235,7 @@ data ChatRes =
 {- Replies -}
 
 data Replies = FromChangelog
+    | FromAdmin T.Text
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
@@ -386,6 +388,8 @@ data ServerConfig = ServerConfig
 
 type KnownFeeds = HMS.HashMap T.Text Feed
 
+type AuthAdmins = HMS.HashMap T.Text (ChatId, UTCTime)
+
 data Job =
     JobIncReadsJob [FeedLink] |
     JobRemoveMsg ChatId Int Int |
@@ -402,9 +406,33 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
+    auth_admins :: MVar AuthAdmins,
     postjobs :: Chan Job,
     worker_interval :: Int
   }
+
+{- Web responses -}
+
+data WriteQuery = WriteQuery {
+    query_settings :: Settings,
+    query_chat_id :: Int64,
+    query_user_id :: Int64
+}
+
+data WriteReq = WriteReq {
+    write_req_settings :: Settings,
+    write_req_hash :: T.Text,
+    write_req_cid :: ChatId
+}
+
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 10 } ''WriteReq)
+
+data WriteRes = WriteRes {
+    write_res_status :: Int,
+    write_res_error :: Maybe T.Text
+}
+
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 10, omitNothingFields = True } ''WriteRes)
 
 {- Application -}
 

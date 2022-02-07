@@ -249,3 +249,10 @@ regenFeeds chats = ask >>= \env ->
         Right feeds -> evalDb env (UpsertFeeds feeds) >>= \case
             DbErr err -> pure . Left . renderDbError $ err
             _ -> pure . Right $ ()
+
+withAdmins :: MonadIO m =>  T.Text -> ChatId -> App m ()
+withAdmins h cid = 
+    ask >>= \env -> 
+    liftIO $ modifyMVar_ (auth_admins env) $ \hmap ->
+    getCurrentTime >>= \now -> 
+    pure $ HMS.insert h (cid, now) hmap
