@@ -105,6 +105,7 @@ instance Renderable SubChat where
                         ]
                     digest_part = mapper
                         [
+                            maybe (mempty,mempty) (\t -> ("First digest", utcToYmd t)) $ settings_digest_start sub_settings,
                             ("Digest time(s)", if T.null at then "none" else at),
                             every_txt,
                             ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),

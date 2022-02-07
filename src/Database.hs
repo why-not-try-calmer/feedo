@@ -314,9 +314,10 @@ bsonToChat doc =
     let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
         feeds_settings_docs = Settings {
-            settings_digest_collapse = M.lookup "settings_digest_collapse" settings_doc,
-            settings_digest_size = fromJust $ M.lookup "settings_digest_size" settings_doc :: Int,
-            settings_digest_title = fromMaybe (settings_digest_title defaultChatSettings) $ M.lookup "settings_digest_title" settings_doc,
+            settings_word_matches = WordMatches
+                (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
+                (maybe S.empty S.fromList $ M.lookup "settings_searchset" settings_doc)
+                (maybe S.empty S.fromList $ M.lookup "settings_only_search_results" settings_doc),
             settings_digest_interval =
                 let every = M.lookup "settings_digest_every_secs" settings_doc :: Maybe NominalDiffTime
                     hm_docs = M.lookup "settings_digest_at" settings_doc :: Maybe [Document]
@@ -332,15 +333,15 @@ bsonToChat doc =
                                 Nothing -> []
                                 Just hm -> acc ++ [(head hm, adjust $ last hm)]) [] docs
                 in  DigestInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs),
-            settings_word_matches = WordMatches
-                (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
-                (maybe S.empty S.fromList $ M.lookup "settings_searchset" settings_doc)
-                (maybe S.empty S.fromList $ M.lookup "settings_only_search_results" settings_doc),
+            settings_digest_collapse = fromMaybe (settings_digest_collapse defaultChatSettings) $ M.lookup "settings_digest_collapse" settings_doc,
+            settings_digest_size = fromMaybe (settings_digest_size defaultChatSettings) $ M.lookup "settings_digest_size" settings_doc :: Int,
+            settings_digest_title = fromMaybe (settings_digest_title defaultChatSettings) $ M.lookup "settings_digest_title" settings_doc,
+            settings_digest_start = fromMaybe (settings_digest_start defaultChatSettings) $ M.lookup "settings_digest_start" settings_doc :: Maybe UTCTime,
             settings_paused = fromMaybe False $ M.lookup "settings_paused" settings_doc,
-            settings_disable_web_view = fromMaybe False $ M.lookup "settings_disable_web_view" settings_doc,
-            settings_pin = fromMaybe False $ M.lookup "settings_pin" settings_doc,
-            settings_share_link = fromMaybe False $ M.lookup "settings_share_link" settings_doc,
-            settings_follow = fromMaybe False $ M.lookup "settings_follow" settings_doc
+            settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ M.lookup "settings_disable_web_view" settings_doc,
+            settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc,
+            settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc,
+            settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -361,6 +362,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
             "settings_disable_web_view" =: settings_disable_web_view settings,
             "settings_digest_size" =: settings_digest_size settings,
             "settings_digest_title" =: settings_digest_title settings,
+            "settings_digest_start" =: settings_digest_start settings,
             "settings_follow" =: settings_follow settings,
             "settings_only_search_results" =: only_search_results,
             "settings_paused" =: settings_paused settings,
@@ -496,7 +498,7 @@ checkDbMapper = do
     let item = Item mempty mempty mempty mempty now
         digest_interval = DigestInterval (Just 0) (Just [(1,20)])
         word_matches = WordMatches S.empty S.empty (S.fromList ["1","2","3"])
-        settings = Settings (Just 3) digest_interval 0 "title" True False False word_matches False False
+        settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False word_matches False False
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0

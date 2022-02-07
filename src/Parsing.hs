@@ -158,6 +158,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     "digest_collapse <n>",
                     "digest_every <n> <m|h|d>",
                     "digest_size <n>",
+                    "digest_start <YYYY-mm-dd>",
                     "digest_title <title>",
                     "disable_webview <false|true>",
                     "follow <false|true>",
@@ -206,6 +207,10 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 else case readMaybe . T.unpack $ txt :: Maybe Int of
                     Nothing -> (k:not_parsed, parsed)
                     Just n -> (not_parsed, PDigestCollapse n:parsed)
+            | k == "digest_start" =
+                case mbTime . T.unpack $ txt :: Maybe UTCTime of
+                    Nothing -> (k: not_parsed, parsed)
+                    Just t -> (not_parsed, PDigestStart (Just t):parsed)
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else

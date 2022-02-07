@@ -169,7 +169,8 @@ defaultChatSettings = Settings {
         settings_pin = False,
         settings_share_link = True,
         settings_follow = False,
-        settings_digest_collapse = Nothing
+        settings_digest_collapse = Nothing,
+        settings_digest_start = Nothing
     }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
@@ -187,6 +188,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
                     bi' = bi { digest_every_secs = if v == 0 then Nothing else Just v}
                 in  o { settings_digest_interval = bi' }
             PDigestSize v -> o { settings_digest_size = v }
+            PDigestStart v -> o { settings_digest_start = v }
             PDigestTitle v -> o { settings_digest_title = v }
             PBlacklist v ->
                 let wm = settings_word_matches o

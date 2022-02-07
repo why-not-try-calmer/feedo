@@ -17,6 +17,7 @@ import Database (Db (evalDb), evalDb)
 import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
+import Data.Maybe (fromMaybe)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
 withChat action cid = do
@@ -79,7 +80,9 @@ withChat action cid = do
                 _ -> pure (HMS.delete cid hmap, Right ChatOk)
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
-                    updated_next_notification now = Just . findNextTime now . settings_digest_interval $ updated_settings
+                    updated_next_notification now = 
+                        let start = fromMaybe now $ settings_digest_start updated_settings
+                        in  Just . findNextTime start . settings_digest_interval $ updated_settings
                 in  getCurrentTime >>= \now ->
                         let updated_c = c {
                                 sub_next_digest = updated_next_notification now,
