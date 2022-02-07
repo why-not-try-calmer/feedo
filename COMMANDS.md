@@ -90,28 +90,28 @@ share_link: true
     # a link for sharing with non-Telegram users
 ```
 _Remarks_: 
-- all defaults can be reset to their default value:
-```
-/set
-settings_key: reset`
-```
+- all defaults can be reset to their default value with:
+    ```
+    /set
+    <key>: reset`
+    ```
 - when `digest_at` is set, `digest_every` is used a step in terms of number of days. Values below "1d" are ignored. This means you can set
-```
-/set
-digest_at: 08:00
-digest_every: 2d
-```
-for a morning digest every other day.
-set to less than 1 day, `digest_every` is ignored and use only `digest_at`
-- `follow` tracks all you feeds and send notifications of new updates every 20 minutes 
+    ```
+    /set
+    digest_at: 08:00
+    digest_every: 2d
+    ```
+    for a morning digest every other day.
+- when set to less than 1 day, `digest_every` is ignored and only `digest_at` is used;
+- `follow` tracks all you feeds and send notifications of new updates every 20 minutes;
 - `search_notif` and `only_search` allow to completely ignore certain feeds from digest or follow messages, while still getting notifications on matches. For example:
-```
-digest_every: 1d
-follow: true
-search_notif: kernel
-only_search: url1 url2
-```
-means that the feeds at url1 and url2 will be ignored from your daily digests and 20-minute follows, unless any one of them contains a match for the keyword "kernel".
+    ```
+    digest_every: 1d
+    follow: true
+    search_notif: kernel
+    only_search: url1 url2
+    ```
+    means that the feeds at url1 and url2 will be ignored from your daily digests and 20-minute follows, unless any one of them contains a match for the keyword "kernel".
 
 ### List subscribed to web feeds
 
