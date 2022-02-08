@@ -420,12 +420,14 @@ data WriteQuery = WriteQuery {
 }
 
 data WriteReq = WriteReq {
-    write_req_settings :: Settings,
-    write_req_hash :: T.Text,
-    write_req_cid :: ChatId
+    write_req_settings :: Maybe Settings,
+    write_req_hash :: Maybe T.Text,
+    write_req_cid :: Maybe ChatId,
+    write_req_res_status :: Int,
+    write_req_res_error :: Maybe T.Text
 }
 
-$(deriveJSON defaultOptions { fieldLabelModifier = drop 10 } ''WriteReq)
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 10, omitNothingFields = True } ''WriteReq)
 
 data WriteRes = WriteRes {
     write_res_status :: Int,

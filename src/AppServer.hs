@@ -30,8 +30,9 @@ type BotAPI =
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
     "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
-    "access_settings" :> Capture "token" T.Text :> Get '[HTML] Markup :<|>
-    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteRes
+    "read_settings" :> Capture "token" T.Text :> Get '[JSON] WriteReq :<|>
+    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteRes :<|>
+    "settings" :> Raw
 
 botApi :: Proxy BotAPI
 botApi = Proxy
@@ -42,8 +43,9 @@ server =
     handleWebhook :<|>
     viewDigests :<|> 
     viewSearchRes :<|> 
-    accessSettings :<|>
-    writeSettings where
+    readSettings :<|>
+    writeSettings :<|> 
+    staticSettings where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
@@ -69,6 +71,9 @@ server =
                                     Left err -> finishWith env cid err
                                     Right r -> reply (tok env) cid r (postjobs env)
 
+    staticSettings :: MonadIO m => ServerT Raw m
+    staticSettings = serveDirectoryWebApp "static"
+    
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server
 
