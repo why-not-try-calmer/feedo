@@ -11,4 +11,6 @@ RUN stack build --only-dependencies --no-library-profiling
 COPY . /opt/app/
 RUN stack build
 
+COPY /static /var/www
+
 CMD ["stack", "exec", "feedfarer-exe"]

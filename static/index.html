@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+    <html lang="en-US">
+    <head>Feedfarer Settings Editor</head>
+    <script type="text/javascript">
+        
+        var SETTINGS = {}
+        var CHAT_ID = null
+        var TOKEN = ""
+
+        const authorize = async (token) => {
+            const resp = await fetch('https://feedfarer-webapp.azurewebsites.net/read_settings', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({read_req_hash: token})
+            })
+        }
+
+        window.onload = async () => {
+            const params = new Proxy(new URLSearchParams(window.location.search), {
+                get: (searchParams, prop) => searchParams.get(prop),
+            });
+            const token = params.token
+            const resp = await authorize(token)            
+            const payload = JSON.parse(resp)
+
+            if (!settings_response.hasOwnProperty('error')) {
+                SETTINGS = payload.read_resp_settings
+                CHATID = payload.read_resp_cid
+                TOKEN = token
+            } else { alert("Not authorized.")}
+        }
+    </script>
+    <body>
+        <form>
+        </form>
+    </body>
+</html>

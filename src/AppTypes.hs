@@ -6,7 +6,7 @@ module AppTypes where
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields, fieldLabelModifier))
+import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -413,28 +413,32 @@ data AppConfig = AppConfig
 
 {- Web responses -}
 
-data WriteQuery = WriteQuery {
-    query_settings :: Settings,
-    query_chat_id :: Int64,
-    query_user_id :: Int64
+newtype ReadReq = ReadReq { read_req_hash :: T.Text }
+
+$(deriveJSON defaultOptions ''ReadReq)
+
+data ReadResp = ReadResp {
+    read_resp_settings :: Maybe Settings,
+    read_resp_cid :: Maybe ChatId,
+    read_resp_status :: Int,
+    read_resp_error :: Maybe T.Text
 }
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''ReadResp)
 
 data WriteReq = WriteReq {
-    write_req_settings :: Maybe Settings,
-    write_req_hash :: Maybe T.Text,
-    write_req_cid :: Maybe ChatId,
-    write_req_res_status :: Int,
-    write_req_res_error :: Maybe T.Text
+    write_req_hash :: T.Text,
+    write_req_settings :: Settings
 }
 
-$(deriveJSON defaultOptions { fieldLabelModifier = drop 10, omitNothingFields = True } ''WriteReq)
+$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteReq)
 
-data WriteRes = WriteRes {
-    write_res_status :: Int,
-    write_res_error :: Maybe T.Text
+data WriteResp = WriteResp {
+    write_resp_status :: Int,
+    write_resp_error :: Maybe T.Text
 }
 
-$(deriveJSON defaultOptions { fieldLabelModifier = drop 10, omitNothingFields = True } ''WriteRes)
+$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteResp)
 
 {- Application -}
 

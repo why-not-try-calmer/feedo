@@ -140,16 +140,16 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
 
-writeSettings :: MonadIO m => WriteReq -> App m WriteRes
-writeSettings WriteReq{..} = pure $ WriteRes 200 Nothing
+writeSettings :: MonadIO m => WriteReq -> App m WriteResp
+writeSettings WriteReq{..} = pure $ WriteResp 200 Nothing
 
-readSettings :: MonadIO m => T.Text -> App m WriteReq
-readSettings safe_hash = ask >>= \env ->
-    fetchSettings env safe_hash >>= \case
+readSettings :: MonadIO m => ReadReq -> App m ReadResp
+readSettings ReadReq{..} = ask >>= \env ->
+    fetchSettings env read_req_hash >>= \case
         Left err -> pure $ failedWith err
-        Right (cid, s) -> pure $ WriteReq (Just s) (Just safe_hash) (Just cid) 200 Nothing
+        Right (cid, s) -> pure $ ReadResp (Just s) (Just cid) 200 Nothing
     where
-        failedWith err = WriteReq Nothing Nothing Nothing 504 (Just err)
+        failedWith err = ReadResp Nothing Nothing 504 (Just err)
         fetchSettings env h = 
             liftIO $ getCurrentTime >>= \now -> modifyMVar (auth_admins env) $ 
                 \admins -> case HMS.lookup h admins of

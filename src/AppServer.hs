@@ -30,8 +30,8 @@ type BotAPI =
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
     "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
-    "read_settings" :> Capture "token" T.Text :> Get '[JSON] WriteReq :<|>
-    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteRes :<|>
+    "read_settings" :> ReqBody '[JSON] ReadReq :> Post '[JSON] ReadResp :<|>
+    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteResp :<|>
     "settings" :> Raw
 
 botApi :: Proxy BotAPI
@@ -72,7 +72,7 @@ server =
                                     Right r -> reply (tok env) cid r (postjobs env)
 
     staticSettings :: MonadIO m => ServerT Raw m
-    staticSettings = serveDirectoryWebApp "static"
+    staticSettings = serveDirectoryWebApp "/var/www"
     
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server
@@ -132,7 +132,7 @@ startApp = do
     checkDbMapper
     env <- getEnvironment
     (config, port, feeds_urls) <- makeConfig env
-    registerWebhook config
-    initStart config feeds_urls
+    -- registerWebhook config
+    -- initStart config feeds_urls
     print $ "Server now istening to port " `T.append`(T.pack . show $ port)
     run port . withServer $ config
