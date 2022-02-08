@@ -152,7 +152,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         if null not_parsed then Right parsed
         else Left $ T.intercalate ", " not_parsed `T.append`
             ". Make sure to use only valid key-value pairs: " `T.append`
-                T.intercalate ", " [
+                T.intercalate "\n" [
                     "blacklist <keyword keyword ...>",
                     "digest_at <HH:MM HH:MM ...>",
                     "digest_collapse <n>",
@@ -163,7 +163,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     "disable_webview <false|true>",
                     "follow <false|true>",
                     "only_search_notif <url1 url2 ...>",
-                    "pin: <false|true>",
+                    "pin <false|true>",
                     "search_notif <keyword keyword ...>",
                     "share_link <false|true>"
                     ]

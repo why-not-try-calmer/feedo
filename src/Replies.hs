@@ -214,15 +214,15 @@ mkReply (FromFeedItems f) =
             f_items $ f
     in  defaultReply rendered_items
 mkReply (FromFollow f_items _) = 
-    let payload = "Your feeds have updated.\n--\n" 
+    let payload = "New 'follow update'.\n--\n" 
             `T.append` render (f_items, 0 :: Int)     
     in  ChatReply payload True True True False
 mkReply (FromDigest f_items mb_link s) =
-    let digest_link = maybe mempty (toHrefEntities Nothing "here") mb_link
+    let digest_link = maybe mempty (toHrefEntities Nothing "on the web") mb_link
         payload collapse = settings_digest_title s
             `T.append` "\n--\n"
             `T.append` render (f_items, collapse) 
-            `T.append` "--\nFull digest "
+            `T.append` "--\nView this digest "
             `T.append` digest_link `T.append ` "."
     in  ChatReply {
             reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
