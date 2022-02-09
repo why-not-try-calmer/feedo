@@ -148,7 +148,7 @@ data ParsingSettings =
     PDigestAt [(Int, Int)] |
     PDigestEvery NominalDiffTime |
     PDigestSize Int |
-    PDigestStart (Maybe UTCTime) |
+    PDigestStart UTCTime |
     PDigestTitle T.Text |
     PBlacklist (S.Set T.Text) |
     PDisableWebview Bool |

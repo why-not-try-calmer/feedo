@@ -190,7 +190,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
                     bi' = bi { digest_every_secs = if v == 0 then Nothing else Just v}
                 in  o { settings_digest_interval = bi' }
             PDigestSize v -> o { settings_digest_size = v }
-            PDigestStart v -> o { settings_digest_start = v }
+            PDigestStart v -> o { settings_digest_start = Just v }
             PDigestTitle v -> o { settings_digest_title = v }
             PBlacklist v ->
                 let wm = settings_word_matches o

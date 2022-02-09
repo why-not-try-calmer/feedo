@@ -210,7 +210,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
             | k == "digest_start" =
                 case mbTime . T.unpack $ txt :: Maybe UTCTime of
                     Nothing -> (k: not_parsed, parsed)
-                    Just t -> (not_parsed, PDigestStart (Just t):parsed)
+                    Just t -> (not_parsed, PDigestStart t:parsed)
             | k == "blacklist" =
                 if T.length txt < 3 then ("'blacklist' cannot be shorter than 3 characters.":not_parsed, parsed)
                 else
