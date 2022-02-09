@@ -12,6 +12,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
 import Utils (nomDiffToReadable, renderAvgInterval, utcToYmd, utcToYmdHMS)
+import Data.Maybe (fromMaybe)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -222,15 +223,22 @@ mkReply (FromFollow f_items _) =
             `T.append` render (f_items, 0 :: Int)     
     in  ChatReply payload True True True False
 mkReply (FromDigest f_items mb_link s) =
-    let digest_link = maybe mempty (toHrefEntities Nothing "here") mb_link
-        payload collapse = settings_digest_title s
-            `T.append` "\n--\n"
-            `T.append` render (f_items, collapse) 
-            `T.append` "--\n"
-            `T.append` if collapse > 0 then "View the full digest " else "Can also be viewed "
-            `T.append` digest_link `T.append ` "."
+    let collapse = fromMaybe 0 $ settings_digest_collapse s 
+        header = settings_digest_title s `T.append` "\n--\n" 
+        body = render (f_items, collapse) 
+        payload = case mb_link of
+            Nothing -> header `T.append` body
+            Just link -> 
+                let link_txt = 
+                        if collapse == 0
+                        then "This post may also be viewed "
+                        else "This is a shortened version. Read the full digest "
+                    link_href = toHrefEntities Nothing "here" link
+                    footer = "--\n" `T.append` link_txt `T.append` link_href `T.append` "."
+                in  if settings_share_link s then header `T.append` body `T.append` footer
+                    else header `T.append` body
     in  ChatReply {
-            reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
+            reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
             reply_disable_webview = settings_disable_web_view s,
