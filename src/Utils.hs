@@ -116,14 +116,17 @@ findNextTime now (DigestInterval mbxs (Just ts)) =
             foldl' (\(!h, !m) (!h', !m') ->
                 if h' < h || h == h' && m' < m then (h', m')
                 else (h, m)) (23, 59) ts
-        to_midnight = realToFrac $ 86401 - utctDayTime now
+        to_midnight = realToFrac $ 86400 - utctDayTime now
         until_midnight = addUTCTime to_midnight now
         next_day = addUTCTime (toNominalDifftime early_h early_m) until_midnight
         still_today = addUTCTime (minimum times) now
-    in  if null times
-        then maybe next_day
-            (\xs -> if xs >= 86401 then xs `addUTCTime` next_day else next_day) mbxs
-        else still_today
+    in  case mbxs of
+            Nothing -> 
+                if null times then next_day
+                else still_today 
+            Just xs -> 
+                if xs >= 86400 then addUTCTime xs next_day
+                else addUTCTime xs now
     where
         toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
 
