@@ -420,7 +420,6 @@ $(deriveJSON defaultOptions ''ReadReq)
 data ReadResp = ReadResp {
     read_resp_settings :: Maybe Settings,
     read_resp_cid :: Maybe ChatId,
-    read_resp_status :: Int,
     read_resp_error :: Maybe T.Text
 }
 

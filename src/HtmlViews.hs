@@ -147,9 +147,9 @@ readSettings :: MonadIO m => ReadReq -> App m ReadResp
 readSettings ReadReq{..} = ask >>= \env ->
     fetchSettings env read_req_hash >>= \case
         Left err -> pure $ failedWith err
-        Right (cid, s) -> pure $ ReadResp (Just s) (Just cid) 200 Nothing
+        Right (cid, s) -> pure $ ReadResp (Just s) (Just cid) Nothing
     where
-        failedWith err = ReadResp Nothing Nothing 504 (Just err)
+        failedWith err = ReadResp Nothing Nothing (Just err)
         fetchSettings env h = 
             liftIO $ getCurrentTime >>= \now -> modifyMVar (auth_admins env) $ 
                 \admins -> case HMS.lookup h admins of
