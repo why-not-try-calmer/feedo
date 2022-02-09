@@ -153,18 +153,18 @@ instance Renderable ([(Feed, [Item])], Int) where
     render (!f_items, !collapse_size) =
         let out_of i
                 | collapse_size < length i = 
-                    "(" `T.append` (T.pack . show $ collapse_size)
+                    " (" `T.append` (T.pack . show $ collapse_size)
                     `T.append` " out of "
                     `T.append` (T.pack . show . length $ i)
                     `T.append` " new):\n"
-                | otherwise = mempty
+                | otherwise = ":\n"
             into_list acc (!f, !i) = acc
-                `T.append` "\n*"
-                `T.append` "|" `T.append` f_title f `T.append` "|"
+                `T.append` "\n*|"
+                `T.append` f_title f
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!f, !i) = acc
-                `T.append` "\n*"
+                `T.append` "\n*|"
                 `T.append` f_title f
                 `T.append` "*"
                 `T.append` out_of i
