@@ -78,15 +78,55 @@ const start_counter = (counter = 300) => {
     setInterval(handler, 1000)
 }
 
-const set_page = () => {
-    const form = document.querySelector('form')
-    form.addEventListener('submit', submit_listener)
+const to_human_friendly = n => {
+    let m = null
+    if (n % 86400 === 0) {
+        m = n / 86400
+        return [m, m == 1 ? 'day' : 'days']
+    }
+    if (n % 3600 === 0) {
+        m = n / 3600
+        return [m, m == 1 ? 'hour' : 'hours']
+    }
+    if (n % 60 === 0) {
+        m = n / 60 
+        return [m, m == 1 ? 'minute' : 'minutes']
+    }
+    return [n, 'seconds']
+}
 
-    document.getElementById('access_token').innerHTML = "Access token: " + Ctx.access_token
-    document.getElementById('chat_id').innerHTML = "Chat Id: " + Ctx.chat_id
-    document.getElementById('showcase').innerHTML = JSON.stringify(Ctx.settings)
-    
-    document.getElementById('blacklist').value = Ctx.settings.blacklist
+const helper_listener = async (e) => {
+    const input = document.getElementById('digest_every_secs').value
+    const rewrite = i => {
+        const [n, label] = to_human_friendly(i)
+        document.getElementById('digest_every_secs_helper').value = `${n.toString()} ${label}`
+    }
+    setTimeout(() => rewrite(input), 350)
+    e.preventDefault()
+}
+
+const Defaults = {
+    digest_every_secs: 0,
+    digest_at: [],
+    digest_size: 10,
+    digest_title: '',
+    digest_collapse: 0,
+    blacklist: [],
+    search_notif: [],
+    only_search_notif: [],
+    disable_webview: false,
+    pin: false,
+    follow: false,
+    share_link: false
+}
+
+const reset_field = field_name => {
+    const target = document.getElementById(field_name)
+    target.value = Defaults[field_name]
+}
+
+const asssign_from_Ctx = () => {
+    document.getElementById('blacklist').value = Ctx.settings.blacklist.join(' ')
     
     const digest_at = Ctx.settings.digest_at.map(v => {
         let [h, m] = v
@@ -99,23 +139,33 @@ const set_page = () => {
     document.getElementById('digest_title').value = Ctx.settings.digest_title
     document.getElementById('digest_collapse').value = Ctx.settings.digest_collapse
     
-    document.getElementById('search_notif').value = Ctx.settings.search_notif
-    document.getElementById('only_search_notif').value = Ctx.settings.only_search_notif
+    every_s_helper = document.getElementById('digest_every_secs_helper')
+    every_s = document.getElementById('digest_every_secs')
+    every_s.value = Ctx.settings.digest_every
+    const [n, label] = to_human_friendly(Ctx.settings.digest_every)
+    every_s_helper.value = `${n.toString()} ${label}`
+
+    document.getElementById('search_notif').value = Ctx.settings.search_notif.join(' ')
+    document.getElementById('only_search_notif').value = Ctx.settings.only_search_notif.join(' ')
     
     document.getElementById('share_link').checked = Ctx.settings.share_link
     document.getElementById('disable_webview').checked = Ctx.settings.disable_webview
     document.getElementById('follow').checked = Ctx.settings.follow
     document.getElementById('pin').checked = Ctx.settings.pin
+}
 
-    const seconds_to_int = () => {
-        if (Ctx.settings.digest_every % 86400 == 0) return { x: Ctx.settings / 86400, y: 'd'}
-        if (Ctx.settings.digest_every % 3600 == 0) return { x: Ctx.settings / 3600, y:'h'}
-        if (Ctx.settings.digest_every % 60 == 0) return { x: Ctx.settings / 60, y:'m' }
-        return { x: 0, y: 'd'}
-    }
-    const {x, y} = seconds_to_int()
-    document.getElementById('every_n').value = x
-    document.getElementById('select_every').value = y
+const set_page = () => {
+    const form = document.querySelector('form')
+    form.addEventListener('submit', submit_listener)
+
+    document.getElementById('access_token').innerHTML = "Access token: " + Ctx.access_token
+    document.getElementById('chat_id').innerHTML = "Chat Id: " + Ctx.chat_id
+    document.getElementById('showcase').innerHTML = JSON.stringify(Ctx.settings)
+    
+    every_s = document.getElementById('digest_every_secs')    
+    every_s.addEventListener('keyup', helper_listener)
+
+    asssign_from_Ctx()
 }
 
 window.onload = async () => {
@@ -133,6 +183,7 @@ window.onload = async () => {
         Ctx.settings = payload.read_resp_settings
         Ctx.chat_id = payload.read_resp_cid
         Ctx.access_token = access_token       
+        
         set_page()
         start_counter()
     }
