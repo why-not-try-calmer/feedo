@@ -159,12 +159,12 @@ instance Renderable ([(Feed, [Item])], Int) where
                     `T.append` " new):\n"
                 | otherwise = mempty
             into_list acc (!f, !i) = acc
-                `T.append` "*"
+                `T.append` "\n*"
                 `T.append` "|" `T.append` f_title f `T.append` "|"
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!f, !i) = acc
-                `T.append` "*"
+                `T.append` "\n*"
                 `T.append` f_title f
                 `T.append` "*"
                 `T.append` out_of i
@@ -224,7 +224,7 @@ mkReply (FromFollow f_items _) =
     in  ChatReply payload True True True False
 mkReply (FromDigest f_items mb_link s) =
     let collapse = fromMaybe 0 $ settings_digest_collapse s 
-        header = settings_digest_title s `T.append` "\n--\n" 
+        header = settings_digest_title s `T.append` "\n--" 
         body = render (f_items, collapse) 
         payload = case mb_link of
             Nothing -> header `T.append` body
