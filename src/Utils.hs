@@ -106,8 +106,16 @@ freshLastXDays days now items =
 findNextTime :: UTCTime -> DigestInterval -> UTCTime
 findNextTime now (DigestInterval Nothing Nothing) = addUTCTime 9000 now
 findNextTime now (DigestInterval (Just xs) Nothing) = addUTCTime xs now
-findNextTime now (DigestInterval mbxs (Just ts)) =
-    let from_midnight = realToFrac $ utctDayTime now
+findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
+    Nothing -> 
+        if null times then next_day
+        else still_today
+    Just xs ->
+        if xs >= 86400 then addUTCTime xs next_day
+        else addUTCTime xs now
+    where
+        toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
+        from_midnight = realToFrac $ utctDayTime now
         times = foldl' (\acc (!h, !m) ->
             let t = toNominalDifftime h m
             in  if from_midnight < t then (t - from_midnight):acc else acc
@@ -120,15 +128,6 @@ findNextTime now (DigestInterval mbxs (Just ts)) =
         until_midnight = addUTCTime to_midnight now
         next_day = addUTCTime (toNominalDifftime early_h early_m) until_midnight
         still_today = addUTCTime (minimum times) now
-    in  case mbxs of
-            Nothing -> 
-                if null times then next_day
-                else still_today 
-            Just xs -> 
-                if xs >= 86400 then addUTCTime xs next_day
-                else addUTCTime xs now
-    where
-        toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
 
 nomDiffToReadable :: NominalDiffTime -> T.Text
 nomDiffToReadable t =
