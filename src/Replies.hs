@@ -150,19 +150,23 @@ instance Renderable [Item] where
 
 instance Renderable ([(Feed, [Item])], Int) where
     render (!f_items, !collapse_size) =
-        let into_list acc (!f, !i) = acc
+        let out_of i
+                | collapse_size < length i = 
+                    "(" `T.append` (T.pack . show $ collapse_size)
+                    `T.append` " out of "
+                    `T.append` (T.pack . show . length $ i)
+                    `T.append` " new):\n"
+                | otherwise = mempty
+            into_list acc (!f, !i) = acc
                 `T.append` "*"
-                `T.append` f_title f
+                `T.append` "|" `T.append` f_title f `T.append` "|"
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!f, !i) = acc
                 `T.append` "*"
                 `T.append` f_title f
-                `T.append` "* ("
-                `T.append` (T.pack . show $ collapse_size)
-                `T.append` " out of "
-                `T.append` (T.pack . show . length $ i)
-                `T.append` " new):\n"
+                `T.append` "*"
+                `T.append` out_of i
                 `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
         in  foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
@@ -218,11 +222,12 @@ mkReply (FromFollow f_items _) =
             `T.append` render (f_items, 0 :: Int)     
     in  ChatReply payload True True True False
 mkReply (FromDigest f_items mb_link s) =
-    let digest_link = maybe mempty (toHrefEntities Nothing "on the web") mb_link
+    let digest_link = maybe mempty (toHrefEntities Nothing "here") mb_link
         payload collapse = settings_digest_title s
             `T.append` "\n--\n"
             `T.append` render (f_items, collapse) 
-            `T.append` "--\nView this digest "
+            `T.append` "--\n"
+            `T.append` if collapse > 0 then "View the full digest " else "Can also be viewed "
             `T.append` digest_link `T.append ` "."
     in  ChatReply {
             reply_contents = maybe (payload (0 :: Int)) payload $ settings_digest_collapse s,
