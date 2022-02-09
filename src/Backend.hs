@@ -112,7 +112,11 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
             _ -> pure chats_hmap
     where
         update_chats chats now = HMS.fromList $ map (\c ->
-            let c' = c { sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c) }
+            let interval = settings_digest_interval . sub_settings $ c
+                t = case sub_last_digest c of
+                    Nothing -> findNextTime now interval 
+                    Just last_t -> findNextTime last_t interval
+                c' = c { sub_next_digest = Just t }
             in  (sub_chatid c, c')) chats
 
 evalFeeds :: MonadIO m => FeedsAction -> App m FeedsRes
