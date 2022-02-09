@@ -159,12 +159,12 @@ instance Renderable ([(Feed, [Item])], Int) where
                     `T.append` " new):\n"
                 | otherwise = ":\n"
             into_list acc (!f, !i) = acc
-                `T.append` "\n*|"
+                `T.append` "\n*| "
                 `T.append` f_title f
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!f, !i) = acc
-                `T.append` "\n*|"
+                `T.append` "\n*| "
                 `T.append` f_title f
                 `T.append` "*"
                 `T.append` out_of i
