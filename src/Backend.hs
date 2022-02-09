@@ -219,8 +219,9 @@ collectDue chats last_run now =
                 interval = settings_digest_interval sub_settings
                 unioned = S.union sub_feeds_links links
                 inserted = HMS.insert sub_chatid c follows
+                new_start = maybe False (< now) $ settings_digest_start sub_settings
             in  if settings_paused sub_settings then nochange else
-                if nextIsNow sub_next_digest sub_last_digest interval
+                if new_start || nextWasNow sub_next_digest sub_last_digest interval
                 -- daily digests override follow digests
                 then (inserted, unioned, follows)
                 else case last_run of
@@ -232,9 +233,9 @@ collectDue chats last_run now =
                 ) (HMS.empty, S.empty, HMS.empty) chats
     in  (chats', S.toList links', follow')
     where
-        nextIsNow Nothing Nothing _ = True
-        nextIsNow (Just next_t) _ _ = next_t < now
-        nextIsNow Nothing (Just last_t) i = findNextTime last_t i < now
+        nextWasNow Nothing Nothing _ = True
+        nextWasNow (Just next_t) _ _ = next_t < now
+        nextWasNow Nothing (Just last_t) i = findNextTime last_t i < now
 
 regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
 regenFeeds chats = ask >>= \env ->
