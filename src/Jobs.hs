@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, Item)
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -53,51 +53,45 @@ procNotif = do
         -- writing the last digest to the db
         -- sending digest notifications
         -- to send digest notifications
-        send_tg_notif digest_payload now = forConcurrently (HMS.toList digest_payload) $
-            \(cid, (settings, feed_items)) ->
+        send_tg_notif digests_follows now = forConcurrently (HMS.toList digests_follows) $
+            \(cid, (c, f_digests, f_follows)) ->
                 let _id = hash . show $ now
-                    items = foldMap snd feed_items
-                    (ftitles, flinks) = foldl' (\(!ts, !fs) (!f,_) -> (f_title f:ts, f_link f:fs)) ([],[]) feed_items
+                    digests_items = foldMap snd f_digests :: [Item]
+                    (ftitles, flinks) = foldl' (\(!ts, !fs) (!f,_) -> (f_title f:ts, f_link f:fs)) ([],[]) f_digests
                     ftitles' = S.toList . S.fromList $ ftitles
                     flinks' = S.toList . S.fromList $ flinks
-                    digest = Digest _id now items flinks' ftitles'
+                    digest = Digest _id now digests_items flinks' ftitles'
                     mb_digest_link res = case res of 
                         DbOk -> Just $ mkDigestUrl _id
                         _ -> Nothing 
                 in  do
                     res <- evalDb env $ WriteDigest digest
                     reply tok cid 
-                        (mkReply (FromDigest feed_items (mb_digest_link res) settings))
+                        (mkReply (FromDigest f_digests (mb_digest_link res) (sub_settings c)))
                         (postjobs env)
-                    pure (cid, map (f_link . fst) feed_items)
+                    pure (cid, map (f_link . fst) f_digests)
         updated_notified_chats notified_chats chats now =
-            -- tracking time
             HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then 
-                    let start =
-                            -- consuming 'settings_digest_start' when used
-                            case settings_digest_start . sub_settings $ c of
+                    let start = case settings_digest_start . sub_settings $ c of
                             Nothing -> Nothing 
                             Just s -> if s < now then Nothing else Just s
-                    in      -- updating time
-                        c {
+                    -- updating last, next, and consuming 'settings_digest_start'
+                    in  c {
                             sub_last_digest = Just now,
                             sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c),
                             sub_settings = (sub_settings c) { settings_digest_start = start } 
                         } 
                     else c) chats
-        dispatch digest follow search now = do
-            send_tg_follow follow
-            fst <$> concurrently (send_tg_notif digest now) (send_tg_search search)
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
             -- rebuilding feeds and dispatching notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
-                FeedDigests digest_notif follow_notif search_notif -> do
+                FeedDigests notif_hmap search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending update & search notifications
-                    notified_chats_feeds <- dispatch digest_notif follow_notif search_notif now
+                    notified_chats_feeds <- fst <$> concurrently (send_tg_notif notif_hmap now) (send_tg_search search_notif)
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
@@ -119,7 +113,7 @@ procNotif = do
                     let perf = scanTimeSlices [t1, t2, t3, t4]
                     when (length perf == 3) $ do
                         let from_keys = T.intercalate ", " . map (T.pack . show) . HMS.keys
-                            (report1, report2) = (from_keys digest_notif, from_keys search_notif)
+                            (report1, report2) = (from_keys notif_hmap, from_keys search_notif)
                             msg = "notifier ran on update notif package for "
                                 `T.append` report1
                                 `T.append` " and search notif package for "

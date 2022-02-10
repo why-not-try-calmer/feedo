@@ -326,7 +326,9 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedDigests (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId (Settings, FeedItems)) (HMS.HashMap ChatId DbRes)
+    | FeedDigests 
+        (HMS.HashMap ChatId (SubChat, FeedItems, FeedItems))
+        (HMS.HashMap ChatId DbRes)
     | FeedLinkDigest [(FeedLink, [Item])]
 
 {- Logs -}
