@@ -42,8 +42,10 @@ procNotif = do
         onError (SomeException err) = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
+        -- sending search payloads
         send_tg_search search_payload = forConcurrently_ (HMS.toList search_payload) $
             \(cid, DbSearchRes keys results) -> reply tok cid (mkReply (FromSearchRes keys results)) (postjobs env)
+        -- sending digests + follows
         send_tg_notif digests_follows now = forConcurrently (HMS.toList digests_follows) $
             \(cid, (c, f_digests, f_follows)) ->
                 let _id = hash . show $ now
@@ -73,7 +75,7 @@ procNotif = do
             case res of
                 FeedDigests notif_hmap search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
-                    -- sending update & search notifications
+                    -- sending digests, follows & search notifications
                     notified_chats_feeds <- fst <$> concurrently (send_tg_notif notif_hmap now) (send_tg_search search_notif)
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
