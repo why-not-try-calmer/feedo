@@ -71,10 +71,20 @@ procNotif = do
                         (postjobs env)
                     pure (cid, map (f_link . fst) feed_items)
         updated_notified_chats notified_chats chats now =
-            HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then c {
-                sub_last_digest = Just now,
-                sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c)
-            } else c) chats
+            -- tracking time
+            HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then 
+                    let start =
+                            -- consuming 'settings_digest_start' when used
+                            case settings_digest_start . sub_settings $ c of
+                            Nothing -> Nothing 
+                            Just s -> if s < now then Nothing else Just s
+                    in      -- updating time
+                        c {
+                            sub_last_digest = Just now,
+                            sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c),
+                            sub_settings = (sub_settings c) { settings_digest_start = start } 
+                        } 
+                    else c) chats
         dispatch digest follow search now = do
             send_tg_follow follow
             fst <$> concurrently (send_tg_notif digest now) (send_tg_search search)
