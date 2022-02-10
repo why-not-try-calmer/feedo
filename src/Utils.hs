@@ -215,27 +215,20 @@ notifFor ::
     HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink]) ->
     HMS.HashMap ChatId (SubChat, FeedItems, FeedItems)
 notifFor feeds chats =
-    let layer buildings_cs f = HMS.foldl' (\hmap (c, !digests, !follows) ->
-            let relevant_items = fresh_filtered c . f_items $ f in
-            if  f_link f `notElem` sub_feeds_links c ||
-                null relevant_items ||
-                f_link f `elem` only_on_search c
-            then
-                hmap 
-            else
-                let
-                    digests' = filter (\i -> i_feed_link i `elem` digests) relevant_items
-                    follows' = filter (\i -> i_feed_link i `elem` follows) relevant_items
-                    feed_items_digests = (f, digests')
-                    feed_items_follows = (f, follows')
-                in  HMS.alter (\case
-                        Nothing -> Just (c, [feed_items_digests], [feed_items_follows])
-                        Just (c', f_ds, f_fs) -> Just (c', feed_items_digests:f_ds, feed_items_follows:f_fs))
-                    (sub_chatid c) hmap) buildings_cs chats 
-    in  HMS.foldl' layer HMS.empty feeds
+    let f_items_l = foldl' (\acc f -> (f, f_items f):acc) [] feeds
+    in  HMS.map (\(c, ds, fs) -> 
+            let digests = foldl' (\acc (!f, !is) -> 
+                    let l = f_link f in
+                    if l `elem` ds && l `notElem` only_on_search c
+                    then (f, fresh_filtered c is):acc else acc) [] f_items_l
+                follows = foldl' (\acc (!f, !is) -> 
+                    let l = f_link f in
+                    if l `elem` fs && l `notElem` only_on_search c
+                    then (f, fresh_filtered c is):acc else acc) [] f_items_l
+            in  (c, digests, follows)) chats
     where
-        only_on_search = match_only_search_results . settings_word_matches . sub_settings
         fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
+        only_on_search = match_only_search_results . settings_word_matches . sub_settings
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
             (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters
