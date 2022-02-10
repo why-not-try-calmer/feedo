@@ -213,12 +213,12 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 -- returning to calling thread
                 pure (to_keep_in_memory, FeedDigests notif_hmap not_null_dbres)
 
-collectDue :: 
-    SubChats -> 
-    Maybe UTCTime -> 
-    UTCTime -> 
+collectDue ::
+    SubChats ->
+    Maybe UTCTime ->
+    UTCTime ->
     HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink])
-collectDue chats last_run now = 
+collectDue chats last_run now =
     foldl' (\hmap c@SubChat{..} ->
         let interval = settings_digest_interval sub_settings
             new_start = maybe False (< now) $ settings_digest_start sub_settings
@@ -227,7 +227,8 @@ collectDue chats last_run now =
             else if new_start || nextWasNow sub_next_digest sub_last_digest interval
                 -- 'digests' take priority over 'follow notifications'
                 then HMS.insert sub_chatid (c, S.toList sub_feeds_links, []) hmap
-                else case last_run of
+                else 
+                    case last_run of
                     Nothing -> HMS.insert sub_chatid (c, [], S.toList sub_feeds_links) hmap
                     Just t ->
                         if addUTCTime 1200 t < now

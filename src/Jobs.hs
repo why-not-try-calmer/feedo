@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats)
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -18,7 +18,7 @@ import Data.Foldable (Foldable (foldl'))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (addUTCTime, getCurrentTime)
+import Data.Time (addUTCTime, getCurrentTime, UTCTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
@@ -26,7 +26,7 @@ import Replies
     mkReply,
   )
 import Requests (reply, reqSend_)
-import TgramOutJson (Outbound (DeleteMessage, PinMessage))
+import TgramOutJson (Outbound (DeleteMessage, PinMessage), ChatId)
 import Utils (findNextTime, hash, scanTimeSlices)
 
 {- Background tasks -}
@@ -63,7 +63,7 @@ procNotif = do
                         (postjobs env)
                 in  do
                     res <- evalDb env $ WriteDigest digest
-                    concurrently_ (send_digests res) (send_follows f_follows $ sub_settings  c)
+                    concurrently_ (send_digests res) (send_follows f_follows $ sub_settings c)
                     pure (cid, map (f_link . fst) f_digests)
         notify = do
             now <- getCurrentTime
@@ -121,6 +121,11 @@ procNotif = do
         handler e = onError e >> notify
     liftIO $ runForever_ wait_action handler
     where
+        updated_notified_chats :: 
+            [ChatId] -> 
+            SubChats ->
+            UTCTime ->
+            HMS.HashMap ChatId SubChat
         updated_notified_chats notified_chats chats now = HMS.mapWithKey (\cid c -> 
             if cid `elem` notified_chats then 
                 let start = case settings_digest_start . sub_settings $ c of
