@@ -177,7 +177,6 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     now <- getCurrentTime
     let last_run = last_worker_run env
-        -- (due_for_digest, to_rebuild_flinks, due_for_follow) = collectDue chats last_run now
         due = collectDue chats last_run now
         flinks_to_rebuild = foldMap (\(_, fs, gs) -> fs ++ gs) due
     -- stop here if no chat is due
