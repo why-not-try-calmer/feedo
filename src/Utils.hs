@@ -214,19 +214,18 @@ notifFor ::
     KnownFeeds ->
     HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink]) ->
     HMS.HashMap ChatId (SubChat, FeedItems, FeedItems)
-notifFor feeds chats =
-    let f_items_l = foldl' (\acc f -> (f, f_items f):acc) [] feeds
-    in  HMS.map (\(c, ds, fs) -> 
-            let (dig, fol) = foldl' (\(!digests, !follows) (!f, !is) -> 
-                    let l = f_link f
-                        digests' = 
-                            if l `elem` ds && l `notElem` only_on_search c then (f, fresh_filtered c is):digests
-                            else digests 
-                        follows' = 
-                            if l `elem` fs && l `notElem` only_on_search c then (f, fresh_filtered c is):follows
-                            else follows 
-                    in  (digests', follows')) ([],[]) f_items_l
-            in  (c, dig, fol)) chats
+notifFor feeds = foldl' (\hmap (!c, !ds, !fs) ->
+    let (dig, fol) = foldl' (\(!digests, !follows) f ->
+            let is = f_items f
+                l = f_link f
+                digests' =
+                    if l `elem` ds && l `notElem` only_on_search c then (f, fresh_filtered c is):digests
+                    else digests
+                follows' =
+                    if l `elem` fs && l `notElem` only_on_search c then (f, fresh_filtered c is):follows
+                    else follows
+            in  (digests', follows')) ([],[]) feeds
+    in  if null (dig ++ fol) then hmap else HMS.insert (sub_chatid c) (c, dig, fol) hmap) HMS.empty
     where
         fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
