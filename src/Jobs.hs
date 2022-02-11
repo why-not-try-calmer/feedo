@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink)
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -80,7 +80,10 @@ procNotif = do
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
-                        read_feeds = S.toList . S.fromList . foldMap snd $ notified_chats_feeds
+                        read_feeds = 
+                            S.toList . 
+                            S.fromList . 
+                            foldMap snd $ notified_chats_feeds :: [FeedLink]
                     -- increasing reads count
                     writeChan (postjobs env) $ JobIncReadsJob read_feeds
                     -- confirming notifications against locally stored + database chats

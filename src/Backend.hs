@@ -179,39 +179,38 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
     let last_run = last_worker_run env
         due = collectDue chats last_run now
         flinks_to_rebuild = foldMap (\(_, fs, gs) -> fs ++ gs) due
-    -- stop here if no chat is due
     if null due then pure FeedsOk else do
-        -- else rebuilding all feeds with any subscribers
-        eitherUpdated <- mapConcurrently rebuildFeed flinks_to_rebuild
-        let (failed, succeeded) = partitionEither eitherUpdated
-        -- handling case of some feeds not rebuilding
-        unless (null failed) (writeChan (postjobs env) . JobTgAlert $
-            "Failed to update theses feeds: " `T.append` T.intercalate ", " failed)
-        -- updating memory on successful db write
-        modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
-            DbErr e ->
-                let err = FeedsError e
-                in  pure (old_feeds, err)
-            _ ->
-                let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-                    to_keep_in_memory = HMS.union fresh_feeds old_feeds
-                    -- creating update notification payload
-                    notif_hmap = notifFor to_keep_in_memory due
-                    -- preparing search notification payload
-                    scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _, _) ->
-                        let keywords = match_searchset . settings_word_matches . sub_settings $ chat
-                            scope = match_only_search_results . settings_word_matches . sub_settings $ chat
-                        in  if S.null keywords
-                            then hmap
-                            else HMS.insert cid (keywords, scope) hmap) HMS.empty notif_hmap
-                in do
-                -- performing db search
-                dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
-                let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres
-                -- archiving
-                writeChan (postjobs env) $ JobArchive succeeded now
-                -- returning to calling thread
-                pure (to_keep_in_memory, FeedDigests notif_hmap not_null_dbres)
+    -- else rebuilding all feeds with any subscribers
+    eitherUpdated <- mapConcurrently rebuildFeed flinks_to_rebuild
+    let (failed, succeeded) = partitionEither eitherUpdated
+    -- handling case of some feeds not rebuilding
+    unless (null failed) (writeChan (postjobs env) . JobTgAlert $
+        "Failed to update theses feeds: " `T.append` T.intercalate ", " failed)
+    -- updating memory on successful db write
+    modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
+        DbErr e ->
+            let err = FeedsError e
+            in  pure (old_feeds, err)
+        _ ->
+            let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
+                to_keep_in_memory = HMS.union fresh_feeds old_feeds
+                -- creating update notification payload
+                notif_hmap = notifFor to_keep_in_memory due
+                -- preparing search notification payload
+                scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _, _) ->
+                    let keywords = match_searchset . settings_word_matches . sub_settings $ chat
+                        scope = match_only_search_results . settings_word_matches . sub_settings $ chat
+                    in  if S.null keywords
+                        then hmap
+                        else HMS.insert cid (keywords, scope) hmap) HMS.empty notif_hmap
+            in do
+            -- performing db search
+            dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
+            let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres
+            -- archiving
+            writeChan (postjobs env) $ JobArchive succeeded now
+            -- returning to calling thread
+            pure (to_keep_in_memory, FeedDigests notif_hmap not_null_dbres)
 
 collectDue ::
     SubChats ->
