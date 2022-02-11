@@ -217,15 +217,16 @@ notifFor ::
 notifFor feeds chats =
     let f_items_l = foldl' (\acc f -> (f, f_items f):acc) [] feeds
     in  HMS.map (\(c, ds, fs) -> 
-            let digests = foldl' (\acc (!f, !is) -> 
-                    let l = f_link f in
-                    if l `elem` ds && l `notElem` only_on_search c
-                    then (f, fresh_filtered c is):acc else acc) [] f_items_l
-                follows = foldl' (\acc (!f, !is) -> 
-                    let l = f_link f in
-                    if l `elem` fs && l `notElem` only_on_search c
-                    then (f, fresh_filtered c is):acc else acc) [] f_items_l
-            in  (c, digests, follows)) chats
+            let (dig, fol) = foldl' (\(!digests, !follows) (!f, !is) -> 
+                    let l = f_link f
+                        digests' = 
+                            if l `elem` ds && l `notElem` only_on_search c then (f, fresh_filtered c is):digests
+                            else digests 
+                        follows' = 
+                            if l `elem` fs && l `notElem` only_on_search c then (f, fresh_filtered c is):follows
+                            else follows 
+                    in  (digests', follows')) ([],[]) f_items_l
+            in  (c, dig, fol)) chats
     where
         fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
