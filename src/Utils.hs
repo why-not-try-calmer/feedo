@@ -210,11 +210,12 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
             PShareLink v -> o { settings_share_link = v }
             PFollow v -> o { settings_follow = v }
 
-notifFor ::
+notifFrom ::
+    [FeedLink] ->
     KnownFeeds ->
     HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink]) ->
     HMS.HashMap ChatId (SubChat, FeedItems, FeedItems)
-notifFor feeds = foldl' (\hmap (!c, !ds, !fs) ->
+notifFrom flinks feeds_map = foldl' (\hmap (!c, !ds, !fs) ->
     let (dig, fol) = foldl' (\(!digests, !follows) f ->
             let is = f_items f
                 l = f_link f
@@ -224,7 +225,8 @@ notifFor feeds = foldl' (\hmap (!c, !ds, !fs) ->
                 follows' =
                     if l `elem` fs && l `notElem` only_on_search c then (f, fresh_filtered c is):follows
                     else follows
-            in  (digests', follows')) ([],[]) feeds
+            in  if f_link f `notElem` flinks then (digests, follows)
+                else (digests', follows')) ([],[]) feeds_map
     in  if null (dig ++ fol) then hmap else HMS.insert (sub_chatid c) (c, dig, fol) hmap) HMS.empty
     where
         fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is

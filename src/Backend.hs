@@ -16,7 +16,7 @@ import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
+import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFrom, partitionEither, removeByUserIdx, updateSettings)
 import Data.Maybe (fromMaybe)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
@@ -195,7 +195,7 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                     to_keep_in_memory = HMS.union fresh_feeds old_feeds
                     -- creating update notification payload
-                    notif_hmap = notifFor to_keep_in_memory due
+                    notif_hmap = notifFrom flinks_to_rebuild to_keep_in_memory due
                     -- preparing search notification payload
                     scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _, _) ->
                         let keywords = match_searchset . settings_word_matches . sub_settings $ chat
