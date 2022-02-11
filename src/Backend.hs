@@ -16,7 +16,7 @@ import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFor, partitionEither, removeByUserIdx, updateSettings)
+import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFrom, partitionEither, removeByUserIdx, updateSettings)
 import Data.Maybe (fromMaybe)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
@@ -80,7 +80,7 @@ withChat action cid = do
                 _ -> pure (HMS.delete cid hmap, Right ChatOk)
             SetChatSettings parsed ->
                 let updated_settings = updateSettings parsed $ sub_settings c
-                    updated_next_notification now = 
+                    updated_next_notification now =
                         let start = fromMaybe now $ settings_digest_start updated_settings
                         in  Just . findNextTime start . settings_digest_interval $ updated_settings
                 in  getCurrentTime >>= \now ->
@@ -114,7 +114,7 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
         update_chats chats now = HMS.fromList $ map (\c ->
             let interval = settings_digest_interval . sub_settings $ c
                 t = case sub_last_digest c of
-                    Nothing -> findNextTime now interval 
+                    Nothing -> findNextTime now interval
                     Just last_t -> findNextTime last_t interval
                 c' = c { sub_next_digest = Just t }
             in  (sub_chatid c, c')) chats
@@ -177,11 +177,11 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     now <- getCurrentTime
     let last_run = last_worker_run env
-        (due_for_digest, to_rebuild_flinks, due_for_follow) = collectDue chats last_run now
-    -- stop here if no chat is due
-    if null due_for_digest && null due_for_follow then pure FeedsOk else do
+        due = collectDue chats last_run now
+        flinks_to_rebuild = foldMap (\(_, fs, gs) -> fs ++ gs) due
+    if null due then pure FeedsOk else do
         -- else rebuilding all feeds with any subscribers
-        eitherUpdated <- mapConcurrently rebuildFeed to_rebuild_flinks
+        eitherUpdated <- mapConcurrently rebuildFeed flinks_to_rebuild
         let (failed, succeeded) = partitionEither eitherUpdated
         -- handling case of some feeds not rebuilding
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $
@@ -195,43 +195,45 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                 let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
                     to_keep_in_memory = HMS.union fresh_feeds old_feeds
                     -- creating update notification payload
-                    [digest_notif, follow_notif] = map (notifFor to_keep_in_memory) [due_for_digest, due_for_follow]
+                    notif_hmap = notifFrom flinks_to_rebuild to_keep_in_memory due
                     -- preparing search notification payload
-                    scheduled_searches = HMS.foldlWithKey' (\hmap cid chat ->
+                    scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _, _) ->
                         let keywords = match_searchset . settings_word_matches . sub_settings $ chat
                             scope = match_only_search_results . settings_word_matches . sub_settings $ chat
                         in  if S.null keywords
                             then hmap
-                            else HMS.insert cid (keywords, scope) hmap) HMS.empty due_for_digest
+                            else HMS.insert cid (keywords, scope) hmap) HMS.empty notif_hmap
                 in do
                 -- performing db search
                 dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
-                let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres 
+                let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 -- returning to calling thread
-                pure (to_keep_in_memory, FeedDigests digest_notif follow_notif not_null_dbres)
+                pure (to_keep_in_memory, FeedDigests notif_hmap not_null_dbres)
 
-collectDue :: SubChats -> Maybe UTCTime -> UTCTime -> (SubChats, [FeedLink], SubChats)
+collectDue ::
+    SubChats ->
+    Maybe UTCTime ->
+    UTCTime ->
+    HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink])
 collectDue chats last_run now =
-    let (chats', links', follow') = foldl' (\(!digests, !links, !follows) c@SubChat{..} ->
-            let nochange = (digests, links, follows)
-                interval = settings_digest_interval sub_settings
-                unioned = S.union sub_feeds_links links
-                inserted = HMS.insert sub_chatid c follows
-                new_start = maybe False (< now) $ settings_digest_start sub_settings
-            in  if settings_paused sub_settings then nochange else
-                if new_start || nextWasNow sub_next_digest sub_last_digest interval
-                -- daily digests override follow digests
-                then (inserted, unioned, follows)
-                else case last_run of
-                    Nothing -> (digests, links, inserted)
-                    Just t ->     
-                        if addUTCTime 1200 t < now 
-                        then (digests, unioned, inserted)
-                        else nochange
-                ) (HMS.empty, S.empty, HMS.empty) chats
-    in  (chats', S.toList links', follow')
+    foldl' (\hmap c@SubChat{..} ->
+        let interval = settings_digest_interval sub_settings
+            new_start = maybe False (< now) $ settings_digest_start sub_settings
+        in  if settings_paused sub_settings
+            then hmap
+            else if new_start || nextWasNow sub_next_digest sub_last_digest interval
+                -- 'digests' take priority over 'follow notifications'
+                then HMS.insert sub_chatid (c, S.toList sub_feeds_links, []) hmap
+                else 
+                    case last_run of
+                    Nothing -> HMS.insert sub_chatid (c, [], S.toList sub_feeds_links) hmap
+                    Just t ->
+                        if addUTCTime 1200 t < now
+                        then HMS.insert sub_chatid (c, [], S.toList sub_feeds_links) hmap
+                        else hmap
+            ) HMS.empty chats
     where
         nextWasNow Nothing Nothing _ = True
         nextWasNow (Just next_t) _ _ = next_t < now

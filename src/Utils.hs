@@ -71,7 +71,7 @@ mbTime s = if isNothing first_pass then iso8601ParseM s else first_pass
         first_pass = foldr step Nothing formats
         step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
         formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
-        
+
 averageInterval :: [UTCTime] -> Maybe NominalDiffTime
 averageInterval [] = Nothing
 averageInterval (x:xs) = go [] x (sort xs)
@@ -107,7 +107,7 @@ findNextTime :: UTCTime -> DigestInterval -> UTCTime
 findNextTime now (DigestInterval Nothing Nothing) = addUTCTime 9000 now
 findNextTime now (DigestInterval (Just xs) Nothing) = addUTCTime xs now
 findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
-    Nothing -> 
+    Nothing ->
         if null times then next_day
         else still_today
     Just xs ->
@@ -210,7 +210,42 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
             PShareLink v -> o { settings_share_link = v }
             PFollow v -> o { settings_follow = v }
 
-notifFor :: KnownFeeds -> SubChats -> HMS.HashMap ChatId (Settings, FeedItems)
+notifFrom ::
+    [FeedLink] ->
+    KnownFeeds ->
+    HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink]) ->
+    HMS.HashMap ChatId (SubChat, FeedItems, FeedItems)
+notifFrom flinks feeds_map = foldl' (\hmap (!c, !ds, !fs) ->
+    let (dig, fol) = foldl' (\(!digests, !follows) f ->
+            let is = f_items f
+                l = f_link f
+                digests' =
+                    if l `elem` ds && l `notElem` only_on_search c then (f, fresh_filtered c is):digests
+                    else digests
+                follows' =
+                    if l `elem` fs && l `notElem` only_on_search c then (f, fresh_filtered c is):follows
+                    else follows
+            in  if f_link f `notElem` flinks then (digests, follows)
+                else (digests', follows')) ([],[]) feeds_map
+    in  if null (dig ++ fol) then hmap else HMS.insert (sub_chatid c) (c, dig, fol) hmap) HMS.empty
+    where
+        fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
+        only_on_search = match_only_search_results . settings_word_matches . sub_settings
+        with_filters fs i = all ($ i) fs
+        blacklist filters i = not . any
+            (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters
+        filterItemsWith Settings{..} Nothing items =
+            take settings_digest_size .
+            filter (with_filters [blacklist (match_blacklist settings_word_matches)]) $ items
+        filterItemsWith Settings{..} (Just last_time) items =
+            take settings_digest_size .
+            filter (with_filters [blacklist (match_blacklist settings_word_matches), fresh]) $ items
+            where
+                fresh i = last_time < i_pubdate i
+
+
+    {-
+    HMS.HashMap ChatId (Settings, FeedItems)
 notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.empty feeds
     where
         layer acc f = HMS.foldl' (\hmapping c -> if
@@ -221,6 +256,7 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
                 HMS.alter (\case
                     Nothing -> Just (sub_settings c, [feed_items])
                     Just (s, fits) -> Just (s, feed_items:fits)) (sub_chatid c) hmapping) acc subs
+
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
         fresh_filtered c f = filterItemsWith (sub_settings c) (sub_last_digest c) $ f_items f
         with_filters fs i = all ($ i) fs
@@ -234,3 +270,4 @@ notifFor feeds subs = HMS.foldl' (\acc f -> HMS.union (layer acc f) acc) HMS.emp
             filter (with_filters [blacklist (match_blacklist settings_word_matches), fresh]) $ items
             where
                 fresh i = last_time < i_pubdate i
+    -}

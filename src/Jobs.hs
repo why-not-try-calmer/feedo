@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink)
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_)
+import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_, concurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -18,7 +18,7 @@ import Data.Foldable (Foldable (foldl'))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (addUTCTime, getCurrentTime)
+import Data.Time (addUTCTime, getCurrentTime, UTCTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
@@ -26,7 +26,7 @@ import Replies
     mkReply,
   )
 import Requests (reply, reqSend_)
-import TgramOutJson (Outbound (DeleteMessage, PinMessage))
+import TgramOutJson (Outbound (DeleteMessage, PinMessage), ChatId)
 import Utils (findNextTime, hash, scanTimeSlices)
 
 {- Background tasks -}
@@ -42,66 +42,48 @@ procNotif = do
         onError (SomeException err) = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
-        -- to send search notifications
+        -- sending search payloads
         send_tg_search search_payload = forConcurrently_ (HMS.toList search_payload) $
             \(cid, DbSearchRes keys results) -> reply tok cid (mkReply (FromSearchRes keys results)) (postjobs env)
-        -- to send follow notifications
-        send_tg_follow follow_payload = forConcurrently_ (HMS.toList follow_payload) $
-            \(cid, (settings, feeds_items)) -> reply tok cid 
-                (mkReply (FromFollow feeds_items settings))
-                (postjobs env)
-        -- writing the last digest to the db
-        -- sending digest notifications
-        -- to send digest notifications
-        send_tg_notif digest_payload now = forConcurrently (HMS.toList digest_payload) $
-            \(cid, (settings, feed_items)) ->
+        -- sending digests + follows
+        send_tg_notif digests_follows now = forConcurrently (HMS.toList digests_follows) $
+            \(cid, (c, f_digests, f_follows)) ->
                 let _id = hash . show $ now
-                    items = foldMap snd feed_items
-                    (ftitles, flinks) = foldl' (\(!ts, !fs) (!f,_) -> (f_title f:ts, f_link f:fs)) ([],[]) feed_items
+                    digests_items = foldMap snd f_digests
+                    (ftitles, flinks) = foldl' (\(!ts, !fs) (!f,_) -> (f_title f:ts, f_link f:fs)) ([],[]) f_digests
                     ftitles' = S.toList . S.fromList $ ftitles
                     flinks' = S.toList . S.fromList $ flinks
-                    digest = Digest _id now items flinks' ftitles'
+                    digest = Digest _id now digests_items flinks' ftitles'
                     mb_digest_link res = case res of 
                         DbOk -> Just $ mkDigestUrl _id
                         _ -> Nothing 
+                    send_digests res = reply tok cid
+                        (mkReply (FromDigest f_digests (mb_digest_link res) (sub_settings c)))
+                        (postjobs env)
+                    send_follows items settings = reply tok cid 
+                        (mkReply (FromFollow items settings))
+                        (postjobs env)
                 in  do
                     res <- evalDb env $ WriteDigest digest
-                    reply tok cid 
-                        (mkReply (FromDigest feed_items (mb_digest_link res) settings))
-                        (postjobs env)
-                    pure (cid, map (f_link . fst) feed_items)
-        updated_notified_chats notified_chats chats now =
-            -- tracking time
-            HMS.mapWithKey (\cid c -> if cid `elem` notified_chats then 
-                    let start =
-                            -- consuming 'settings_digest_start' when used
-                            case settings_digest_start . sub_settings $ c of
-                            Nothing -> Nothing 
-                            Just s -> if s < now then Nothing else Just s
-                    in      -- updating time
-                        c {
-                            sub_last_digest = Just now,
-                            sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c),
-                            sub_settings = (sub_settings c) { settings_digest_start = start } 
-                        } 
-                    else c) chats
-        dispatch digest follow search now = do
-            send_tg_follow follow
-            fst <$> concurrently (send_tg_notif digest now) (send_tg_search search)
+                    concurrently_ (send_digests res) (send_follows f_follows $ sub_settings c)
+                    pure (cid, map (f_link . fst) f_digests)
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
             -- rebuilding feeds and dispatching notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
-                FeedDigests digest_notif follow_notif search_notif -> do
+                FeedDigests notif_hmap search_notif -> do
                     t2 <- systemSeconds <$> getSystemTime
-                    -- sending update & search notifications
-                    notified_chats_feeds <- dispatch digest_notif follow_notif search_notif now
+                    -- sending digests, follows & search notifications
+                    notified_chats_feeds <- fst <$> concurrently (send_tg_notif notif_hmap now) (send_tg_search search_notif)
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
-                        read_feeds = S.toList . S.fromList . foldMap snd $ notified_chats_feeds
+                        read_feeds = 
+                            S.toList . 
+                            S.fromList . 
+                            foldMap snd $ notified_chats_feeds :: [FeedLink]
                     -- increasing reads count
                     writeChan (postjobs env) $ JobIncReadsJob read_feeds
                     -- confirming notifications against locally stored + database chats
@@ -119,7 +101,7 @@ procNotif = do
                     let perf = scanTimeSlices [t1, t2, t3, t4]
                     when (length perf == 3) $ do
                         let from_keys = T.intercalate ", " . map (T.pack . show) . HMS.keys
-                            (report1, report2) = (from_keys digest_notif, from_keys search_notif)
+                            (report1, report2) = (from_keys notif_hmap, from_keys search_notif)
                             msg = "notifier ran on update notif package for "
                                 `T.append` report1
                                 `T.append` " and search notif package for "
@@ -143,7 +125,25 @@ procNotif = do
         wait_action = threadDelay interval >> notify
         handler e = onError e >> notify
     liftIO $ runForever_ wait_action handler
-
+    where
+        updated_notified_chats :: 
+            [ChatId] -> 
+            SubChats ->
+            UTCTime ->
+            HMS.HashMap ChatId SubChat
+        updated_notified_chats notified_chats chats now = HMS.mapWithKey (\cid c -> 
+            if cid `elem` notified_chats then 
+                let start = case settings_digest_start . sub_settings $ c of
+                        Nothing -> Nothing 
+                        Just s -> if s < now then Nothing else Just s
+                -- updating last, next, and consuming 'settings_digest_start'
+                in  c   {
+                        sub_last_digest = Just now,
+                        sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c),
+                        sub_settings = (sub_settings c) { settings_digest_start = start } 
+                        } 
+            else c) chats
+        
 postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env
