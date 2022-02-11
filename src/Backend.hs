@@ -16,7 +16,7 @@ import Data.Time.Clock.POSIX
 import Database (Db (evalDb), evalDb)
 import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, findNextTime, freshLastXDays, notifFrom, partitionEither, removeByUserIdx, updateSettings)
+import Utils (findNextTime, freshLastXDays, partitionEither, removeByUserIdx, updateSettings, notifFrom, defaultChatSettings)
 import Data.Maybe (fromMaybe)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
@@ -187,15 +187,18 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
         unless (null failed) (writeChan (postjobs env) . JobTgAlert $
             "Failed to update theses feeds: " `T.append` T.intercalate ", " failed)
         -- updating memory on successful db write
-        modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
-            DbErr e ->
-                let err = FeedsError e
-                in  pure (old_feeds, err)
-            _ ->
-                let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-                    to_keep_in_memory = HMS.union fresh_feeds old_feeds
+        refresh_feeds <- modifyMVar (feeds_state env) $ 
+            \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
+                DbErr e -> pure (old_feeds, Left e)
+                _ ->
+                    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
+                        to_keep_in_memory = HMS.union fresh_feeds old_feeds
+                    in  pure (to_keep_in_memory, Right to_keep_in_memory)
+        case refresh_feeds of
+            Left e -> pure . FeedsError $ e
+            Right fs -> do
                     -- creating update notification payload
-                    notif_hmap = notifFrom flinks_to_rebuild to_keep_in_memory due
+                let notif_hmap = notifFrom flinks_to_rebuild fs due
                     -- preparing search notification payload
                     scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _, _) ->
                         let keywords = match_searchset . settings_word_matches . sub_settings $ chat
@@ -203,14 +206,13 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
                         in  if S.null keywords
                             then hmap
                             else HMS.insert cid (keywords, scope) hmap) HMS.empty notif_hmap
-                in do
                 -- performing db search
                 dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
                 let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 -- returning to calling thread
-                pure (to_keep_in_memory, FeedDigests notif_hmap not_null_dbres)
+                pure $ FeedDigests notif_hmap not_null_dbres
 
 collectDue ::
     SubChats ->
