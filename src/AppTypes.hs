@@ -1,10 +1,13 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE GADTs #-}
 
 module AppTypes where
 
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
+import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -84,6 +87,8 @@ data DigestInterval = DigestInterval {
     digest_at :: Maybe [(Int, Int)]
 } deriving (Eq, Show)
 
+$(deriveJSON defaultOptions ''DigestInterval)
+
 type FeedLink = T.Text
 
 type BlackList = S.Set T.Text
@@ -93,6 +98,8 @@ data WordMatches = WordMatches {
     match_searchset :: Scope,
     match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions ''WordMatches)
 
 data Settings = Settings {
     settings_digest_collapse :: Maybe Int,
@@ -107,6 +114,8 @@ data Settings = Settings {
     settings_share_link :: Bool,
     settings_follow :: Bool
 } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions ''Settings)
 
 data SubChat = SubChat
   { sub_chatid :: ChatId,
@@ -163,6 +172,7 @@ data ParsingSettings =
 
 data UserAction
   = About FeedRef
+  | Admin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
   | GetChannelItems ChatId FeedRef
@@ -226,6 +236,7 @@ data ChatRes =
 {- Replies -}
 
 data Replies = FromChangelog
+    | FromAdmin T.Text
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
@@ -236,6 +247,34 @@ data Replies = FromChangelog
     | FromSearchRes Keywords [SearchResult]
     | FromStart
     deriving (Eq, Show)
+
+data BatchRecipe = 
+    FollowFeedLinks [FeedLink] |
+    DigestFeedLinks [FeedLink]
+    deriving (Show, Eq)
+
+data Batch =
+    Follows [(Feed, [Item])] |
+    Digests [(Feed, [Item])]
+    deriving (Show, Eq)
+
+readBatchRecipe :: BatchRecipe -> [FeedLink]
+readBatchRecipe (FollowFeedLinks ls) = ls
+readBatchRecipe (DigestFeedLinks ls) = ls
+
+mkBatch :: BatchRecipe -> [(Feed, [Item])] -> Batch
+mkBatch (FollowFeedLinks _) ls = Follows ls 
+mkBatch (DigestFeedLinks _) ls = Digests ls 
+
+{-
+partitionBatches :: [Batch] -> ([Batch], [Batch])
+partitionBatches batches = go batches [] []
+    where
+        go [] d f = (d, f)
+        go (b:bs) !ds !fs = case b of
+            foll@(Follows _) -> go bs ds (foll:fs)
+            dig@(Digests _) -> go bs (dig:ds) fs
+-}
 
 {- Database actions, errors -}
 
@@ -327,10 +366,9 @@ type FeedItems = [(Feed, [Item])]
 data FeedsRes = FeedsOk
     | FeedsError DbError
     | FeedDigests 
-        (HMS.HashMap ChatId (SubChat, FeedItems, FeedItems))
+        (HMS.HashMap ChatId (SubChat, Batch))
         (HMS.HashMap ChatId DbRes)
     | FeedLinkDigest [(FeedLink, [Item])]
-
 {- Logs -}
 
 data LogItem = LogPerf 
@@ -356,6 +394,8 @@ data ServerConfig = ServerConfig
 
 type KnownFeeds = HMS.HashMap T.Text Feed
 
+type AuthAdmins = HMS.HashMap T.Text (ChatId, UTCTime)
+
 data Job =
     JobIncReadsJob [FeedLink] |
     JobRemoveMsg ChatId Int Int |
@@ -372,9 +412,39 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
+    auth_admins :: MVar AuthAdmins,
     postjobs :: Chan Job,
     worker_interval :: Int
   }
+
+{- Web responses -}
+newtype ReadReq = ReadReq { read_req_hash :: T.Text }
+
+$(deriveJSON defaultOptions ''ReadReq)
+
+data ReadResp = ReadResp {
+    read_resp_settings :: Maybe Settings,
+    read_resp_cid :: Maybe ChatId,
+    read_resp_error :: Maybe T.Text
+}
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''ReadResp)
+
+data WriteReq = WriteReq {
+    write_req_hash :: T.Text,
+    write_req_settings :: Settings
+}
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteReq)
+
+data WriteResp = WriteResp {
+    write_resp_status :: Int,
+    write_resp_error :: Maybe T.Text
+}
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteResp)
+
+{- Application -}
 
 newtype App m a = App {getApp :: ReaderT AppConfig m a}
   deriving (Functor, Applicative, Monad, MonadReader AppConfig, MonadIO)

@@ -213,22 +213,19 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
 notifFrom ::
     [FeedLink] ->
     KnownFeeds ->
-    HMS.HashMap ChatId (SubChat, [FeedLink], [FeedLink]) ->
-    HMS.HashMap ChatId (SubChat, FeedItems, FeedItems)
-notifFrom flinks feeds_map = foldl' (\hmap (!c, !ds, !fs) ->
-    let (dig, fol) = foldl' (\(!digests, !follows) f ->
+    HMS.HashMap ChatId (SubChat, BatchRecipe) ->
+    HMS.HashMap ChatId (SubChat, Batch)
+notifFrom flinks feeds_map = foldl' (\hmap (!c, batch) ->
+    let fls = readBatchRecipe batch
+        fls' = foldl' (\fs f ->
             let is = f_items f
                 l = f_link f
-                digests' =
-                    if l `elem` ds && l `notElem` only_on_search c then (f, fresh_filtered c is):digests
-                    else digests
-                follows' =
-                    if l `elem` fs && l `notElem` only_on_search c then (f, fresh_filtered c is):follows
-                    else follows
-                follows'' = filter (`notElem` digests') follows'
-            in  if f_link f `notElem` flinks then (digests, follows)
-                else (digests', follows'')) ([],[]) feeds_map
-    in  if null (dig ++ fol) then hmap else HMS.insert (sub_chatid c) (c, dig, fol) hmap) HMS.empty
+                fs' = 
+                    if l `elem` fls && l `notElem` only_on_search c
+                    then (f, fresh_filtered c is):fs
+                    else fs
+            in  if f_link f `elem` flinks then fs' else fs) [] feeds_map
+    in  if null fls' then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch fls') hmap) HMS.empty
     where
         fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
