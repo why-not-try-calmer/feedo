@@ -221,7 +221,7 @@ mkReply (FromFeedItems f) =
 mkReply (FromFollow f_items _) = 
     let payload = "New 'follow update'.\n--\n" 
             `T.append` render (f_items, 0 :: Int)     
-    in  ChatReply payload True True True False
+    in  ChatReply payload True True False False
 mkReply (FromDigest f_items mb_link s) =
     let collapse = fromMaybe 0 $ settings_digest_collapse s 
         header = settings_digest_title s `T.append` "\n--" 
