@@ -215,7 +215,7 @@ notifFrom ::
     KnownFeeds ->
     HMS.HashMap ChatId (SubChat, BatchRecipe) ->
     HMS.HashMap ChatId (SubChat, Batch)
-notifFrom flinks feeds_map = foldl' (\hmap (!c, batch) ->
+notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
     let fls = readBatchRecipe batch
         fls' = foldl' (\fs f ->
             let is = f_items f
