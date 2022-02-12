@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink, Batch (Digests, Follows))
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -9,7 +9,7 @@ import Control.Concurrent
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_, concurrently_)
+import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -46,27 +46,26 @@ procNotif = do
         send_tg_search search_payload = forConcurrently_ (HMS.toList search_payload) $
             \(cid, DbSearchRes keys results) -> reply tok cid (mkReply (FromSearchRes keys results)) (postjobs env)
         -- sending digests + follows
-        send_tg_notif digests_follows now = forConcurrently (HMS.toList digests_follows) $
-            \(cid, (c, f_digests, f_follows)) ->
-                let _id = hash . show $ now
-                    digests_items = foldMap snd f_digests
-                    (ftitles, flinks) = foldl' (\(!ts, !fs) (!f,_) -> (f_title f:ts, f_link f:fs)) ([],[]) f_digests
-                    ftitles' = S.toList . S.fromList $ ftitles
-                    flinks' = S.toList . S.fromList $ flinks
-                    digest = Digest _id now digests_items flinks' ftitles'
-                    mb_digest_link res = case res of 
-                        DbOk -> Just $ mkDigestUrl _id
-                        _ -> Nothing 
-                    send_digests res = reply tok cid
-                        (mkReply (FromDigest f_digests (mb_digest_link res) (sub_settings c)))
-                        (postjobs env)
-                    send_follows items settings = reply tok cid 
-                        (mkReply (FromFollow items settings))
-                        (postjobs env)
-                in  do
+        send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
+            \(cid, (c, batch)) -> let sets = sub_settings c in case batch of
+                Follows fs -> do
+                    reply tok cid (mkReply (FromFollow fs sets)) (postjobs env)
+                    pure (cid, collectLinks fs)
+                Digests ds -> do
+                    let _id = hash . show $ now
+                        (ftitles, flinks, fitems) = foldl' (\(!ts, !fs, !is) (!f, !f_items) -> 
+                            (f_title f:ts, f_link f:fs, is++f_items)) ([],[],[]) ds
+                        ftitles' = S.toList . S.fromList $ ftitles
+                        flinks' = S.toList . S.fromList $ flinks
+                        digest = Digest _id now fitems flinks' ftitles'
                     res <- evalDb env $ WriteDigest digest
-                    concurrently_ (send_digests res) (send_follows f_follows $ sub_settings c)
-                    pure (cid, map (f_link . fst) f_digests)
+                    let mb_digest_link r = case r of
+                            DbOk -> Just $ mkDigestUrl _id
+                            _ -> Nothing
+                    reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
+                    pure (cid, collectLinks ds)
+            where
+                collectLinks = map (f_link . fst)
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
@@ -80,9 +79,9 @@ procNotif = do
                     t3 <- systemSeconds <$> getSystemTime
                     -- preparing updates
                     let notified_chats = map fst notified_chats_feeds
-                        read_feeds = 
-                            S.toList . 
-                            S.fromList . 
+                        read_feeds =
+                            S.toList .
+                            S.fromList .
                             foldMap snd $ notified_chats_feeds :: [FeedLink]
                     -- increasing reads count
                     writeChan (postjobs env) $ JobIncReadsJob read_feeds
@@ -126,24 +125,24 @@ procNotif = do
         handler e = onError e >> notify
     liftIO $ runForever_ wait_action handler
     where
-        updated_notified_chats :: 
-            [ChatId] -> 
+        updated_notified_chats ::
+            [ChatId] ->
             SubChats ->
             UTCTime ->
             HMS.HashMap ChatId SubChat
-        updated_notified_chats notified_chats chats now = HMS.mapWithKey (\cid c -> 
-            if cid `elem` notified_chats then 
+        updated_notified_chats notified_chats chats now = HMS.mapWithKey (\cid c ->
+            if cid `elem` notified_chats then
                 let start = case settings_digest_start . sub_settings $ c of
-                        Nothing -> Nothing 
+                        Nothing -> Nothing
                         Just s -> if s < now then Nothing else Just s
                 -- updating last, next, and consuming 'settings_digest_start'
                 in  c   {
                         sub_last_digest = Just now,
                         sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c),
-                        sub_settings = (sub_settings c) { settings_digest_start = start } 
-                        } 
+                        sub_settings = (sub_settings c) { settings_digest_start = start }
+                        }
             else c) chats
-        
+
 postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->
     let tok = bot_token . tg_config $ env

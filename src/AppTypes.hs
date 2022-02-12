@@ -237,6 +237,24 @@ data Replies = FromChangelog
     | FromStart
     deriving (Eq, Show)
 
+data BatchRecipe = 
+    FollowFeedLinks [FeedLink] |
+    DigestFeedLinks [FeedLink]
+    deriving (Show, Eq)
+
+data Batch =
+    Follows [(Feed, [Item])] |
+    Digests [(Feed, [Item])]
+    deriving (Show, Eq)
+
+readBatchRecipe :: BatchRecipe -> [FeedLink]
+readBatchRecipe (FollowFeedLinks ls) = ls
+readBatchRecipe (DigestFeedLinks ls) = ls
+
+mkBatch :: BatchRecipe -> [(Feed, [Item])] -> Batch
+mkBatch (FollowFeedLinks _) ls = Follows ls 
+mkBatch (DigestFeedLinks _) ls = Digests ls 
+
 {- Database actions, errors -}
 
 data DbCreds
@@ -327,10 +345,9 @@ type FeedItems = [(Feed, [Item])]
 data FeedsRes = FeedsOk
     | FeedsError DbError
     | FeedDigests 
-        (HMS.HashMap ChatId (SubChat, FeedItems, FeedItems))
+        (HMS.HashMap ChatId (SubChat, Batch))
         (HMS.HashMap ChatId DbRes)
     | FeedLinkDigest [(FeedLink, [Item])]
-
 {- Logs -}
 
 data LogItem = LogPerf 
@@ -375,6 +392,8 @@ data AppConfig = AppConfig
     postjobs :: Chan Job,
     worker_interval :: Int
   }
+
+{- Application -}
 
 newtype App m a = App {getApp :: ReaderT AppConfig m a}
   deriving (Functor, Applicative, Monad, MonadReader AppConfig, MonadIO)

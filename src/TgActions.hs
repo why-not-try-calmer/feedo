@@ -5,7 +5,7 @@ import AppTypes
 import Backend (evalFeeds, withChat)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently)
-import Control.Monad (unless, void)
+import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
@@ -21,6 +21,7 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, tooManySubs)
+import Data.Functor
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -30,25 +31,33 @@ registerWebhook config =
             print ("Webhook successfully set at " `T.append` webhook)
 
 checkIfAdmin :: MonadIO m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
-checkIfAdmin tok uid cid = liftIO $ getChatType >>= \case
-    Left _ -> pure Nothing
-    Right res_chat ->
-        let chat_resp = responseBody res_chat :: TgGetChatResponse
-            c = resp_result chat_resp :: Chat
-        in  if chat_type c == Private then pure . Just $ True else getChatAdmins >>= \case
-            Left _ -> pure Nothing
-            Right res_chat_type ->
-                let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
-                    chat_members = resp_cm_result res_cms :: [ChatMember]
-                in  pure . Just $ if_admin chat_members
+checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
+    Nothing -> pure Nothing
+    Just ok ->
+        if ok then pure $ Just True
+        else getChatAdmins >>= \case
+        Left _ -> pure Nothing
+        Right res_chat_type ->
+            let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
+                chat_members = resp_cm_result res_cms :: [ChatMember]
+            in  pure . Just $ if_admin chat_members
     where
         getChatAdmins = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
-        getChatType = reqSend tok "getChat" $ GetChatAdministrators cid
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
             | otherwise = False
         if_admin chat_members = foldr is_admin False chat_members
+
+checkIfPrivate :: MonadIO m => BotToken -> ChatId -> m (Maybe Bool)
+checkIfPrivate tok cid = liftIO $ getChatType >>= \case
+    Left _ -> pure Nothing
+    Right res_chat ->
+        let chat_resp = responseBody res_chat :: TgGetChatResponse
+            c = resp_result chat_resp :: Chat
+        in  pure . Just $ chat_type c == Private
+    where
+        getChatType = reqSend tok "getChat" $ GetChatAdministrators cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -88,7 +97,7 @@ interpretCmd contents
             Nothing -> Left . BadInput $ "The first value passed to /list could not be parsed into a valid chat_id."
             Just n -> Right . ListSubsChannel $ n
     | cmd == "/migrate" =
-        if null args then Left . BadInput $ 
+        if null args then Left . BadInput $
             "/migrate takes at least one argument, standing for the chat_id of the destination you want to migrate this chat's settings to. \
             \ If you call /migrate with 2 arguments, the first should be the chat_id of the origin and the second the chat_id of the destination."
         else
@@ -297,7 +306,7 @@ evalTgAct uid (Migrate to) cid = do
     case mb_ok of
         Nothing -> pure . Left $ TelegramErr
         Just ok ->
-            if not ok then pure . Right . ServiceReply $ 
+            if not ok then pure . Right . ServiceReply $
                 "Not authorized. Make sure you have admin permissions \
                 \ in both the origin and the destination."
             else migrate >>= \case
