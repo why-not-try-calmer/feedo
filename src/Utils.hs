@@ -222,9 +222,9 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
                 l = f_link f
                 feeds_items =
                     let fresh = fresh_filtered c is
-                    in  if l `notElem` recipes || l `elem` only_on_search c || null fresh
+                    in  if (l `notElem` recipes) || (l `elem` only_on_search c) || null fresh
                         then fs
-                        else (f, fresh_filtered c is):fs
+                        else f { f_items = fresh }:fs
             in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where

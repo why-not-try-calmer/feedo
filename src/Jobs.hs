@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink, Batch (Digests, Follows))
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title, f_items), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink, Batch (Digests, Follows))
 import Backend (evalFeeds)
 import Control.Concurrent
   ( modifyMVar_,
@@ -14,7 +14,6 @@ import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
-import Data.Foldable (Foldable (foldl'))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -50,22 +49,20 @@ procNotif = do
             \(cid, (c, batch)) -> let sets = sub_settings c in case batch of
                 Follows fs -> do
                     reply tok cid (mkReply (FromFollow fs sets)) (postjobs env)
-                    pure (cid, collectLinks fs)
+                    pure (cid, map f_link fs)
                 Digests ds -> do
-                    let _id = hash . show $ now
-                        (ftitles, flinks, fitems) = foldl' (\(!ts, !fs, !is) (!f, !f_items) -> 
-                            (f_title f:ts, f_link f:fs, is++f_items)) ([],[],[]) ds
+                    let batch_id = hash . show $ now
+                        (ftitles, flinks, fitems) = foldr (\f (one, two, three) ->
+                            (f_title f:one, f_link f:two, three ++ f_items f)) ([],[],[]) ds
                         ftitles' = S.toList . S.fromList $ ftitles
                         flinks' = S.toList . S.fromList $ flinks
-                        digest = Digest _id now fitems flinks' ftitles'
+                        digest = Digest batch_id now fitems flinks' ftitles'
                     res <- evalDb env $ WriteDigest digest
                     let mb_digest_link r = case r of
-                            DbOk -> Just $ mkDigestUrl _id
+                            DbOk -> Just $ mkDigestUrl batch_id
                             _ -> Nothing
                     reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
-                    pure (cid, collectLinks ds)
-            where
-                collectLinks = map (f_link . fst)
+                    pure (cid, map f_link ds)
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime

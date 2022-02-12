@@ -149,7 +149,7 @@ instance Renderable [Item] where
                     finish (i_title i) (i_link i), d')
         finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
-instance Renderable ([(Feed, [Item])], Int) where
+instance Renderable ([(FeedLink, [Item])], Int) where
     render (!f_items, !collapse_size) =
         let out_of i
                 | collapse_size < length i = 
@@ -158,14 +158,14 @@ instance Renderable ([(Feed, [Item])], Int) where
                     `T.append` (T.pack . show . length $ i)
                     `T.append` " new):\n"
                 | otherwise = ":\n"
-            into_list acc (!f, !i) = acc
+            into_list acc (!t, !i) = acc
                 `T.append` "\n*| "
-                `T.append` f_title f
+                `T.append` t
                 `T.append` "*:\n"
                 `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
-            into_folder acc (!f, !i) = acc
+            into_folder acc (!t, !i) = acc
                 `T.append` "\n*| "
-                `T.append` f_title f
+                `T.append` t
                 `T.append` "*"
                 `T.append` out_of i
                 `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
@@ -218,14 +218,16 @@ mkReply (FromFeedItems f) =
             sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
-mkReply (FromFollow f_items _) = 
-    let payload = "New 'follow update'.\n--\n" 
-            `T.append` render (f_items, 0 :: Int)     
+mkReply (FromFollow fs _) = 
+    let fitems = map (\f -> (f_title f, f_items f)) fs
+        payload = "New 'follow update'.\n--\n" 
+            `T.append` render (fitems, 0 :: Int)     
     in  ChatReply payload True True False False
-mkReply (FromDigest f_items mb_link s) =
-    let collapse = fromMaybe 0 $ settings_digest_collapse s 
+mkReply (FromDigest fs mb_link s) =
+    let fitems = map (\f -> (f_title f, f_items f)) fs
+        collapse = fromMaybe 0 $ settings_digest_collapse s 
         header = settings_digest_title s `T.append` "\n--" 
-        body = render (f_items, collapse) 
+        body = render (fitems, collapse) 
         payload = case mb_link of
             Nothing -> header `T.append` body
             Just link -> 

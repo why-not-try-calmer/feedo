@@ -231,8 +231,8 @@ data Replies = FromChangelog
     | FromFeedDetails Feed
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
-    | FromDigest [(Feed, [Item])] (Maybe T.Text) Settings
-    | FromFollow [(Feed, [Item])] Settings
+    | FromDigest [Feed] (Maybe T.Text) Settings
+    | FromFollow [Feed] Settings
     | FromSearchRes Keywords [SearchResult]
     | FromStart
     deriving (Eq, Show)
@@ -243,15 +243,15 @@ data BatchRecipe =
     deriving (Show, Eq)
 
 data Batch =
-    Follows [(Feed, [Item])] |
-    Digests [(Feed, [Item])]
+    Follows [Feed] |
+    Digests [Feed]
     deriving (Show, Eq)
 
 readBatchRecipe :: BatchRecipe -> [FeedLink]
 readBatchRecipe (FollowFeedLinks ls) = ls
 readBatchRecipe (DigestFeedLinks ls) = ls
 
-mkBatch :: BatchRecipe -> [(Feed, [Item])] -> Batch
+mkBatch :: BatchRecipe -> [Feed] -> Batch
 mkBatch (FollowFeedLinks _) ls = Follows ls 
 mkBatch (DigestFeedLinks _) ls = Digests ls 
 
