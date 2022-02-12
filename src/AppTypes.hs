@@ -255,16 +255,6 @@ mkBatch :: BatchRecipe -> [(Feed, [Item])] -> Batch
 mkBatch (FollowFeedLinks _) ls = Follows ls 
 mkBatch (DigestFeedLinks _) ls = Digests ls 
 
-{-
-partitionBatches :: [Batch] -> ([Batch], [Batch])
-partitionBatches batches = go batches [] []
-    where
-        go [] d f = (d, f)
-        go (b:bs) !ds !fs = case b of
-            foll@(Follows _) -> go bs ds (foll:fs)
-            dig@(Digests _) -> go bs (dig:ds) fs
--}
-
 {- Database actions, errors -}
 
 data DbCreds
