@@ -18,7 +18,6 @@ import Parsing (getFeedFromHref, rebuildFeed)
 import TgramOutJson (ChatId)
 import Utils (findNextTime, freshLastXDays, partitionEither, removeByUserIdx, updateSettings, notifFrom, defaultChatSettings)
 import Data.Maybe (fromMaybe)
-import AppTypes
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
 withChat action cid = do

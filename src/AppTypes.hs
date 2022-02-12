@@ -7,7 +7,7 @@ module AppTypes where
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields))
+import Data.Aeson.TH (deriveJSON, defaultOptions)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -172,7 +172,6 @@ data ParsingSettings =
 
 data UserAction
   = About FeedRef
-  | Admin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
   | GetChannelItems ChatId FeedRef
@@ -236,7 +235,6 @@ data ChatRes =
 {- Replies -}
 
 data Replies = FromChangelog
-    | FromAdmin T.Text
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
@@ -394,8 +392,6 @@ data ServerConfig = ServerConfig
 
 type KnownFeeds = HMS.HashMap T.Text Feed
 
-type AuthAdmins = HMS.HashMap T.Text (ChatId, UTCTime)
-
 data Job =
     JobIncReadsJob [FeedLink] |
     JobRemoveMsg ChatId Int Int |
@@ -412,37 +408,9 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
-    auth_admins :: MVar AuthAdmins,
     postjobs :: Chan Job,
     worker_interval :: Int
   }
-
-{- Web responses -}
-newtype ReadReq = ReadReq { read_req_hash :: T.Text }
-
-$(deriveJSON defaultOptions ''ReadReq)
-
-data ReadResp = ReadResp {
-    read_resp_settings :: Maybe Settings,
-    read_resp_cid :: Maybe ChatId,
-    read_resp_error :: Maybe T.Text
-}
-
-$(deriveJSON defaultOptions { omitNothingFields = True } ''ReadResp)
-
-data WriteReq = WriteReq {
-    write_req_hash :: T.Text,
-    write_req_settings :: Settings
-}
-
-$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteReq)
-
-data WriteResp = WriteResp {
-    write_resp_status :: Int,
-    write_resp_error :: Maybe T.Text
-}
-
-$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteResp)
 
 {- Application -}
 

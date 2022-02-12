@@ -82,7 +82,7 @@ instance Renderable SubChat where
                     let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
                         s' = if s == mempty then s else s `T.append` ", "
                     in  s' `T.append` body) mempty ts
-            every_txt = 
+            every_txt =
                 let k = "Digest step (time between two digests)"
                 in  case digest_every_secs . settings_digest_interval $ sub_settings of
                         Nothing -> (mempty, mempty)
@@ -96,9 +96,9 @@ instance Renderable SubChat where
             only_search_results =
                 let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
                 in  if null sr then "none" else T.intercalate ", " sr
-            rendered = 
+            rendered =
                 let mapper = T.intercalate "\n" . map (\(k, v) -> k `T.append` ": " `T.append` v)
-                    status_part = mapper 
+                    status_part = mapper
                         [
                             ("Chat id", T.pack . show $ sub_chatid),
                             ("Status", if settings_paused sub_settings then "paused" else "active"),
@@ -122,18 +122,18 @@ instance Renderable SubChat where
                             ("Feeds ignored unless a search keyword matches", only_search_results),
                             ("Search keywords", searches)
                         ]
-                    telegram_part = mapper 
+                    telegram_part = mapper
                         [
                             ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
                             ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
                         ]
-                in  status_part 
+                in  status_part
                     `T.append` "\n--\n"
                     `T.append` digest_part
                     `T.append` "\n--\n"
                     `T.append` search_part
                     `T.append` "\n--\n"
-                    `T.append` telegram_part  
+                    `T.append` telegram_part
             in T.append rendered "\n\nToo many settings? Check out the docs for examples: https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md"
 
 instance Renderable [Item] where
