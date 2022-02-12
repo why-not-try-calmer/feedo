@@ -216,16 +216,17 @@ notifFrom ::
     HMS.HashMap ChatId (SubChat, BatchRecipe) ->
     HMS.HashMap ChatId (SubChat, Batch)
 notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
-    let fls = readBatchRecipe batch
-        fls' = foldl' (\fs f ->
+    let recipes = readBatchRecipe batch
+        collected = foldl' (\fs f ->
             let is = f_items f
                 l = f_link f
-                fs' = 
-                    if l `elem` fls && l `notElem` only_on_search c
-                    then (f, fresh_filtered c is):fs
-                    else fs
-            in  if f_link f `elem` flinks then fs' else fs) [] feeds_map
-    in  if null fls' then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch fls') hmap) HMS.empty
+                feeds_items =
+                    let fresh = fresh_filtered c is
+                    in  if l `notElem` recipes || l `elem` only_on_search c || null fresh
+                        then fs
+                        else (f, fresh_filtered c is):fs
+            in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
+    in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
         fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
