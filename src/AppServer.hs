@@ -132,7 +132,7 @@ startApp = do
     checkDbMapper
     env <- getEnvironment
     (config, port, feeds_urls) <- makeConfig env
-    -- registerWebhook config
-    -- initStart config feeds_urls
+    registerWebhook config
+    initStart config feeds_urls
     print $ "Server now istening to port " `T.append`(T.pack . show $ port)
     run port . withServer $ config

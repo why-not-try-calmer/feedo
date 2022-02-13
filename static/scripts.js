@@ -1,3 +1,4 @@
+/* Context */
 
 const Ctx = {
     settings: {},
@@ -11,7 +12,30 @@ const headers = {
     'Content-Type': 'application/json'
 }
 
-async function authorize(token) {
+const Defaults = {
+    digest_title: '',
+    digest_every: 0,
+    digest_at: [],
+    digest_size: 10,
+    digest_collapse: 0,
+    blacklist: [],
+    search_notif: [],
+    only_search_notif: [],
+    disable_webview: false,
+    pin: false,
+    follow: false,
+    share_link: false
+}
+
+/* Methods */
+
+function request_settings(token) {
+    return fetch(`${Ctx.base_url}/read_settings`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({read_req_hash: token})
+    })
+    /*
     return Promise.resolve(JSON.stringify({
         read_resp_settings: {
             blacklist: ['leetcode', 'dominus'],
@@ -29,17 +53,11 @@ async function authorize(token) {
         },
         read_resp_cid: 202001010
     }))
-    const resp = await fetch(`${base_url}/read_settings`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({read_req_hash: token})
-    })
+    */
 }
 
-async function send_payload(payload) {
-    console.log(payload)
-    return Promise.resolve(JSON.stringify( {write_resp_status: 200} ))
-    const resp = await fetch(`${base_url}/write_settings`, {
+function send_payload(payload) {
+    return fetch(`${Ctx.base_url}/write_settings`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -47,6 +65,7 @@ async function send_payload(payload) {
             write_req_settings: payload
         })
     })
+    // return Promise.resolve(JSON.stringify( {write_resp_status: 200} ))
 }
 
 function submit_listener(e) {
@@ -102,21 +121,6 @@ function helper_listener(e) {
     }
     setTimeout(() => rewrite(input), 350)
     e.preventDefault()
-}
-
-const Defaults = {
-    digest_title: '',
-    digest_every: 0,
-    digest_at: [],
-    digest_size: 10,
-    digest_collapse: 0,
-    blacklist: [],
-    search_notif: [],
-    only_search_notif: [],
-    disable_webview: false,
-    pin: false,
-    follow: false,
-    share_link: false
 }
 
 function reset_field(n){
@@ -192,12 +196,12 @@ window.onload = async () => {
         get: (searchParams, prop) => searchParams.get(prop),
     });
     const access_token = params.access_token
-    const resp = await authorize(access_token)            
+    const resp = await request_settings(access_token)            
     const payload = JSON.parse(resp)
 
     if (payload.hasOwnProperty('error')) {
         alert("Unable to authenticate your, because of this error", payload.error)
-        return;
+        return
     } else {
         Ctx.settings = payload.read_resp_settings
         Ctx.chat_id = payload.read_resp_cid
