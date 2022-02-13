@@ -29,8 +29,8 @@ import Utils (mbTime)
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
     DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
-    DbDigest Digest{..} -> 
-        let flt = 
+    DbDigest Digest{..} ->
+        let flt =
                 let titles = if null digest_titles then digest_links else digest_titles
                 in Map.fromList $ zip digest_links titles
         in
@@ -141,7 +141,25 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
         abortWith msg = pure msg
 
 writeSettings :: MonadIO m => WriteReq -> App m WriteResp
-writeSettings WriteReq{..} = pure $ WriteResp 200 Nothing
+writeSettings WriteReq{..} =  do
+    env <- ask
+    res <- liftIO $ do
+        now <- getCurrentTime 
+        modifyMVar (auth_admins env) $ 
+            \hmap -> case HMS.lookup write_req_hash hmap of
+            Nothing -> pure (hmap, Left notAuth)
+            Just (cid, t) -> pure (update hmap now t, Right cid)
+    case res of
+        Left resp -> pure resp
+        Right cid -> liftIO $ modifyMVar (subs_state env) $ \chats ->
+            case HMS.lookup cid chats of
+            Nothing -> pure (chats, nope "Unable to find the target chat")
+            Just c -> pure (HMS.update (\_ -> Just c { sub_settings = write_req_settings }) cid chats, ok)
+    where
+        notAuth = nope "Unauthorized. Either your token has expired or it was neverl valid."
+        nope = WriteResp 504 . Just
+        ok = WriteResp 200 Nothing
+        update hmap now t = if diffUTCTime now t > 2592000 then HMS.delete write_req_hash hmap else hmap
 
 readSettings :: MonadIO m => ReadReq -> App m ReadResp
 readSettings ReadReq{..} = ask >>= \env ->
@@ -150,14 +168,14 @@ readSettings ReadReq{..} = ask >>= \env ->
         Right (cid, s) -> pure $ ReadResp (Just s) (Just cid) Nothing
     where
         failedWith err = ReadResp Nothing Nothing (Just err)
-        fetchSettings env h = 
-            liftIO $ getCurrentTime >>= \now -> modifyMVar (auth_admins env) $ 
+        fetchSettings env h =
+            liftIO $ getCurrentTime >>= \now -> modifyMVar (auth_admins env) $
                 \admins -> case HMS.lookup h admins of
                 Nothing -> pure (admins, not_valid)
                 Just (cid, _then) ->
                     if diffUTCTime now _then > 300
                     then pure (HMS.delete h admins, no_longer_valid)
-                    else readMVar (subs_state env) >>= \chats -> 
+                    else readMVar (subs_state env) >>= \chats ->
                     case HMS.lookup cid chats of
                         Nothing -> pure (admins, not_found)
                         Just c -> pure (admins, ok cid c)
