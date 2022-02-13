@@ -12,14 +12,14 @@
             <div id="digests">
                 <h4>Digests</h4>
                 <label for="title">digest_title</label>
-                <input type="text" id="digest_title" name="title" placeholder="title">
+                <input type="text" id="digest_title" name="digest_title" placeholder="title">
                 <button type="text" class="field_resetter" name="digest_title">reset</button>
                 <br />
                 <label for="start">digest_start (UTC)</label>
                 <input type="text" name="start_yyyy" placeholder="yyyy">-<input type="text" name="start_mm" placeholder="mm">-<input type="text" name="start_dd" placeholder="dd">
                 <br />
-                <label for="every_n">digest_every</label>
-                <input type="text" id="digest_every_secs" name="every_n" placeholder="seconds">
+                <label for="digest_every">digest_every</label>
+                <input type="text" id="digest_every_secs" name="digest_every" placeholder="seconds">
                 <input type="text" id="digest_every_secs_helper" name="every_n_helper" disabled>
                 <button type="text" class="field_resetter" name="digest_every">reset</button>
                 <br />
@@ -31,8 +31,8 @@
                 <input type="text" id="digest_size" name="size" placeholder="nb of items in a digest">
                 <button type="text" class="field_resetter" name="digest_size">reset</button>
                 <br />
-                <label for="collapse">digest_collapse</label>
-                <input type="text" id="digest_collapse" name="collapse" placeholder="nb of items to keep">
+                <label for="digest_collapse">digest_collapse</label>
+                <input type="text" id="digest_collapse" name="digest_collapse" placeholder="nb of items to keep">
                 <button type="text" class="field_resetter" name="digest_collapse">reset</button>                
             </div>
             <div>
@@ -48,7 +48,7 @@
                 <button type="text" class="field_resetter" name="search_notif">reset</button>
                 <br />
                 <label for="only_search_notif">only_search_notif</label>
-                <textarea" rows="3" cols="30" id="only_search_notif" name="only_search_notif" placeholder="url1 url2..."></textarea>
+                <textarea rows="3" cols="30" id="only_search_notif" name="only_search_notif" placeholder="url1 url2..."></textarea>
                 <button type="text" class="field_resetter" name="only_search_notif">reset</button>
             </div>
             <div id="misc">

@@ -399,7 +399,7 @@ bsonToDigest doc =
         _id = M.lookup "_id" doc
         flinks = fromJust $ M.lookup "digest_flinks" doc
         ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
-    in  Digest _id created items flinks ftitles
+    in  Digest m_id created items flinks ftitles
 
 digestToBson :: Digest -> Document
 digestToBson Digest{..} = [

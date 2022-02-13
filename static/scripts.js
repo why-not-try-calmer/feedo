@@ -37,7 +37,7 @@ async function authorize(token) {
 }
 
 async function send_payload(payload) {
-    console.log("There is your payload", payload)
+    console.log(payload)
     return Promise.resolve(JSON.stringify( {write_resp_status: 200} ))
     const resp = await fetch(`${base_url}/write_settings`, {
         method: 'POST',
@@ -50,50 +50,19 @@ async function send_payload(payload) {
 }
 
 function submit_listener(e) {
-    const _data = new FormData(document.forms.form)
-    let digest_start = ['','','']
-    let payload = {}
-    for (const [k, v] of Object.fromEntries(_data.entries()).entries()) {
-        console.log(k, v)
-        switch (k) {
-            case 'blacklist':
-                payload.blacklist = v
-                break
-            case 'collapse':
-                payload.collapse = v
-                break
-            case 'every_n':
-                payload.every = v
-                break
-            case 'follow':
-                payload.follow = v
-                break
-            case 'search_notif':
-                payload = v
-                break
-            case 'share_link':
-                payload.share_link = v
-                break
-            case 'size':
-                payload.size = v
-                break
-            case 'start_yyy':
-                digest_start[2] = v 
-                break
-            case 'start_mm':
-                digest_start[1] = v
-                break
-            case 'start_dd':
-                digest_start[0] = v
-                break
-            case 'title':
-                payload.title = v
-                break
+    const form_data = new FormData(document.forms.form)
+    let payload = Object.fromEntries(form_data.entries())
+    let flaggable = ['disable_webview', 'follow', 'pin', 'share_link']
+    payload.digest_start = `${payload.start_yyyy}-${payload.start_mm}-${payload.start_dd}`
+    for (const [k, v] of Object.entries(payload)) {
+        if (['start_dd', 'start_mm', 'start_yyyy'].includes(k)) delete payload[k]
+        if (v === 'on') {
+            payload[k] = true
+            flaggable = flaggable.filter(e => e !== k)
         }
     }
-    payload.digest_start = digest_start.join('')
-    const ready = JSON.stringify(payload)
-    send_payload(ready).catch(e => console.error(e)).then(resp => console.log(resp))
+    Object.assign(payload, Object.fromEntries(flaggable.map(k => [k, false])))
+    send_payload(payload).catch(e => console.error(e)).then(resp => console.log(resp))
     e.preventDefault()
 }
 
