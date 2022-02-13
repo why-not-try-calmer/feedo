@@ -8,12 +8,12 @@
         <p id="chat_id"></p>
         <p id="access_token"></p>
         <p>Seconds left before token expiration: <span id="time_left"></span></p>
-        <form>
+        <form id="form">
             <div id="digests">
                 <h4>Digests</h4>
                 <label for="title">digest_title</label>
                 <input type="text" id="digest_title" name="title" placeholder="title">
-                <button type="text" onclick="reset_field('digest_title')" name="reset_title">reset</button>
+                <button type="text" class="field_resetter" name="digest_title">reset</button>
                 <br />
                 <label for="start">digest_start (UTC)</label>
                 <input type="text" name="start_yyyy" placeholder="yyyy">-<input type="text" name="start_mm" placeholder="mm">-<input type="text" name="start_dd" placeholder="dd">
@@ -21,58 +21,58 @@
                 <label for="every_n">digest_every</label>
                 <input type="text" id="digest_every_secs" name="every_n" placeholder="seconds">
                 <input type="text" id="digest_every_secs_helper" name="every_n_helper" disabled>
-                <button type="text" onclick="reset_field('digest_every_secs')" name="reset_every">reset</button>
+                <button type="text" class="field_resetter" name="digest_every">reset</button>
                 <br />
                 <label for="digest_at">digest_at (UTC)</label>
                 <input type="text" id="digest_at" name="digest_at" placeholder="HH:MM HH:MM HH:MM...">
-                <button type="text" onclick="reset_field('digest_at')" name="reset_at">reset</button>
+                <button type="text" class="field_resetter" name="digest_at">reset</button>
                 <br />
                 <label for="size">digest_size</label>
                 <input type="text" id="digest_size" name="size" placeholder="nb of items in a digest">
-                <button type="text" onclick="reset_field('digest_size')" name="reset_size">reset</button>
+                <button type="text" class="field_resetter" name="digest_size">reset</button>
                 <br />
                 <label for="collapse">digest_collapse</label>
                 <input type="text" id="digest_collapse" name="collapse" placeholder="nb of items to keep">
-                <button type="text" onclick="reset_field('digest_collapse')" name="reset_collapse">reset</button>                
+                <button type="text" class="field_resetter" name="digest_collapse">reset</button>                
             </div>
             <div>
                 <h4>Blacklisted keywords</h4>
                 <label for="blacklist">blacklist</label>
                 <textarea rows="3" cols="30" id="blacklist" name="blacklist" placeholder="keyword1 keyword2..."></textarea>
-                <button type="text" onclick="reset_field('blacklist')" name="reset_blacklist">reset</button>
+                <button type="text" class="field_resetter" name="blacklist">reset</button>
             </div>
             <div id="searches">
                 <h4>Searches</h4>
                 <label for="search_notif">search_notif</label>
                 <textarea rows="3" cols="30" id="search_notif" name="search_notif" placeholder="keyword1 keyword2..."></textarea>
-                <button type="text" onclick="reset_field('search_notif')" name="reset_search_notif">reset</button>
+                <button type="text" class="field_resetter" name="search_notif">reset</button>
                 <br />
                 <label for="only_search_notif">only_search_notif</label>
                 <textarea" rows="3" cols="30" id="only_search_notif" name="only_search_notif" placeholder="url1 url2..."></textarea>
-                <button type="text" onclick="reset_field('only_search_notif')" name="reset_only_search_notif">reset</button>
+                <button type="text" class="field_resetter" name="only_search_notif">reset</button>
             </div>
             <div id="misc">
                 <h4>Miscellaneous</h4>
                 <label for="webview">disable_webview</label>
                 <input type="checkbox" id="disable_webview" name="disable_webview">
-                <button type="text" onclick="reset_field('disable_webview')" name="reset_disable_webview">reset</button>
+                <button type="text" class="field_resetter" name="disable_webview">reset</button>
                 <br />
                 <label for="follow">follow</label>
                 <input type="checkbox" id="follow" name="follow">
-                <button type="text" onclick="reset_field('follow')" name="reset_follow">reset</button>
+                <button type="text" class="field_resetter" name="follow">reset</button>
                 <br />
                 <label for="pin">pin</label>
                 <input type="checkbox" id="pin" name="pin">
-                <button type="text" onclick="reset_field('pin')" name="reset_pin">reset</button>
+                <button type="text" class="field_resetter" name="pin">reset</button>
                 <br />
                 <label for="share_link">share_link</label>
                 <input type="checkbox" id="share_link" name="share_link">
-                <button type="text" onclick="reset_field('share_link')" name="reset_share_link">reset</button>
+                <button type="text" class="field_resetter" name="share_link">reset</button>
             </div>
             <br />
             <button type="submit">Submit</button>
-            <button type="text" onclick="reset_all()">Reset all to defaults</button>
-            <button type="text" onclick="reload()">Load your settings again</button>
+            <button type="text" id="reset_all">Reset all to defaults</button>
+            <button type="text" id="reload">Load your settings again</button>
         </form>
     </body>
 </html>

@@ -2,7 +2,7 @@
 const Ctx = {
     settings: {},
     chat_id: null,
-    acess_token: "",
+    acess_token: '',
     base_url: 'https://feedfarer-webapp.azurewebsites.net'
 }
 
@@ -11,7 +11,7 @@ const headers = {
     'Content-Type': 'application/json'
 }
 
-const authorize = async (token) => {
+async function authorize(token) {
     return Promise.resolve(JSON.stringify({
         read_resp_settings: {
             blacklist: ['leetcode', 'dominus'],
@@ -36,7 +36,8 @@ const authorize = async (token) => {
     })
 }
 
-const send_payload = async (payload) => {
+async function send_payload(payload) {
+    console.log("There is your payload", payload)
     return Promise.resolve(JSON.stringify( {write_resp_status: 200} ))
     const resp = await fetch(`${base_url}/write_settings`, {
         method: 'POST',
@@ -48,37 +49,66 @@ const send_payload = async (payload) => {
     })
 }
 
-const submit_listener = async (e) => {
-    const payload = {
-        blacklist: form.elements.blacklist.value,
-        digest_at: form.elements.digest_at.value,
-        digest_collapse: form.elements.digest_collapse.value,
-        digest_every: form.elements.digest_every.value,
-        digest_size: form.elements.digest_size.value,
-        digest_start: form.elements.digest_start.value,
-        digest_title: form.elements.digest_title.value,
-        disable_webview: form.elements.disable_webview.value,
-        follow: form.element.follow.value,
-        only_search_notif: form.element.search_notif.value,
-        pin: form.element.pin.value,
-        search_notif: form.element.search_notif.value,
-        share_link: form.element.share_link.value
+function submit_listener(e) {
+    const _data = new FormData(document.forms.form)
+    let digest_start = ['','','']
+    let payload = {}
+    for (const [k, v] of Object.fromEntries(_data.entries()).entries()) {
+        console.log(k, v)
+        switch (k) {
+            case 'blacklist':
+                payload.blacklist = v
+                break
+            case 'collapse':
+                payload.collapse = v
+                break
+            case 'every_n':
+                payload.every = v
+                break
+            case 'follow':
+                payload.follow = v
+                break
+            case 'search_notif':
+                payload = v
+                break
+            case 'share_link':
+                payload.share_link = v
+                break
+            case 'size':
+                payload.size = v
+                break
+            case 'start_yyy':
+                digest_start[2] = v 
+                break
+            case 'start_mm':
+                digest_start[1] = v
+                break
+            case 'start_dd':
+                digest_start[0] = v
+                break
+            case 'title':
+                payload.title = v
+                break
+        }
     }
-    await send_payload(payload)
+    payload.digest_start = digest_start.join('')
+    const ready = JSON.stringify(payload)
+    send_payload(ready).catch(e => console.error(e)).then(resp => console.log(resp))
     e.preventDefault()
 }
 
-const start_counter = (counter = 300) => {
+function start_counter(counter = 300) {
+    const tgt = document.getElementById('time_left')
     const handler = () => {
         counter--
-        if (counter <= 0) document.getElementById('time_left').innerHTML = 'Time elapsed!'
-        else document.getElementById('time_left').innerHTML = counter.toString()
+        if (counter === 0) tgt.innerHTML = 'Time elapsed!'
+        else tgt.innerHTML = counter.toString()
     }
     setTimeout(() => counter * 1000)
     setInterval(handler, 1000)
 }
 
-const to_human_friendly = n => {
+function to_human_friendly(n) {
     let m = null
     if (n % 86400 === 0) {
         m = n / 86400
@@ -95,7 +125,7 @@ const to_human_friendly = n => {
     return [n, 'seconds']
 }
 
-const helper_listener = async (e) => {
+function helper_listener(e) {
     const input = document.getElementById('digest_every_secs').value
     const rewrite = i => {
         const [n, label] = to_human_friendly(i)
@@ -106,10 +136,10 @@ const helper_listener = async (e) => {
 }
 
 const Defaults = {
-    digest_every_secs: 0,
+    digest_title: '',
+    digest_every: 0,
     digest_at: [],
     digest_size: 10,
-    digest_title: '',
     digest_collapse: 0,
     blacklist: [],
     search_notif: [],
@@ -120,12 +150,18 @@ const Defaults = {
     share_link: false
 }
 
-const reset_field = field_name => {
-    const target = document.getElementById(field_name)
-    target.value = Defaults[field_name]
+function reset_field(n){
+    const field_name = n === 'digest_every' ? 'digest_every_secs' : n
+    const field = document.getElementById(field_name)
+    const def = Defaults[field_name]
+    if (['share_link', 'disable_webview', 'follow', 'pin'].includes(field_name)) {
+        field.checked = def
+        return
+    }
+    field.value = def
 }
 
-const asssign_from_Ctx = () => {
+function asssign_from_Ctx() {
     document.getElementById('blacklist').value = Ctx.settings.blacklist.join(' ')
     
     const digest_at = Ctx.settings.digest_at.map(v => {
@@ -133,7 +169,7 @@ const asssign_from_Ctx = () => {
         if (h < 10) h = "0" + h
         if (m < 10) m = "0" + m
         return `${h.toString()}:${m.toString()}`
-    })
+    }).join(' ')
     document.getElementById('digest_at').value = digest_at
     document.getElementById('digest_size').value = Ctx.settings.digest_size
     document.getElementById('digest_title').value = Ctx.settings.digest_title
@@ -154,9 +190,23 @@ const asssign_from_Ctx = () => {
     document.getElementById('pin').checked = Ctx.settings.pin
 }
 
-const set_page = () => {
-    const form = document.querySelector('form')
+function set_page() {
+    const form = document.getElementById('form')
     form.addEventListener('submit', submit_listener)
+    const resetters = document.getElementsByClassName('field_resetter')
+    Array.from(resetters).forEach(btn => btn.addEventListener('click', (e) => { reset_field(e.target.name); e.preventDefault() })) 
+    const reset_all = document.getElementById('reset_all')
+    reset_all.addEventListener('click', (e) => { 
+        Object.keys(Defaults).forEach(k => {
+            reset_field(k)
+        })
+        e.preventDefault() 
+    })
+    const reloader = document.getElementById('reload')
+    reloader.addEventListener('click', (e) => {
+        asssign_from_Ctx()
+        e.preventDefault()
+    })
 
     document.getElementById('access_token').innerHTML = "Access token: " + Ctx.access_token
     document.getElementById('chat_id').innerHTML = "Chat Id: " + Ctx.chat_id
