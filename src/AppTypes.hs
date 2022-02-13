@@ -57,7 +57,7 @@ data Feed = Feed
 data FeedType = Rss | Atom deriving (Eq, Show)
 
 data Digest = Digest {
-    digest_id :: Int,
+    digest_id :: Maybe T.Text,
     digest_created :: UTCTime,
     digest_items :: [Item],
     digest_links :: [T.Text],
@@ -290,7 +290,7 @@ data DbAction
   | IncReads [FeedLink]
   | DbSearch Keywords Scope (Maybe UTCTime)
   | PruneOld UTCTime
-  | ReadDigest Int
+  | ReadDigest T.Text
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
@@ -308,6 +308,7 @@ data DbRes = DbFeeds [Feed]
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime 
   | DbDigest Digest
+  | DbDigestId T.Text
 
 data DbError
   = PipeNotAcquired
@@ -317,6 +318,8 @@ data DbError
   | FailedToLog
   | FailedToLoadFeeds
   | BadQuery T.Text
+  | FailedToSaveDigest
+  | FailedToProduceValidId
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
@@ -327,6 +330,8 @@ renderDbError (NoFeedFound url) = "This feed could not be retrieved from the dat
 renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt
+renderDbError FailedToSaveDigest = "Unable to save this digest. The database didn't return a valid identifier."
+renderDbError FailedToProduceValidId = "Db was unable to return a valid identifier"
 
 {- Feeds -}
 

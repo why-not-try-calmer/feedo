@@ -22,6 +22,7 @@ import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
 import Utils (defaultChatSettings)
+import Text.Read (readMaybe)
 
 {- Interface -}
 
@@ -225,7 +226,10 @@ evalMongo env (PruneOld t) =
         del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
     in  withMongo env (del_items >> del_digests) >> pure DbOk
 evalMongo env (ReadDigest _id) =
-    let action = findOne (select ["digest_id" =: _id] "digests")
+    let selector = case readMaybe $ show _id :: Maybe Int of
+            Nothing -> ["_id" =: _id]
+            Just n -> ["digest_id" =: n]
+        action = findOne $ select selector "digests"
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
         Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
@@ -256,7 +260,9 @@ evalMongo env (WriteDigest digest) =
     let action = insert "digests" $ writeDoc digest
     in  withMongo env action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate "digest" "Db refused to insert digest items"
-        Right _ -> pure DbOk
+        Right res -> case res of
+            ObjId _id -> pure $ DbDigestId . T.pack . show $ _id
+            _ -> pure . DbErr $ FailedToProduceValidId
 
 {- Items -}
 
@@ -390,14 +396,13 @@ bsonToDigest :: Document -> Digest
 bsonToDigest doc =
     let items = map readDoc . fromJust $ M.lookup "digest_items" doc
         created = fromJust $ M.lookup "digest_created" doc
-        _id = fromJust $ M.lookup "digest_id" doc
+        _id = M.lookup "_id" doc
         flinks = fromJust $ M.lookup "digest_flinks" doc
         ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
     in  Digest _id created items flinks ftitles
 
 digestToBson :: Digest -> Document
 digestToBson Digest{..} = [
-    "digest_id" =: digest_id,
     "digest_created" =: (digest_created :: UTCTime),
     "digest_items" =: map writeDoc digest_items,
     "digest_flinks" =: digest_links,
@@ -502,7 +507,7 @@ checkDbMapper = do
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
-        digest = Digest 0 now [item] [mempty] [mempty]
+        digest = Digest Nothing now [item] [mempty] [mempty]
         equalities = [
             ("item", checks item),
             ("digest", checks digest),

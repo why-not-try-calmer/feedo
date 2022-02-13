@@ -28,7 +28,7 @@ import TgramOutJson (ChatId, UserId)
 type BotAPI =
     Get '[HTML] Markup :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
-    "digests" :> Capture "digest_id" Int :> Get '[HTML] Markup :<|>
+    "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
     "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
 
 botApi :: Proxy BotAPI

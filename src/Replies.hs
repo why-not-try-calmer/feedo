@@ -54,8 +54,8 @@ mkViewUrl items =
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
-mkDigestUrl :: Int -> T.Text
-mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/" . T.pack . show
+mkDigestUrl :: T.Text -> T.Text
+mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/"
 
 class Renderable e where
     render :: e -> T.Text

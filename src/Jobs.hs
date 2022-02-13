@@ -26,7 +26,7 @@ import Replies
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage), ChatId)
-import Utils (findNextTime, hash, scanTimeSlices)
+import Utils (findNextTime, scanTimeSlices)
 
 {- Background tasks -}
 
@@ -51,15 +51,14 @@ procNotif = do
                     reply tok cid (mkReply (FromFollow fs sets)) (postjobs env)
                     pure (cid, map f_link fs)
                 Digests ds -> do
-                    let batch_id = hash . show $ now
-                        (ftitles, flinks, fitems) = foldr (\f (one, two, three) ->
+                    let (ftitles, flinks, fitems) = foldr (\f (one, two, three) ->
                             (f_title f:one, f_link f:two, three ++ f_items f)) ([],[],[]) ds
                         ftitles' = S.toList . S.fromList $ ftitles
                         flinks' = S.toList . S.fromList $ flinks
-                        digest = Digest batch_id now fitems flinks' ftitles'
+                        digest = Digest Nothing now fitems flinks' ftitles'
                     res <- evalDb env $ WriteDigest digest
                     let mb_digest_link r = case r of
-                            DbOk -> Just $ mkDigestUrl batch_id
+                            DbDigestId _id -> Just $ mkDigestUrl _id
                             _ -> Nothing
                     reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
                     pure (cid, map f_link ds)

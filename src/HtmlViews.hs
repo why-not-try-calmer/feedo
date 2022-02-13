@@ -100,7 +100,7 @@ home = pure . H.docTypeHtml $ do
             >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
 
-viewDigests :: MonadIO m => Int -> App m Markup
+viewDigests :: MonadIO m => T.Text -> App m Markup
 viewDigests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
 
 viewSearchRes :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
