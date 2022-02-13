@@ -111,8 +111,10 @@ findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
         if null times then next_day
         else still_today
     Just xs ->
-        if xs >= 86400 then addUTCTime xs next_day
-        else addUTCTime xs now
+        if null times then 
+            if xs >= 86400 then addUTCTime xs next_day
+            else addUTCTime xs now
+        else still_today
     where
         toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
         from_midnight = realToFrac $ utctDayTime now
