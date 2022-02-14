@@ -79,7 +79,7 @@ function send_payload(payload) {
 function submit_listener(e) {
     const form_data = new FormData(document.forms.form)
     const form_entries = Object.fromEntries(form_data.entries())
-    let payload = {
+    const payload = {
         word_matches:{
             blacklist: [],
             searchset: [],
@@ -87,7 +87,7 @@ function submit_listener(e) {
         },
         digest_interval: {
             digest_every_secs: null,
-            digest_at: [],
+            digest_at: null,
         },
         digest_collapse: null,
         digest_size: null,
@@ -99,23 +99,27 @@ function submit_listener(e) {
         pin: false,
         share_link: false
     }
-    payload.digest_start = `${form_entries.start_yyyy}-${form_entries.start_mm}-${form_entries.start_dd}`
+    mb_digest_start = `${form_entries.start_yyyy}-${form_entries.start_mm}-${form_entries.start_dd}`
+    payload.digest_start = mb_digest_start.length > 3 ? mb_digest_start : null
+    let parsed = null
     for (const [k, v] of Object.entries(form_entries)) {
         switch(k) {
             case 'digest_title':
                 payload.digest_title = v
                 break
             case 'digest_at':
-                payload.digest_interval.digest_at = v.split(' ').map(x => x.split(':').map(i => parseInt(i)))
+                payload.digest_interval.digest_at = v.split(' ').map(x => x.split(':').map(i => parseInt(i))) || null
                 break
             case 'digest_every_secs':
-                payload.digest_interval.digest_every_secs = parseInt(v)
+                parsed = parseInt(v)
+                payload.digest_interval.digest_every_secs = parsed > 0  ? parsed : null
                 break
             case 'digest_size':
                 payload.digest_size = parseInt(v)
                 break
             case 'digest_collapse':
-                payload.digest_collapse = parseInt(v)
+                parsed = parseInt(v)
+                payload.digest_collapse = parsed > 0 ? parsed : null
                 break
             case 'blacklist':
                 payload.word_matches.blacklist = v.split(' ')
@@ -250,23 +254,25 @@ function set_page() {
     asssign_from_Ctx()
 }
 
-window.onload = async () => {
+function receive_payload() {
     const params = new Proxy(new URLSearchParams(window.location.search), {
         get: (searchParams, prop) => searchParams.get(prop),
     });
     const access_token = params.access_token
-    const resp = await request_settings(access_token)            
-    const payload = JSON.parse(resp)
-
-    if (payload.hasOwnProperty('error')) {
-        alert("Unable to authenticate your, because of this error", payload.error)
-        return
-    } else {
-        Ctx.settings = payload.read_resp_settings
-        Ctx.chat_id = payload.read_resp_cid
-        Ctx.access_token = access_token       
-        
-        set_page()
-        start_counter()
-    }
+    request_settings(access_token).then(resp => {
+        const payload = JSON.parse(resp)
+        if (payload.hasOwnProperty('error')) {
+            alert("Unable to authenticate your, because of this error", payload.error)
+            return
+        } else {
+            Ctx.settings = payload.read_resp_settings
+            Ctx.chat_id = payload.read_resp_cid
+            Ctx.access_token = access_token       
+            
+            set_page()
+            start_counter()
+        }
+    })
 }
+
+window.onload = receive_payload
