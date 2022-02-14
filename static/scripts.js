@@ -19,8 +19,8 @@ const Defaults = {
     digest_size: 10,
     digest_collapse: 0,
     blacklist: [],
-    search_notif: [],
-    only_search_notif: [],
+    searchset: [],
+    only_search_results: [],
     disable_webview: false,
     pin: false,
     follow: false,
@@ -30,33 +30,41 @@ const Defaults = {
 /* Methods */
 
 function request_settings(token) {
+    /*
     return fetch(`${Ctx.base_url}/read_settings`, {
         method: 'POST',
         headers,
         body: JSON.stringify({read_req_hash: token})
     })
-    /*
+    */
+
     return Promise.resolve(JSON.stringify({
         read_resp_settings: {
-            blacklist: ['leetcode', 'dominus'],
-            digest_at: [[8,30], [12,0]],
+            word_matches:{
+                blacklist: ['leetcode', 'dominus'],
+                searchset: ['pop_os', 'haskell'],
+                only_search_results: ['http://www.newcombinator.org/feed']
+            },
+            digest_interval: {
+                digest_every_secs: 3600,
+                digest_at: [[8,30], [12,0]],
+            },
             digest_collapse: 3,
-            digest_every: 3600,
             digest_size: 10,
+            digest_start: new Date(),
             digest_title: 'New digest available',
             disable_webview: false,
+            paused: false,
             follow: true,
-            only_search_notif: ['http://www.newcombinator.org/feed'],
             pin: false,
-            search_notif: ['pop_os', 'haskell'],
             share_link: true
         },
         read_resp_cid: 202001010
     }))
-    */
 }
 
 function send_payload(payload) {
+    return Promise.resolve(payload)
     return fetch(`${Ctx.base_url}/write_settings`, {
         method: 'POST',
         headers,
@@ -70,17 +78,68 @@ function send_payload(payload) {
 
 function submit_listener(e) {
     const form_data = new FormData(document.forms.form)
-    let payload = Object.fromEntries(form_data.entries())
-    let flaggable = ['disable_webview', 'follow', 'pin', 'share_link']
-    payload.digest_start = `${payload.start_yyyy}-${payload.start_mm}-${payload.start_dd}`
-    for (const [k, v] of Object.entries(payload)) {
-        if (['start_dd', 'start_mm', 'start_yyyy'].includes(k)) delete payload[k]
-        if (v === 'on') {
-            payload[k] = true
-            flaggable = flaggable.filter(e => e !== k)
+    const form_entries = Object.fromEntries(form_data.entries())
+    let payload = {
+        word_matches:{
+            blacklist: [],
+            searchset: [],
+            only_search_results: []
+        },
+        digest_interval: {
+            digest_every_secs: null,
+            digest_at: [],
+        },
+        digest_collapse: null,
+        digest_size: null,
+        digest_start: '',
+        digest_title: '',
+        disable_webview: false,
+        paused: false,
+        follow: false,
+        pin: false,
+        share_link: false
+    }
+    payload.digest_start = `${form_entries.start_yyyy}-${form_entries.start_mm}-${form_entries.start_dd}`
+    for (const [k, v] of Object.entries(form_entries)) {
+        switch(k) {
+            case 'digest_title':
+                payload.digest_title = v
+                break
+            case 'digest_at':
+                payload.digest_interval.digest_at = v.split(' ').map(x => x.split(':').map(i => parseInt(i)))
+                break
+            case 'digest_every_secs':
+                payload.digest_interval.digest_every_secs = parseInt(v)
+                break
+            case 'digest_size':
+                payload.digest_size = parseInt(v)
+                break
+            case 'digest_collapse':
+                payload.digest_collapse = parseInt(v)
+                break
+            case 'blacklist':
+                payload.word_matches.blacklist = v.split(' ')
+                break
+            case 'searchset':
+                payload.word_matches.searchset = v.split(' ')
+                break
+            case 'only_search_results':
+                payload.word_matches.only_search_results = v.split(' ')
+                break
+            case 'disable_webview':
+                payload.disable_webview = v === 'on' ? true : false
+                break
+            case 'follow':
+                payload.follow = v === 'on' ? true : false
+                break
+            case 'pin':
+                payload.pin = v === 'on' ? true : false
+                break
+            case 'share_link':
+                payload.share_link = v === 'on' ? true : false
+                break
         }
     }
-    Object.assign(payload, Object.fromEntries(flaggable.map(k => [k, false])))
     send_payload(payload).catch(e => console.error(e)).then(resp => console.log(resp))
     e.preventDefault()
 }
@@ -135,9 +194,9 @@ function reset_field(n){
 }
 
 function asssign_from_Ctx() {
-    document.getElementById('blacklist').value = Ctx.settings.blacklist.join(' ')
+    document.getElementById('blacklist').value = Ctx.settings.word_matches.blacklist.join(' ')
     
-    const digest_at = Ctx.settings.digest_at.map(v => {
+    const digest_at = Ctx.settings.digest_interval.digest_at.map(v => {
         let [h, m] = v
         if (h < 10) h = "0" + h
         if (m < 10) m = "0" + m
@@ -150,12 +209,12 @@ function asssign_from_Ctx() {
     
     every_s_helper = document.getElementById('digest_every_secs_helper')
     every_s = document.getElementById('digest_every_secs')
-    every_s.value = Ctx.settings.digest_every
-    const [n, label] = to_human_friendly(Ctx.settings.digest_every)
+    every_s.value = Ctx.settings.digest_interval.digest_every_secs
+    const [n, label] = to_human_friendly(Ctx.settings.digest_interval.digest_every_secs)
     every_s_helper.value = `${n.toString()} ${label}`
 
-    document.getElementById('search_notif').value = Ctx.settings.search_notif.join(' ')
-    document.getElementById('only_search_notif').value = Ctx.settings.only_search_notif.join(' ')
+    document.getElementById('searchset').value = Ctx.settings.word_matches.searchset.join(' ')
+    document.getElementById('only_search_results').value = Ctx.settings.word_matches.only_search_results.join(' ')
     
     document.getElementById('share_link').checked = Ctx.settings.share_link
     document.getElementById('disable_webview').checked = Ctx.settings.disable_webview

@@ -6,7 +6,7 @@ module AppTypes where
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields))
+import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields, fieldLabelModifier))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -98,7 +98,7 @@ data WordMatches = WordMatches {
     match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
 
-$(deriveJSON defaultOptions ''WordMatches)
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 6 } ''WordMatches)
 
 data Settings = Settings {
     settings_digest_collapse :: Maybe Int,
@@ -114,7 +114,7 @@ data Settings = Settings {
     settings_follow :: Bool
 } deriving (Show, Eq)
 
-$(deriveJSON defaultOptions ''Settings)
+$(deriveJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = drop 9 } ''Settings)
 
 data SubChat = SubChat
   { sub_chatid :: ChatId,
