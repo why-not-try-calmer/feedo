@@ -22,6 +22,7 @@ import qualified Text.Blaze.Html5.Attributes as Attr
 import qualified Data.HashSet as S
 import Parsing (eitherUrlScheme)
 import Utils (mbTime)
+import Database.MongoDB (ObjectId)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
@@ -64,7 +65,9 @@ renderDbRes res = case res of
             H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
     _ -> "Invalid operation."
     where
-        digest_id_txt = T.pack . show
+        digest_id_txt mid = case mid :: Maybe ObjectId of
+            Nothing -> "_id could not be determined"
+            Just oid -> T.pack . show $ oid
         nbOf = T.pack . show . length
         nbOfFlinks items = nbOf . flinks $ items
         flinks items = S.toList . S.fromList $ map i_feed_link items
