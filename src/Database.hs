@@ -400,7 +400,7 @@ bsonToDigest :: Document -> Digest
 bsonToDigest doc =
     let items = map readDoc . fromJust $ M.lookup "digest_items" doc
         created = fromJust $ M.lookup "digest_created" doc
-        _id = M.lookup "_id" doc
+        _id = M.lookup "_id" doc :: Maybe ObjectId
         flinks = fromJust $ M.lookup "digest_flinks" doc
         ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
     in  Digest _id created items flinks ftitles

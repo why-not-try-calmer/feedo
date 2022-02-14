@@ -11,7 +11,7 @@ import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
-import Database.MongoDB (Host, Pipe, PortID)
+import Database.MongoDB (Host, Pipe, PortID, ObjectId)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 
@@ -57,7 +57,7 @@ data Feed = Feed
 data FeedType = Rss | Atom deriving (Eq, Show)
 
 data Digest = Digest {
-    digest_id :: Maybe T.Text,
+    digest_id :: Maybe ObjectId,
     digest_created :: UTCTime,
     digest_items :: [Item],
     digest_links :: [T.Text],
