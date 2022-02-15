@@ -100,6 +100,11 @@ freshLastXDays days now items =
     in  filter (\i -> i_pubdate i > x_days_ago) items
 
 findNextTime :: UTCTime -> DigestInterval -> UTCTime
+--  No 'digest_at' or 'digest_every' set? In 1.5 hour
+--  No 'digest_at' but 'digest_every' is set? In the <number of seconds> to which 
+--      'digest_every' is set.
+--  Both set? The closest instant in the future among the two instants determined
+--      from both, respectively.
 findNextTime now (DigestInterval Nothing Nothing) = addUTCTime 9000 now
 findNextTime now (DigestInterval (Just xs) Nothing) = addUTCTime xs now
 findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
@@ -107,10 +112,8 @@ findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
         if null times then next_day
         else still_today
     Just xs ->
-        if null times then 
-            if xs >= 86400 then addUTCTime xs next_day
-            else addUTCTime xs now
-        else still_today
+        if null times then minimum [addUTCTime xs now, next_day]
+        else minimum [addUTCTime xs now, still_today]
     where
         toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
         from_midnight = realToFrac $ utctDayTime now

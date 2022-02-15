@@ -101,7 +101,6 @@ makeConfig env =
     in do
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
-    mvar3 <- newMVar HMS.empty
     chan <- newChan
     pipe_ref <- initConnectionMongo creds >>= \case
         Left err -> throwIO . userError $ T.unpack $ renderDbError err
@@ -111,7 +110,6 @@ makeConfig env =
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
-        auth_admins = mvar3,
         postjobs = chan,
         worker_interval = interval,
         db_config = creds,

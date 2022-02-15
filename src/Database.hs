@@ -261,13 +261,17 @@ evalMongo env (PruneOld t) =
         del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
     in  withMongo env (del_items >> del_digests) >> pure DbOk
 evalMongo env (ReadDigest _id) =
-    let selector = case readMaybe $ show _id :: Maybe Int of
-            Nothing -> ["_id" =: _id]
-            Just n -> ["digest_id" =: n]
-        action = findOne $ select selector "digests"
-    in  withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
-        Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
+    let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
+            Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
+                Nothing -> Left DbInvalidIdentifier 
+                Just n -> Right ["digest_id" =: n] 
+            Just oid -> Right ["_id" =: oid ]
+        action s = findOne $ select s "digests"
+    in  case mkSelector of
+        Left err -> pure err
+        Right selector ->  withMongo env (action selector) >>= \case
+            Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
+            Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
     in  action >>= \case
@@ -431,7 +435,7 @@ bsonToDigest :: Document -> Digest
 bsonToDigest doc =
     let items = map readDoc . fromJust $ M.lookup "digest_items" doc
         created = fromJust $ M.lookup "digest_created" doc
-        _id = M.lookup "_id" doc
+        _id = M.lookup "_id" doc :: Maybe ObjectId
         flinks = fromJust $ M.lookup "digest_flinks" doc
         ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
     in  Digest _id created items flinks ftitles

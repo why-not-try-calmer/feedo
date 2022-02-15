@@ -3,12 +3,9 @@
 module HtmlViews where
 
 import AppTypes
-import Control.Concurrent (modifyMVar, readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
-import qualified Data.HashMap.Strict as HMS
-import qualified Data.HashSet as S
 import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -24,13 +21,17 @@ import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
+import qualified Data.HashSet as S
+import Parsing (eitherUrlScheme)
 import Utils (mbTime)
+import Database.MongoDB (ObjectId)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
+    DbInvalidIdentifier -> "Invalid identifier. Please report this as a bug to the developer."
     DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
-    DbDigest Digest{..} ->
-        let flt =
+    DbDigest Digest{..} -> 
+        let flt = 
                 let titles = if null digest_titles then digest_links else digest_titles
                 in Map.fromList $ zip digest_links titles
         in
@@ -66,7 +67,9 @@ renderDbRes res = case res of
             H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
     _ -> "Invalid operation."
     where
-        digest_id_txt = T.pack . show
+        digest_id_txt mid = case mid :: Maybe ObjectId of
+            Nothing -> "_id could not be determined"
+            Just oid -> T.pack . show $ oid
         nbOf = T.pack . show . length
         nbOfFlinks items = nbOf . flinks $ items
         flinks items = S.toList . S.fromList $ map i_feed_link items

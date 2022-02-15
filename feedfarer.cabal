@@ -55,7 +55,6 @@ library
     , blaze-markup
     , bytestring
     , containers
-    , cryptonite
     , mongoDB
     , mtl
     , req
@@ -90,7 +89,6 @@ executable feedfarer-exe
     , blaze-markup
     , bytestring
     , containers
-    , cryptonite
     , feedfarer
     , mongoDB
     , mtl
@@ -127,7 +125,6 @@ test-suite feedfarer-test
     , blaze-markup
     , bytestring
     , containers
-    , cryptonite
     , feedfarer
     , mongoDB
     , mtl

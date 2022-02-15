@@ -6,16 +6,15 @@ module AppTypes where
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (deriveJSON, defaultOptions, Options (omitNothingFields, fieldLabelModifier))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
-import Database.MongoDB (Host, Pipe, PortID)
+import Database.MongoDB (Host, Pipe, PortID, ObjectId)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId, UserId)
+import TgramOutJson (ChatId)
 
 {- Replies -}
 
@@ -59,7 +58,7 @@ data Feed = Feed
 data FeedType = Rss | Atom deriving (Eq, Show)
 
 data Digest = Digest {
-    digest_id :: Maybe T.Text,
+    digest_id :: Maybe ObjectId,
     digest_created :: UTCTime,
     digest_items :: [Item],
     digest_links :: [T.Text],
@@ -234,7 +233,7 @@ renderUserError (NotFoundFeed feed) = T.append "The feed you were looking for do
 renderUserError NotFoundChat = "The chat you called from is not subscribed to any feed yet."
 renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
-renderUserError TelegramErr = "An error occurred while requesting Telegram's services. Please try again"
+renderUserError TelegramErr = "Telegram responded with an error. Are you sure you're using the right chat_id?"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
 
 data ChatRes = 
@@ -244,7 +243,6 @@ data ChatRes =
 {- Replies -}
 
 data Replies = FromChangelog
-    | FromAdmin T.Text
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
@@ -402,8 +400,6 @@ data ServerConfig = ServerConfig
 
 type KnownFeeds = HMS.HashMap T.Text Feed
 
-type AuthAdmins = HMS.HashMap T.Text (ChatId, UTCTime)
-
 data Job =
     JobIncReadsJob [FeedLink] |
     JobRemoveMsg ChatId Int Int |
@@ -420,7 +416,6 @@ data AppConfig = AppConfig
     tg_config :: ServerConfig,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
-    auth_admins :: MVar AuthAdmins,
     postjobs :: Chan Job,
     worker_interval :: Int
   }

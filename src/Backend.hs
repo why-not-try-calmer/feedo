@@ -179,7 +179,7 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
     let last_run = last_worker_run env
         due = collectDue chats last_run now
         flinks_to_rebuild = foldMap (readBatchRecipe . snd) due
-    if null due then pure FeedsOk else do
+    if HMS.null due then pure FeedsOk else do
         -- else rebuilding all feeds with any subscribers
         eitherUpdated <- mapConcurrently rebuildFeed flinks_to_rebuild
         let (failed, succeeded) = partitionEither eitherUpdated
@@ -219,22 +219,30 @@ collectDue ::
     Maybe UTCTime ->
     UTCTime ->
     HMS.HashMap ChatId (SubChat, BatchRecipe)
+-- Peeling off conditions for notifications:
+-- new start or new digest or new follow
 collectDue chats last_run now =
     foldl' (\hmap c@SubChat{..} ->
         let interval = settings_digest_interval sub_settings
-            new_start = maybe False (< now) $ settings_digest_start sub_settings
         in  if settings_paused sub_settings
             then hmap
-            else if new_start || nextWasNow sub_next_digest sub_last_digest interval
-                -- 'digests' take priority over 'follow notifications'
-                then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-                else 
-                    case last_run of
-                    Nothing -> HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
-                    Just t ->
-                        if addUTCTime 1200 t < now
-                        then HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
+            else case settings_digest_start sub_settings of
+                Nothing -> 
+                    if nextWasNow sub_next_digest sub_last_digest interval
+                    -- 'digests' take priority over 'follow notifications'
+                    then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
+                    else 
+                        if settings_follow sub_settings then case last_run of
+                            Nothing -> HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
+                            Just t ->
+                                if addUTCTime 1200 t < now
+                                then HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
+                                else hmap
                         else hmap
+                Just new -> 
+                    if new < now 
+                    then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
+                    else hmap
             ) HMS.empty chats
     where
         nextWasNow Nothing Nothing _ = True

@@ -127,15 +127,16 @@ procNotif = do
             UTCTime ->
             HMS.HashMap ChatId SubChat
         updated_notified_chats notified_chats chats now = HMS.mapWithKey (\cid c ->
-            if cid `elem` notified_chats then
-                let start = case settings_digest_start . sub_settings $ c of
-                        Nothing -> Nothing
-                        Just s -> if s < now then Nothing else Just s
-                -- updating last, next, and consuming 'settings_digest_start'
-                in  c   {
+            if cid `elem` notified_chats
+            then
+                let next = Just . findNextTime now . settings_digest_interval . sub_settings $ c
+                in  -- updating last, next, and consuming 'settings_digest_start'
+                    case settings_digest_start . sub_settings $ c of
+                    Nothing -> c { sub_last_digest = Just now, sub_next_digest = next }
+                    Just _ -> c { 
                         sub_last_digest = Just now,
-                        sub_next_digest = Just $ findNextTime now (settings_digest_interval . sub_settings $ c),
-                        sub_settings = (sub_settings c) { settings_digest_start = start }
+                        sub_next_digest = next,
+                        sub_settings = (sub_settings c) { settings_digest_start = Nothing }
                         }
             else c) chats
 
