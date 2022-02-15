@@ -12,7 +12,7 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Database (checkDbMapper, initConnectionMongo)
-import HtmlViews
+import Web
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -123,11 +123,11 @@ initStart config mb_urls = case mb_urls of
     Nothing -> runApp config startup
     Just urls -> do
         putStrLn "Found urls. Trying to build feeds..."
-        --runApp config $ evalFeeds (InitF urls) >> startup
-        runApp config startup
+        runApp config $ evalFeeds (InitF urls) >> startup
+        -- runApp config startup
     where
-        startup = loadChats >> postProcJobs
-        -- startup = evalFeeds LoadF >> loadChats >> procNotif >> postProcJobs
+        -- startup = loadChats >> postProcJobs
+        startup = evalFeeds LoadF >> loadChats >> procNotif >> postProcJobs
 
 startApp :: IO ()
 startApp = do

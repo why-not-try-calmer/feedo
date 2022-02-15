@@ -95,7 +95,7 @@ withMongo config action = go >>= \case
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
     where
-        alertGiveUp err = alert err >> liftIO (print err) >> pure (Left ())
+        alertGiveUp err = alert err >> pure (Left ())
         alert err = liftIO $ writeChan (postjobs config) . JobTgAlert $
             "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
             " If the connector timed out, one retry will be carried out."

@@ -4,13 +4,25 @@ const Ctx = {
     settings: {},
     chat_id: null,
     acess_token: '',
-    base_url: 'http://0.0.0.0:8443'
-    //base_url: 'https://feedfarer-webapp.azurewebsites.net'
-}
-
-const headers = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
+    base_url: 'https://feedfarer-webapp.azurewebsites.net',//'http://0.0.0.0:8443',
+    headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+    },
+    request_settings: function (token) {
+        return fetch(`${this.base_url}/read_settings`, {
+            method: 'POST',
+            headers: this.headers,
+            body: JSON.stringify({read_req_hash: token})
+        })
+    },
+    send_payload: function (payload) {
+        return fetch(`${Ctx.base_url}/write_settings`, {
+            method: 'POST',
+            headers: this.headers,
+            body: JSON.stringify(payload)
+        })
+    }
 }
 
 const Defaults = {
@@ -22,64 +34,17 @@ const Defaults = {
     blacklist: [],
     searchset: [],
     only_search_results: [],
-    disable_webview: false,
+    disable_web_view: false,
     pin: false,
     follow: false,
     share_link: false
 }
 
-/* Methods */
-
-function request_settings(token) {
-    return fetch(`${Ctx.base_url}/read_settings`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({read_req_hash: token})
-    })
-    /*
-    return Promise.resolve(JSON.stringify({
-        read_resp_settings: {
-            word_matches:{
-                blacklist: ['leetcode', 'dominus'],
-                searchset: ['pop_os', 'haskell'],
-                only_search_results: ['http://www.newcombinator.org/feed']
-            },
-            digest_interval: {
-                digest_every_secs: 3600,
-                digest_at: [[8,30], [12,0]],
-            },
-            digest_collapse: 3,
-            digest_size: 10,
-            digest_start: new Date(),
-            digest_title: 'New digest available',
-            disable_webview: false,
-            paused: false,
-            follow: true,
-            pin: false,
-            share_link: true
-        },
-        read_resp_cid: 202001010
-    }))
-    */
-}
-
-function send_payload(payload) {
-    //return Promise.resolve(payload)
-    return fetch(`${Ctx.base_url}/write_settings`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            write_req_hash: Ctx.acess_token,
-            write_req_settings: payload
-        })
-    })
-    // return Promise.resolve(JSON.stringify( {write_resp_status: 200} ))
-}
-
 function submit_listener(e) {
+    e.preventDefault()
     const form_data = new FormData(document.forms.form)
     const form_entries = Object.fromEntries(form_data.entries())
-    const payload = {
+    const settings = {
         word_matches:{
             blacklist: [],
             searchset: [],
@@ -93,59 +58,62 @@ function submit_listener(e) {
         digest_size: null,
         digest_start: '',
         digest_title: '',
-        disable_webview: false,
+        disable_web_view: false,
         paused: false,
         follow: false,
         pin: false,
         share_link: false
     }
     mb_digest_start = `${form_entries.start_yyyy}-${form_entries.start_mm}-${form_entries.start_dd}`
-    payload.digest_start = mb_digest_start.length > 3 ? mb_digest_start : null
+    settings.digest_start = mb_digest_start.length > 3 ? mb_digest_start : null
     let parsed = null
     for (const [k, v] of Object.entries(form_entries)) {
         switch(k) {
             case 'digest_title':
-                payload.digest_title = v
+                settings.digest_title = v
                 break
             case 'digest_at':
-                payload.digest_interval.digest_at = v.split(' ').map(x => x.split(':').map(i => parseInt(i))) || null
+                settings.digest_interval.digest_at = v.split(' ').map(x => x.split(':').map(i => parseInt(i))) || null
                 break
             case 'digest_every_secs':
                 parsed = parseInt(v)
-                payload.digest_interval.digest_every_secs = parsed > 0  ? parsed : null
+                settings.digest_interval.digest_every_secs = parsed > 0  ? parsed : null
                 break
             case 'digest_size':
-                payload.digest_size = parseInt(v)
+                settings.digest_size = parseInt(v)
                 break
             case 'digest_collapse':
                 parsed = parseInt(v)
-                payload.digest_collapse = parsed > 0 ? parsed : null
+                settings.digest_collapse = parsed > 0 ? parsed : null
                 break
             case 'blacklist':
-                payload.word_matches.blacklist = v.split(' ')
+                settings.word_matches.blacklist = v.split(' ')
                 break
             case 'searchset':
-                payload.word_matches.searchset = v.split(' ')
+                settings.word_matches.searchset = v.split(' ')
                 break
             case 'only_search_results':
-                payload.word_matches.only_search_results = v.split(' ')
+                settings.word_matches.only_search_results = v.split(' ')
                 break
-            case 'disable_webview':
-                payload.disable_webview = v === 'on' ? true : false
+            case 'disable_web_view':
+                settings.disable_web_view = v === 'on' ? true : false
                 break
             case 'follow':
-                payload.follow = v === 'on' ? true : false
+                settings.follow = v === 'on' ? true : false
                 break
             case 'pin':
-                payload.pin = v === 'on' ? true : false
+                settings.pin = v === 'on' ? true : false
                 break
             case 'share_link':
-                payload.share_link = v === 'on' ? true : false
+                settings.share_link = v === 'on' ? true : false
                 break
         }
     }
-    send_payload(payload).catch(e => console.error(e)).then(resp => console.log(resp))
-    e.preventDefault()
+    const payload = { write_req_hash: Ctx.access_token, write_req_settings: settings }
+    Ctx.send_payload(payload).catch(e => alert(e)).then(resp => resp.json()).then(o => {
+        if (o.write_resp_status === 200) alert('Thanks, it worked.')
+        else alert('Failed for this reason', o.write_resp_error)
+    }).catch(e => alert('Failed for this reason', e))
 }
 
 function start_counter(counter = 300) {
@@ -177,20 +145,20 @@ function to_human_friendly(n) {
 }
 
 function helper_listener(e) {
+    e.preventDefault()
     const input = document.getElementById('digest_every_secs').value
     const rewrite = i => {
         const [n, label] = to_human_friendly(i)
         document.getElementById('digest_every_secs_helper').value = `${n.toString()} ${label}`
     }
     setTimeout(() => rewrite(input), 350)
-    e.preventDefault()
 }
 
 function reset_field(n){
     const field_name = n === 'digest_every' ? 'digest_every_secs' : n
     const field = document.getElementById(field_name)
     const def = Defaults[field_name]
-    if (['share_link', 'disable_webview', 'follow', 'pin'].includes(field_name)) {
+    if (['share_link', 'disable_web_view', 'follow', 'pin'].includes(field_name)) {
         field.checked = def
         return
     }
@@ -198,7 +166,6 @@ function reset_field(n){
 }
 
 function asssign_from_Ctx() {
-    console.log(Ctx.settings)
     document.getElementById('blacklist').value = Ctx.settings.word_matches.blacklist.join(' ')
     
     const digest_at = Ctx.settings.digest_interval.digest_at.map(v => {
@@ -222,14 +189,17 @@ function asssign_from_Ctx() {
     document.getElementById('only_search_results').value = Ctx.settings.word_matches.only_search_results.join(' ')
     
     document.getElementById('share_link').checked = Ctx.settings.share_link
-    document.getElementById('disable_webview').checked = Ctx.settings.disable_webview
+    document.getElementById('disable_web_view').checked = Ctx.settings.disable_web_view
     document.getElementById('follow').checked = Ctx.settings.follow
     document.getElementById('pin').checked = Ctx.settings.pin
 }
 
 function set_page() {
+    // Initializing form
     const form = document.getElementById('form')
     form.addEventListener('submit', submit_listener)
+    
+    // ... resetters
     const resetters = document.getElementsByClassName('field_resetter')
     Array.from(resetters).forEach(btn => btn.addEventListener('click', (e) => { reset_field(e.target.name); e.preventDefault() })) 
     const reset_all = document.getElementById('reset_all')
@@ -239,16 +209,19 @@ function set_page() {
         })
         e.preventDefault() 
     })
+    
+    // ... loader
     const reloader = document.getElementById('reload')
     reloader.addEventListener('click', (e) => {
         asssign_from_Ctx()
         e.preventDefault()
     })
 
+    // ... meta data
     document.getElementById('access_token').innerHTML = "Access token: " + Ctx.access_token
     document.getElementById('chat_id').innerHTML = "Chat Id: " + Ctx.chat_id
-    document.getElementById('showcase').innerHTML = JSON.stringify(Ctx.settings)
     
+    // ... helper
     every_s = document.getElementById('digest_every_secs')    
     every_s.addEventListener('keyup', helper_listener)
 
@@ -260,20 +233,18 @@ function receive_payload() {
         get: (searchParams, prop) => searchParams.get(prop),
     });
     const access_token = params.access_token
-    request_settings(access_token).then(resp => resp.json()).then(payload => {
+    Ctx.request_settings(access_token).then(resp => resp.json()).then(payload => {
         if (payload.hasOwnProperty('error')) {
             alert("Unable to authenticate your, because of this error", payload.error)
             return
         } else {
-            console.log(payload)
             Ctx.settings = payload.read_resp_settings
             Ctx.chat_id = payload.read_resp_cid
             Ctx.access_token = access_token
-            console.log(Ctx)    
             set_page()
-            start_counter()
+            //start_counter()
         }
-    })
+    }).catch(e => alert(e))
 }
 
 window.onload = receive_payload

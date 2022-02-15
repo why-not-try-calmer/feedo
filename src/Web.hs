@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module HtmlViews where
+module Web where
 
 import AppTypes
 import Control.Concurrent (modifyMVar, readMVar)
@@ -135,20 +135,6 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
 
-writeSettings :: MonadIO m => WriteReq -> App m WriteResp
-writeSettings (WriteReq hash settings) =  do
-    env <- ask
-    evalDb env (CheckLogin hash) >>= \case
-        DbErr err -> pure . nope $ renderDbError err
-        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $
-            \chats -> case HMS.lookup cid chats of
-            Nothing -> pure (chats, nope "Unable to find the target chat")
-            Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
-        _ -> undefined
-    where
-        nope = WriteResp 504 . Just
-        ok = WriteResp 200 Nothing
-
 readSettings :: MonadIO m => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
     env <- ask
@@ -162,3 +148,17 @@ readSettings (ReadReq hash) = do
     where
         failedWith err = ReadResp Nothing Nothing (Just err)
         ok cid c = ReadResp (Just $ sub_settings c) (Just cid) Nothing
+
+writeSettings :: MonadIO m => WriteReq -> App m WriteResp
+writeSettings (WriteReq hash settings) = do
+    env <- ask
+    evalDb env (CheckLogin hash) >>= \case
+        DbErr err -> pure . nope $ renderDbError err
+        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $
+            \chats -> case HMS.lookup cid chats of
+            Nothing -> pure (chats, nope "Unable to find the target chat")
+            Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
+        _ -> undefined
+    where
+        nope = WriteResp 504 . Just
+        ok = WriteResp 200 Nothing
