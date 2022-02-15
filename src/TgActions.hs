@@ -2,7 +2,7 @@
 
 module TgActions where
 import AppTypes
-import Backend (evalFeeds, withChat, withAdmins)
+import Backend (evalFeeds, withChat)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless)
@@ -72,7 +72,7 @@ interpretCmd contents
         if length args /= 1 then Left $ BadInput "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The value passed to /admin could not be parsed into a valid chat_id."
-            Just chat_or_channel_id -> Right $ Admin chat_or_channel_id
+            Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
         if length args == 1 then case toFeedRef args of
@@ -245,7 +245,7 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
                             Just f -> pure . Right $ mkReply (FromFeedDetails f)
-evalTgAct uid (Admin target_id) cid = do
+evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
     checkIfPrivate tok cid >>= \case
@@ -257,8 +257,12 @@ evalTgAct uid (Admin target_id) cid = do
             Just ok ->
                 if not ok then alert_not_auth else do
                 safe_hash <- mkSafeHash
-                withAdmins safe_hash cid
-                pure . Right . mkReply . FromAdmin $ safe_hash
+                evalDb env (DbAskForLogin uid safe_hash cid) >>= \case
+                    DbOk -> pure . Right . mkReply . FromAdmin $ 
+                        "https://feedfarer-webapp.azurewebsites.net/settings?access_token=" `T.append` safe_hash
+                    _ -> pure . Right . mkReply . FromAdmin $ 
+                        "Unable to log you in. Are you sure this token \
+                        \ is still valid? Tokens expire after one month."
     where
         mkSafeHash = liftIO getSystemTime <&> 
             T.pack . show . hashWith SHA256 . B.pack . show

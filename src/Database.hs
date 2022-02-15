@@ -6,7 +6,7 @@ module Database where
 import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (foldl'), traverse_)
 import qualified Data.HashMap.Strict as HMS
@@ -16,7 +16,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime, diffUTCTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
@@ -54,6 +54,11 @@ instance MongoDoc Digest where
 instance MongoDoc LogItem where
     readDoc = bsonToLog
     writeDoc = logToBson
+    checks v = v == (readDoc . writeDoc $ v)
+
+instance MongoDoc AdminUser where
+    readDoc = bsonToAdmin
+    writeDoc = adminToBson
     checks v = v == (readDoc . writeDoc $ v)
 
 class Db m where
@@ -163,7 +168,38 @@ buildSearchQuery ws mb_last_time =
     in  case mb_last_time of
             Nothing -> [search, project]
             Just t -> [search, match t, project]
+
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
+evalMongo env (DbAskForLogin uid h cid) = do
+    let r = findOne (select ["admin_token" =: h] "admins")
+        w n = insert_ "admins" . writeDoc $ AdminUser uid h cid n 
+        del = deleteOne (select ["admin_token" =: h] "admins")
+    now <- liftIO getCurrentTime
+    res <- withMongo env r
+    case res of
+        Left _ -> pure . DbErr $ DbLoginFailed  
+        Right Nothing -> do
+            _ <- withMongo env (w now)
+            pure DbOk
+        Right (Just doc) -> do
+            let ad = readDoc doc
+            when (diffUTCTime now (admin_created ad) > 2592000) (withMongo env del >> pure ())
+            pure DbOk
+evalMongo env (CheckLogin h) =
+    let r = findOne (select ["admin_token" =: h] "admins")
+        del = deleteOne (select ["admin_token" =: h] "admins")
+    in  liftIO getCurrentTime >>= 
+        \now -> withMongo env r >>= \case
+        Left _ -> nope
+        Right Nothing -> nope
+        Right (Just doc) ->
+            if diffUTCTime now (admin_created . readDoc $ doc) > 2592000 
+            then pure $ DbLoggedIn (admin_chatid $ readDoc doc)
+            else do
+            _ <- withMongo env del
+            pure . DbErr $ DbLoginFailed
+    where
+        nope = pure . DbErr $ DbLoginFailed
 evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
@@ -476,6 +512,24 @@ collectLogStats env = do
                     showAvgLength v logs) keys values)
         showLength = T.pack . show . length
         showAvgLength a l = T.pack . show $ fromIntegral a `div` length l
+
+{- Admins -}
+
+bsonToAdmin :: Document -> AdminUser
+bsonToAdmin doc = 
+    let uid = fromJust $ M.lookup "admin_uid" doc
+        chatid = fromJust $ M.lookup "admin_chatid" doc
+        token = fromJust $ M.lookup "admin_token" doc
+        created = fromJust $ M.lookup "admin_created" doc
+    in  AdminUser uid chatid token created
+
+adminToBson :: AdminUser -> Document
+adminToBson AdminUser{..} = [
+        "admin_uid" =: admin_uid, 
+        "admin_chatid" =: admin_chatid, 
+        "admin_token" =: admin_token, 
+        "admin_created" =: admin_created
+    ]
 
 {- Cleanup -}
 

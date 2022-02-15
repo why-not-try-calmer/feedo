@@ -14,7 +14,7 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
-import Data.Time (UTCTime (utctDay), defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime, toGregorian)
+import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
@@ -84,14 +84,6 @@ renderDbRes res = case res of
                 Nothing -> Map.insert flink [i] acc
                 Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty items
 
-{-
-renderManageSettings :: ChatId -> Settings -> H.Html
-renderManageSettings cid _ = H.docTypeHtml $ do
-    H.head $ H.title . toHtml $ "feedfarer_bot/access_settings/" `T.append` (T.pack . show $ cid)
-    H.body $ do
-        pure mempty
--}
-
 home :: MonadIO m => App m Markup
 home = pure . H.docTypeHtml $ do
     H.head $ do
@@ -111,7 +103,7 @@ home = pure . H.docTypeHtml $ do
             >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
 
-viewDigests :: MonadIO m => T.Text -> App m Markup
+viewDigests :: (Db m, MonadIO m) => T.Text -> App m Markup
 viewDigests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
 
 viewSearchRes :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
@@ -140,46 +132,30 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
 
-writeSettings :: MonadIO m => WriteReq -> App m WriteResp
+writeSettings :: (Db m, MonadIO m) => WriteReq -> App m WriteResp
 writeSettings WriteReq{..} =  do
     env <- ask
-    res <- liftIO $ do
-        now <- getCurrentTime 
-        modifyMVar (auth_admins env) $ 
-            \hmap -> case HMS.lookup write_req_hash hmap of
-            Nothing -> pure (hmap, Left notAuth)
-            Just (cid, t) -> pure (update hmap now t, Right cid)
-    case res of
-        Left resp -> pure resp
-        Right cid -> liftIO $ modifyMVar (subs_state env) $ \chats ->
+    evalDb env (CheckLogin write_req_hash) >>= \case
+        DbErr err -> pure . nope $ renderDbError err
+        DbLoggedIn cid -> liftIO $ modifyMVar (subs_state env) $ \chats ->
             case HMS.lookup cid chats of
             Nothing -> pure (chats, nope "Unable to find the target chat")
             Just c -> pure (HMS.update (\_ -> Just c { sub_settings = write_req_settings }) cid chats, ok)
+        _ -> undefined
     where
-        notAuth = nope "Unauthorized. Either your token has expired or it was neverl valid."
         nope = WriteResp 504 . Just
         ok = WriteResp 200 Nothing
-        update hmap now t = if diffUTCTime now t > 2592000 then HMS.delete write_req_hash hmap else hmap
 
-readSettings :: MonadIO m => ReadReq -> App m ReadResp
-readSettings ReadReq{..} = ask >>= \env ->
-    fetchSettings env read_req_hash >>= \case
-        Left err -> pure $ failedWith err
-        Right (cid, s) -> pure $ ReadResp (Just s) (Just cid) Nothing
+readSettings :: (Db m, MonadIO m) => ReadReq -> App m ReadResp
+readSettings ReadReq{..} = do 
+    env <- ask
+    evalDb env (CheckLogin read_req_hash) >>= \case
+        DbErr err -> pure $ failedWith (renderDbError err)
+        DbLoggedIn cid -> liftIO (readMVar $ subs_state env) >>= 
+            \chats -> case HMS.lookup cid chats of
+            Nothing -> pure $ failedWith "Chat does not exist."
+            Just c -> pure $ ok cid c
+        _ -> undefined
     where
         failedWith err = ReadResp Nothing Nothing (Just err)
-        fetchSettings env h =
-            liftIO $ getCurrentTime >>= \now -> modifyMVar (auth_admins env) $
-                \admins -> case HMS.lookup h admins of
-                Nothing -> pure (admins, not_valid)
-                Just (cid, _then) ->
-                    if diffUTCTime now _then > 300
-                    then pure (HMS.delete h admins, no_longer_valid)
-                    else readMVar (subs_state env) >>= \chats ->
-                    case HMS.lookup cid chats of
-                        Nothing -> pure (admins, not_found)
-                        Just c -> pure (admins, ok cid c)
-        ok cid c = Right (cid, sub_settings c)
-        not_found = Left "Chat not found."
-        no_longer_valid = Left "This hash is no longer valid. Please authenticate again."
-        not_valid = Left "This hash is not valid. Please authenticate again."
+        ok cid c = ReadResp (Just $ sub_settings c) (Just cid) Nothing

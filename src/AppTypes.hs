@@ -15,7 +15,7 @@ import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB (Host, Pipe, PortID)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId)
+import TgramOutJson (ChatId, UserId)
 
 {- Replies -}
 
@@ -150,6 +150,15 @@ toFeedRef ss
     intoUrls = map ByUrl ss
     intoIds = maybe [] (map ById) (traverse (readMaybe . T.unpack) ss)
 
+{- Admins -}
+
+data AdminUser = AdminUser {
+    admin_uid :: UserId,
+    admin_token :: T.Text,
+    admin_chatid :: ChatId,
+    admin_created :: UTCTime
+} deriving (Eq, Show)
+
 {- User actions, errors -}
 
 data ParsingSettings =
@@ -171,7 +180,7 @@ data ParsingSettings =
 
 data UserAction
   = About FeedRef
-  | Admin ChatId
+  | AskForLogin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
   | GetChannelItems ChatId FeedRef
@@ -291,8 +300,12 @@ data DbCreds
 
 data DbConnector = MongoPipe Pipe | SomethingElse
 
+type AdminToken = T.Text
+
 data DbAction
-  = ArchiveItems [Feed]
+  = DbAskForLogin UserId AdminToken ChatId
+  | CheckLogin AdminToken
+  | ArchiveItems [Feed]
   | DeleteChat ChatId
   | Get100Feeds
   | GetAllChats
@@ -315,6 +328,7 @@ data DbRes = DbFeeds [Feed]
   | DbNoDigest
   | DbErr DbError
   | DbOk
+  | DbLoggedIn ChatId
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime 
   | DbDigest Digest
