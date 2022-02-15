@@ -30,14 +30,12 @@ const Defaults = {
 /* Methods */
 
 function request_settings(token) {
-    /*
     return fetch(`${Ctx.base_url}/read_settings`, {
         method: 'POST',
         headers,
         body: JSON.stringify({read_req_hash: token})
     })
-    */
-
+    /*
     return Promise.resolve(JSON.stringify({
         read_resp_settings: {
             word_matches:{
@@ -61,10 +59,11 @@ function request_settings(token) {
         },
         read_resp_cid: 202001010
     }))
+    */
 }
 
 function send_payload(payload) {
-    return Promise.resolve(payload)
+    //return Promise.resolve(payload)
     return fetch(`${Ctx.base_url}/write_settings`, {
         method: 'POST',
         headers,
