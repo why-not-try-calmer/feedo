@@ -263,12 +263,12 @@ evalMongo env (PruneOld t) =
 evalMongo env (ReadDigest _id) =
     let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
             Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
-                Nothing -> Left DbInvalidIdentifier 
+                Nothing -> Left FailedToProduceValidId  
                 Just n -> Right ["digest_id" =: n] 
             Just oid -> Right ["_id" =: oid ]
         action s = findOne $ select s "digests"
     in  case mkSelector of
-        Left err -> pure err
+        Left err -> pure $ DbErr err
         Right selector ->  withMongo env (action selector) >>= \case
             Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
             Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc

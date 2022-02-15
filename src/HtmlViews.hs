@@ -3,9 +3,12 @@
 module HtmlViews where
 
 import AppTypes
+import Control.Concurrent (modifyMVar, readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet as S
 import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -13,6 +16,7 @@ import Data.Ord (Down (Down))
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
 import Database (Db (evalDb))
+import Database.MongoDB (ObjectId)
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
 import Parsing (eitherUrlScheme)
@@ -21,17 +25,13 @@ import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
-import qualified Data.HashSet as S
-import Parsing (eitherUrlScheme)
 import Utils (mbTime)
-import Database.MongoDB (ObjectId)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
-    DbInvalidIdentifier -> "Invalid identifier. Please report this as a bug to the developer."
     DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
-    DbDigest Digest{..} -> 
-        let flt = 
+    DbDigest Digest{..} ->
+        let flt =
                 let titles = if null digest_titles then digest_links else digest_titles
                 in Map.fromList $ zip digest_links titles
         in
@@ -140,7 +140,7 @@ writeSettings (WriteReq hash settings) =  do
     env <- ask
     evalDb env (CheckLogin hash) >>= \case
         DbErr err -> pure . nope $ renderDbError err
-        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $ 
+        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $
             \chats -> case HMS.lookup cid chats of
             Nothing -> pure (chats, nope "Unable to find the target chat")
             Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
@@ -150,11 +150,11 @@ writeSettings (WriteReq hash settings) =  do
         ok = WriteResp 200 Nothing
 
 readSettings :: MonadIO m => ReadReq -> App m ReadResp
-readSettings ReadReq{..} = do 
+readSettings ReadReq{..} = do
     env <- ask
     evalDb env (CheckLogin read_req_hash) >>= \case
         DbErr err -> pure $ failedWith (renderDbError err)
-        DbLoggedIn cid -> liftIO (readMVar $ subs_state env) >>= 
+        DbLoggedIn cid -> liftIO (readMVar $ subs_state env) >>=
             \chats -> case HMS.lookup cid chats of
             Nothing -> pure $ failedWith "Chat does not exist."
             Just c -> pure $ ok cid c

@@ -6,15 +6,16 @@ module AppTypes where
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
+import Data.Aeson.TH (Options (fieldLabelModifier, omitNothingFields), defaultOptions, deriveJSON)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
-import Database.MongoDB (Host, Pipe, PortID, ObjectId)
+import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId)
+import TgramOutJson (ChatId, UserId)
 
 {- Replies -}
 
@@ -242,7 +243,8 @@ data ChatRes =
 
 {- Replies -}
 
-data Replies = FromChangelog
+data Replies = FromAdmin T.Text 
+    | FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
