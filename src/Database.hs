@@ -171,7 +171,7 @@ buildSearchQuery ws mb_last_time =
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (DbAskForLogin uid h cid) = do
-    let r = findOne (select ["admin_token" =: h] "admins")
+    let r = findOne (select ["admin_uid" =: uid, "admin_chatid" =: cid] "admins")
         w n = insert_ "admins" . writeDoc $ AdminUser uid h cid n 
         del = deleteOne (select ["admin_token" =: h] "admins")
     now <- liftIO getCurrentTime
@@ -182,8 +182,7 @@ evalMongo env (DbAskForLogin uid h cid) = do
             _ <- withMongo env (w now)
             pure DbOk
         Right (Just doc) -> do
-            let ad = readDoc doc
-            when (diffUTCTime now (admin_created ad) > 2592000) (withMongo env del >> pure ())
+            when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env del >> pure ())
             pure DbOk
 evalMongo env (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
@@ -518,10 +517,10 @@ collectLogStats env = do
 bsonToAdmin :: Document -> AdminUser
 bsonToAdmin doc = 
     let uid = fromJust $ M.lookup "admin_uid" doc
-        chatid = fromJust $ M.lookup "admin_chatid" doc
         token = fromJust $ M.lookup "admin_token" doc
+        cid = fromJust $ M.lookup "admin_chatid" doc
         created = fromJust $ M.lookup "admin_created" doc
-    in  AdminUser uid chatid token created
+    in  AdminUser uid token cid created
 
 adminToBson :: AdminUser -> Document
 adminToBson AdminUser{..} = [

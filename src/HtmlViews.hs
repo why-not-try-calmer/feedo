@@ -103,7 +103,7 @@ home = pure . H.docTypeHtml $ do
             >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
 
-viewDigests :: (Db m, MonadIO m) => T.Text -> App m Markup
+viewDigests :: MonadIO m => T.Text -> App m Markup
 viewDigests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
 
 viewSearchRes :: MonadIO m => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
@@ -132,21 +132,21 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
 
-writeSettings :: (Db m, MonadIO m) => WriteReq -> App m WriteResp
-writeSettings WriteReq{..} =  do
+writeSettings :: MonadIO m => WriteReq -> App m WriteResp
+writeSettings (WriteReq hash settings) =  do
     env <- ask
-    evalDb env (CheckLogin write_req_hash) >>= \case
+    evalDb env (CheckLogin hash) >>= \case
         DbErr err -> pure . nope $ renderDbError err
-        DbLoggedIn cid -> liftIO $ modifyMVar (subs_state env) $ \chats ->
-            case HMS.lookup cid chats of
+        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $ 
+            \chats -> case HMS.lookup cid chats of
             Nothing -> pure (chats, nope "Unable to find the target chat")
-            Just c -> pure (HMS.update (\_ -> Just c { sub_settings = write_req_settings }) cid chats, ok)
+            Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
         _ -> undefined
     where
         nope = WriteResp 504 . Just
         ok = WriteResp 200 Nothing
 
-readSettings :: (Db m, MonadIO m) => ReadReq -> App m ReadResp
+readSettings :: MonadIO m => ReadReq -> App m ReadResp
 readSettings ReadReq{..} = do 
     env <- ask
     evalDb env (CheckLogin read_req_hash) >>= \case

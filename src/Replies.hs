@@ -58,7 +58,7 @@ mkDigestUrl :: T.Text -> T.Text
 mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/"
 
 mkAccessSettingsUrl :: T.Text -> T.Text
-mkAccessSettingsUrl = T.append "https://feedfarer-webapp.azurewebsites.net/access_settings/"
+mkAccessSettingsUrl = T.append "https://feedfarer-webapp.azurewebsites.net/settings?access_token="
 
 class Renderable e where
     render :: e -> T.Text

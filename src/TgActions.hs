@@ -258,8 +258,7 @@ evalTgAct uid (AskForLogin target_id) cid = do
                 if not ok then alert_not_auth else do
                 safe_hash <- mkSafeHash
                 evalDb env (DbAskForLogin uid safe_hash cid) >>= \case
-                    DbOk -> pure . Right . mkReply . FromAdmin $ 
-                        "https://feedfarer-webapp.azurewebsites.net/settings?access_token=" `T.append` safe_hash
+                    DbOk -> pure . Right . mkReply . FromAdmin $ safe_hash
                     _ -> pure . Right . mkReply . FromAdmin $ 
                         "Unable to log you in. Are you sure this token \
                         \ is still valid? Tokens expire after one month."
