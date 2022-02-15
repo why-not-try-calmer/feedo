@@ -84,6 +84,7 @@ makeConfig :: [(String, String)] -> IO (AppConfig, Int, Maybe [T.Text])
 makeConfig env =
     let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
         alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
+        base = T.pack . fromJust $ lookup "BASE_URL" env
         webhook =
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
             in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
@@ -107,6 +108,7 @@ makeConfig env =
         Right pipe -> newIORef pipe
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
+        base_url = base,
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
@@ -121,9 +123,10 @@ initStart config mb_urls = case mb_urls of
     Nothing -> runApp config startup
     Just urls -> do
         putStrLn "Found urls. Trying to build feeds..."
-        runApp config $ evalFeeds (InitF urls) >> startup
+        --runApp config $ evalFeeds (InitF urls) >> startup
+        runApp config startup
     where
-        startup = evalFeeds LoadF >> loadChats >> postProcJobs
+        startup = loadChats >> postProcJobs
         -- startup = evalFeeds LoadF >> loadChats >> procNotif >> postProcJobs
 
 startApp :: IO ()
@@ -133,5 +136,5 @@ startApp = do
     (config, port, feeds_urls) <- makeConfig env
     -- registerWebhook config
     initStart config feeds_urls
-    print $ "Server now istening to port " `T.append`(T.pack . show $ port)
+    print $ "Server now listening to port " `T.append`(T.pack . show $ port)
     run port . withServer $ config

@@ -4,7 +4,7 @@ const Ctx = {
     settings: {},
     chat_id: null,
     acess_token: '',
-    base_url: 'https://feedfarer-test-workbench.azurewebsites.net'
+    base_url: 'http://0.0.0.0:8443'
     //base_url: 'https://feedfarer-webapp.azurewebsites.net'
 }
 
@@ -198,6 +198,7 @@ function reset_field(n){
 }
 
 function asssign_from_Ctx() {
+    console.log(Ctx.settings)
     document.getElementById('blacklist').value = Ctx.settings.word_matches.blacklist.join(' ')
     
     const digest_at = Ctx.settings.digest_interval.digest_at.map(v => {
@@ -259,16 +260,16 @@ function receive_payload() {
         get: (searchParams, prop) => searchParams.get(prop),
     });
     const access_token = params.access_token
-    request_settings(access_token).then(resp => {
-        const payload = JSON.parse(resp)
+    request_settings(access_token).then(resp => resp.json()).then(payload => {
         if (payload.hasOwnProperty('error')) {
             alert("Unable to authenticate your, because of this error", payload.error)
             return
         } else {
+            console.log(payload)
             Ctx.settings = payload.read_resp_settings
             Ctx.chat_id = payload.read_resp_cid
-            Ctx.access_token = access_token       
-            
+            Ctx.access_token = access_token
+            console.log(Ctx)    
             set_page()
             start_counter()
         }

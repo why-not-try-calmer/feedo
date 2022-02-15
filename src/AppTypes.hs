@@ -221,6 +221,8 @@ data UserError
   | UpdateError T.Text
   | TelegramErr
   | Ignore T.Text
+  | ChatNotPrivate
+  | UserNotAdmin
   deriving (Eq, Show)
 
 renderUserError :: UserError -> T.Text
@@ -236,6 +238,8 @@ renderUserError (BadRef contents) = T.append "References to web feeds must be ei
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
 renderUserError TelegramErr = "Telegram responded with an error. Are you sure you're using the right chat_id?"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
+renderUserError ChatNotPrivate = "Unable to send personal credentials to non-private chat. Please message the post."
+renderUserError UserNotAdmin = "Only admins can change settings."
 
 data ChatRes = 
     ChatUpdated SubChat |
@@ -243,7 +247,7 @@ data ChatRes =
 
 {- Replies -}
 
-data Replies = FromAdmin T.Text 
+data Replies = FromAdmin T.Text T.Text
     | FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
@@ -336,7 +340,7 @@ data DbRes = DbFeeds [Feed]
 
 data DbError
   = PipeNotAcquired
-  | DbLoginFailed
+  | FaultyToken
   | NoFeedFound T.Text
   | FailedToUpdate T.Text T.Text
   | FailedToLog
@@ -348,7 +352,7 @@ data DbError
 
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
-renderDbError DbLoginFailed = "Pipe acquired, but login failed."
+renderDbError FaultyToken = "Login failed. This token is not valid, and perhaps never was."
 renderDbError (FailedToUpdate items reason) = "Unable to update the following items :" `T.append` items `T.append` ". Reason: " `T.append` reason
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToLog = "Failed to log."
@@ -416,6 +420,7 @@ data AppConfig = AppConfig
     db_config :: DbCreds,
     db_connector :: IORef DbConnector,
     tg_config :: ServerConfig,
+    base_url :: T.Text,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
     postjobs :: Chan Job,

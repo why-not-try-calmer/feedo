@@ -95,9 +95,7 @@ withMongo config action = go >>= \case
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
     where
-        alertGiveUp err = do
-            alert err
-            pure $ Left ()
+        alertGiveUp err = alert err >> liftIO (print err) >> pure (Left ())
         alert err = liftIO $ writeChan (postjobs config) . JobTgAlert $
             "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
             " If the connector timed out, one retry will be carried out."
@@ -172,12 +170,12 @@ buildSearchQuery ws mb_last_time =
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (DbAskForLogin uid h cid) = do
     let r = findOne (select ["admin_uid" =: uid, "admin_chatid" =: cid] "admins")
-        w n = insert_ "admins" . writeDoc $ AdminUser uid h cid n 
+        w n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
         del = deleteOne (select ["admin_token" =: h] "admins")
     now <- liftIO getCurrentTime
     res <- withMongo env r
     case res of
-        Left _ -> pure . DbErr $ DbLoginFailed  
+        Left _ -> pure . DbErr $ FaultyToken
         Right Nothing -> do
             _ <- withMongo env (w now)
             pure DbOk
@@ -187,18 +185,16 @@ evalMongo env (DbAskForLogin uid h cid) = do
 evalMongo env (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
         del = deleteOne (select ["admin_token" =: h] "admins")
-    in  liftIO getCurrentTime >>= 
-        \now -> withMongo env r >>= \case
-        Left _ -> nope
-        Right Nothing -> nope
-        Right (Just doc) ->
-            if diffUTCTime now (admin_created . readDoc $ doc) > 2592000 
-            then pure $ DbLoggedIn (admin_chatid $ readDoc doc)
-            else do
-            _ <- withMongo env del
-            pure . DbErr $ DbLoginFailed
+    in  liftIO getCurrentTime >>= \now ->
+        withMongo env r >>= \case
+            Left _ -> nope
+            Right Nothing -> nope
+            Right (Just doc) ->
+                if diffUTCTime now (admin_created . readDoc $ doc) < 2592000
+                then pure $ DbLoggedIn (admin_chatid $ readDoc doc)
+                else withMongo env del >> nope
     where
-        nope = pure . DbErr $ DbLoginFailed
+        nope = pure . DbErr $ FaultyToken
 evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
@@ -263,8 +259,8 @@ evalMongo env (PruneOld t) =
 evalMongo env (ReadDigest _id) =
     let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
             Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
-                Nothing -> Left FailedToProduceValidId  
-                Just n -> Right ["digest_id" =: n] 
+                Nothing -> Left FailedToProduceValidId
+                Just n -> Right ["digest_id" =: n]
             Just oid -> Right ["_id" =: oid ]
         action s = findOne $ select s "digests"
     in  case mkSelector of
@@ -519,7 +515,7 @@ collectLogStats env = do
 {- Admins -}
 
 bsonToAdmin :: Document -> AdminUser
-bsonToAdmin doc = 
+bsonToAdmin doc =
     let uid = fromJust $ M.lookup "admin_uid" doc
         token = fromJust $ M.lookup "admin_token" doc
         cid = fromJust $ M.lookup "admin_chatid" doc
@@ -528,9 +524,9 @@ bsonToAdmin doc =
 
 adminToBson :: AdminUser -> Document
 adminToBson AdminUser{..} = [
-        "admin_uid" =: admin_uid, 
-        "admin_chatid" =: admin_chatid, 
-        "admin_token" =: admin_token, 
+        "admin_uid" =: admin_uid,
+        "admin_chatid" =: admin_chatid,
+        "admin_token" =: admin_token,
         "admin_created" =: admin_created
     ]
 

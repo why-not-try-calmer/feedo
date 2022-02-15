@@ -40,7 +40,9 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
     Just ok ->
         if ok then pure $ Just True
         else getChatAdmins >>= \case
-        Left _ -> pure Nothing
+        Left err -> do
+            liftIO $ print err
+            pure Nothing
         Right res_chat_type ->
             let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
                 chat_members = resp_cm_result res_cms :: [ChatMember]
@@ -55,7 +57,9 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
 
 checkIfPrivate :: MonadIO m => BotToken -> ChatId -> m (Maybe Bool)
 checkIfPrivate tok cid = liftIO $ getChatType >>= \case
-    Left _ -> pure Nothing
+    Left err -> do
+        liftIO $ print err
+        pure Nothing
     Right res_chat ->
         let chat_resp = responseBody res_chat :: TgGetChatResponse
             c = resp_result chat_resp :: Chat
@@ -249,26 +253,22 @@ evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
     checkIfPrivate tok cid >>= \case
-        Nothing -> rep "Unable to determine the type of this chat. Aborting."
+        Nothing -> pure . Left $ TelegramErr
         Just private ->
-            if not private then alert_not_private
+            if not private then pure . Left $ ChatNotPrivate
             else checkIfAdmin tok uid target_id >>= \case
-            Nothing -> alert_not_auth
+            Nothing -> pure . Left $ TelegramErr
             Just ok ->
-                if not ok then alert_not_auth else do
+                if not ok then pure . Left $ UserNotAdmin else do
                 safe_hash <- mkSafeHash
                 evalDb env (DbAskForLogin uid safe_hash cid) >>= \case
-                    DbOk -> pure . Right . mkReply . FromAdmin $ safe_hash
-                    _ -> pure . Right . mkReply . FromAdmin $ 
+                    DbOk -> pure . Right . mkReply . FromAdmin (base_url env) $ safe_hash
+                    _ -> pure . Right . mkReply . FromAdmin (base_url env) $ 
                         "Unable to log you in. Are you sure this token \
                         \ is still valid? Tokens expire after one month."
     where
         mkSafeHash = liftIO getSystemTime <&> 
             T.pack . show . hashWith SHA256 . B.pack . show
-        alert_not_auth = rep "Not authorized."
-        alert_not_private = rep "Cannot share admin credentials in non-private chats. \
-            \ Please use '/admin <target_chat_or_channel_id' in a private chat."
-        rep = pure . Right . mkReply . FromAdmin
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ =  pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id

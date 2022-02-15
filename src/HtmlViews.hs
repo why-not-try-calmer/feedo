@@ -150,9 +150,9 @@ writeSettings (WriteReq hash settings) =  do
         ok = WriteResp 200 Nothing
 
 readSettings :: MonadIO m => ReadReq -> App m ReadResp
-readSettings ReadReq{..} = do
+readSettings (ReadReq hash) = do
     env <- ask
-    evalDb env (CheckLogin read_req_hash) >>= \case
+    evalDb env (CheckLogin hash) >>= \case
         DbErr err -> pure $ failedWith (renderDbError err)
         DbLoggedIn cid -> liftIO (readMVar $ subs_state env) >>=
             \chats -> case HMS.lookup cid chats of

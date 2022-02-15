@@ -54,12 +54,11 @@ mkViewUrl items =
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
-mkDigestUrl :: T.Text -> T.Text
-mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/"
+mkDigestUrl :: T.Text -> T.Text -> T.Text
+mkDigestUrl base _id = base `T.append` "/digests/" `T.append` _id
 
-mkAccessSettingsUrl :: T.Text -> T.Text
-mkAccessSettingsUrl = T.append "https://feedfarer-test-workbench.azurewebsites.net/settings?access_token="
-    -- T.append "https://feedfarer-webapp.azurewebsites.net/settings?access_token="
+mkAccessSettingsUrl :: T.Text -> T.Text -> T.Text
+mkAccessSettingsUrl base token = base `T.append` "/settings?access_token=" `T.append` token
 
 class Renderable e where
     render :: e -> T.Text
@@ -203,7 +202,7 @@ defaultReply payload = ChatReply {
     }
 
 mkReply :: Replies -> Reply
-mkReply (FromAdmin safe_hash) = ServiceReply . mkAccessSettingsUrl $ safe_hash
+mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedfarer"
 mkReply (FromChatFeeds _ feeds) =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)

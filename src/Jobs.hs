@@ -58,7 +58,7 @@ procNotif = do
                         digest = Digest Nothing now fitems flinks' ftitles'
                     res <- evalDb env $ WriteDigest digest
                     let mb_digest_link r = case r of
-                            DbDigestId _id -> Just $ mkDigestUrl _id
+                            DbDigestId _id -> Just $ mkDigestUrl (base_url env) _id
                             _ -> Nothing
                     reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
                     pure (cid, map f_link ds)
