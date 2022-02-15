@@ -4,7 +4,8 @@ const Ctx = {
     settings: {},
     chat_id: null,
     acess_token: '',
-    base_url: 'https://feedfarer-webapp.azurewebsites.net'
+    base_url: 'https://feedfarer-test-workbench.azurewebsites.net'
+    //base_url: 'https://feedfarer-webapp.azurewebsites.net'
 }
 
 const headers = {
