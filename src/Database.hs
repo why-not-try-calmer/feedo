@@ -8,7 +8,10 @@ import Control.Concurrent (writeChan)
 import Control.Exception
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Crypto.Hash (SHA256 (SHA256), hashWith)
+import qualified Data.ByteString.Char8 as B
 import Data.Foldable (Foldable (foldl'), traverse_)
+import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
 import Data.List (sortOn)
@@ -16,13 +19,14 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime, diffUTCTime)
+import Data.Time (NominalDiffTime, UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
+import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicSwapIORef)
-import Utils (defaultChatSettings)
 import Text.Read (readMaybe)
+import Utils (defaultChatSettings)
 
 {- Interface -}
 
@@ -168,20 +172,25 @@ buildSearchQuery ws mb_last_time =
             Just t -> [search, match t, project]
 
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (DbAskForLogin uid h cid) = do
-    let r = findOne (select ["admin_uid" =: uid, "admin_chatid" =: cid] "admins")
-        w n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
-        del = deleteOne (select ["admin_token" =: h] "admins")
+evalMongo env (DbAskForLogin uid cid) = do
+    let selector = ["admin_uid" =: uid, "admin_chatid" =: cid]
+        get_doc = findOne (select selector "admins")
+        write_doc h n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
+        delete_doc = deleteOne (select selector "admins")
     now <- liftIO getCurrentTime
-    res <- withMongo env r
+    res <- withMongo env get_doc
     case res of
         Left _ -> pure . DbErr $ FaultyToken
         Right Nothing -> do
-            _ <- withMongo env (w now)
+            h <- mkSafeHash
+            _ <- withMongo env (write_doc h now)
             pure DbOk
         Right (Just doc) -> do
-            when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env del >> pure ())
+            when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env delete_doc >> pure ())
             pure DbOk
+    where
+        mkSafeHash = liftIO getSystemTime <&> 
+            T.pack . show . hashWith SHA256 . B.pack . show
 evalMongo env (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
         del = deleteOne (select ["admin_token" =: h] "admins")
