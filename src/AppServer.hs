@@ -124,9 +124,7 @@ initStart config mb_urls = case mb_urls of
     Just urls -> do
         putStrLn "Found urls. Trying to build feeds..."
         runApp config $ evalFeeds (InitF urls) >> startup
-        -- runApp config startup
     where
-        -- startup = loadChats >> postProcJobs
         startup = evalFeeds LoadF >> loadChats >> procNotif >> postProcJobs
 
 startApp :: IO ()
@@ -134,7 +132,7 @@ startApp = do
     checkDbMapper
     env <- getEnvironment
     (config, port, feeds_urls) <- makeConfig env
-    -- registerWebhook config
+    registerWebhook config
     initStart config feeds_urls
     print $ "Server now listening to port " `T.append`(T.pack . show $ port)
     run port . withServer $ config

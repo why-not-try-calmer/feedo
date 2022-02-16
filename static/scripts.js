@@ -4,7 +4,7 @@ const Ctx = {
     settings: {},
     chat_id: null,
     acess_token: '',
-    base_url: 'https://feedfarer-webapp.azurewebsites.net', //'http://0.0.0.0:8443'
+    base_url: 'https://feedfarer-webapp.azurewebsites.net',
     headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -244,7 +244,6 @@ function receive_payload() {
         get: (searchParams, prop) => searchParams.get(prop),
     });
     const access_token = params.access_token
-    /*
     Ctx.request_settings(access_token).then(resp => resp.json()).then(payload => {
         if (payload.hasOwnProperty('error')) {
             alert("Unable to authenticate your, because of this error", payload.error)
@@ -257,7 +256,6 @@ function receive_payload() {
             //start_counter()
         }
     }).catch(e => alert(e))
-    */
 }
 
 window.onload = receive_payload
