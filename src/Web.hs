@@ -159,13 +159,14 @@ writeSettings (WriteReq hash new_settings Nothing) = do
             chats <- liftIO . readMVar $ subs_state env
             case HMS.lookup cid chats of
                 Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
-                Just c -> case diffed (sub_settings c) new_settings of
-                    Nothing -> pure (WriteResp 200 (Just "You didn't change any of your settings") Nothing)
-                    Just diffs -> pure (WriteResp 200 (Just $ "These settings have changed:\n" `T.append` T.intercalate "\n"  diffs) Nothing)
+                Just c -> let diffed = diffing (sub_settings c) new_settings in
+                    if null diffed then pure (WriteResp 200 (Just "You didn't change any of your settings") Nothing)
+                    else pure (WriteResp 200 (Just $ "These settings have changed:\n" `T.append` T.intercalate "\n"  diffed) Nothing)
         _ -> undefined
     where
-        diff (v1, v2) = if v1 == v2 then Nothing else Just $ T.intercalate "=>" $ map (T.pack . show) [v1, v2]
-        diffed s s' = sequence [
+        diff (v1, v2) = if v1 == v2 then mempty else T.intercalate "=>" $ map (T.pack . show) [v1, v2]
+        diffing s s' = filter (not . T.null)
+            [
                 diff (settings_digest_collapse s, settings_digest_collapse s'),
                 diff (settings_digest_interval s, settings_digest_interval s'),
                 diff (settings_digest_size s, settings_digest_size s'),

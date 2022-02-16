@@ -245,8 +245,8 @@ function receive_payload() {
     });
     const access_token = params.access_token
     Ctx.request_settings(access_token).then(resp => resp.json()).then(payload => {
-        if (payload.hasOwnProperty('error')) {
-            alert("Unable to authenticate your, because of this error", payload.error)
+        if (payload.hasOwnProperty('read_resp_error')) {
+            alert("Unable to authenticate your, because of this error", payload.read_resp_error)
             return
         } else {
             Ctx.settings = payload.read_resp_settings
