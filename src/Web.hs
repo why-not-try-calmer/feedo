@@ -3,7 +3,8 @@
 module Web where
 
 import AppTypes
-import Control.Concurrent (modifyMVar, readMVar)
+import Backend (withChat)
+import Control.Concurrent (readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
@@ -158,10 +159,9 @@ writeSettings (WriteReq hash new_settings Nothing) = do
             chats <- liftIO . readMVar $ subs_state env
             case HMS.lookup cid chats of
                 Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
-                Just c ->  
-                    case diffed (sub_settings c) new_settings of
-                        Nothing -> pure (WriteResp 200 (Just "You didn't change any of your settings") Nothing)
-                        Just diffs -> pure (WriteResp 200 (Just $ "These settings have changed:\n" `T.append` T.intercalate "\n"  diffs) Nothing)
+                Just c -> case diffed (sub_settings c) new_settings of
+                    Nothing -> pure (WriteResp 200 (Just "You didn't change any of your settings") Nothing)
+                    Just diffs -> pure (WriteResp 200 (Just $ "These settings have changed:\n" `T.append` T.intercalate "\n"  diffs) Nothing)
         _ -> undefined
     where
         diff (v1, v2) = if v1 == v2 then Nothing else Just $ T.intercalate "=>" $ map (T.pack . show) [v1, v2]
@@ -179,14 +179,15 @@ writeSettings (WriteReq hash new_settings Nothing) = do
                 diff (settings_follow s, settings_follow s')
             ]
 writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing
-writeSettings (WriteReq hash settings (Just True)) = do
-    env <- ask
+writeSettings (WriteReq hash settings (Just True)) =
+    ask >>= \env ->
     evalDb env (CheckLogin hash) >>= \case
-        DbErr err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
-        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $ \chats ->
-            case HMS.lookup cid chats of
-                Nothing -> pure (chats, WriteResp 504 (Just  "Unable to find the target chat") Nothing)
-                Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
+        DbErr err -> pure $ noLogin err
+        DbLoggedIn cid -> withChat (SetChatSettings $ Immediate settings) cid >>= \case
+            Left err -> pure . noUpdate . renderUserError $ err
+            Right _ -> pure ok
         _ -> undefined
     where
+        noLogin err = WriteResp 401 (Just . renderDbError $ err) Nothing
+        noUpdate err = WriteResp 500 (Just err) Nothing
         ok = WriteResp 200 (Just "Updated.") Nothing
