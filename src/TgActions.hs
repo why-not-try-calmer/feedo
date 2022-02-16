@@ -259,8 +259,7 @@ evalTgAct uid (AskForLogin target_id) cid = do
                 evalDb env (DbAskForLogin uid cid) >>= \case
                     DbToken h -> pure . Right . mkReply . FromAdmin (base_url env) $ h
                     _ -> pure . Right . mkReply . FromAdmin (base_url env) $ 
-                        "Unable to log you in. Are you sure this token \
-                        \ is still valid? Tokens expire after one month."
+                        "Unable to log you in. Are you sure you are an admin of this chat?"
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ =  pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
