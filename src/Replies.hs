@@ -197,8 +197,7 @@ defaultReply payload = ChatReply {
     reply_contents = payload,
     reply_markdown = True,
     reply_pin_on_send = False,
-    reply_disable_webview = False,
-    reply_share_link = False
+    reply_disable_webview = False
     }
 
 mkReply :: Replies -> Reply
@@ -226,7 +225,7 @@ mkReply (FromFollow fs _) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         payload = "New 'follow update'.\n--\n" 
             `T.append` render (fitems, 0 :: Int)     
-    in  ChatReply payload True True False False
+    in  ChatReply payload True True False
 mkReply (FromDigest fs mb_link s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         collapse = fromMaybe 0 $ settings_digest_collapse s 
@@ -247,15 +246,14 @@ mkReply (FromDigest fs mb_link s) =
             reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
-            reply_disable_webview = settings_disable_web_view s,
-            reply_share_link = settings_share_link s
+            reply_disable_webview = settings_disable_web_view s
             }
 mkReply (FromFeedLinkItems flinkitems) =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False False
-mkReply FromStart = ChatReply renderCmds True True False False
+mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False
+mkReply FromStart = ChatReply renderCmds True True False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

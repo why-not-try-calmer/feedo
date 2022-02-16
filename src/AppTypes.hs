@@ -24,9 +24,8 @@ data Reply =
         reply_contents :: T.Text,
         reply_markdown :: Bool,
         reply_disable_webview :: Bool,
-        reply_pin_on_send :: Bool,
-        reply_share_link :: Bool
-    } | ServiceReply T.Text
+        reply_pin_on_send :: Bool } 
+    | ServiceReply T.Text
     deriving Show
 
 {- URLs -}

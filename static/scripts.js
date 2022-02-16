@@ -115,11 +115,11 @@ function submit_listener(e) {
             const confirmed = Object.assign({ write_req_confirm: true }, preflight)
             return Ctx.send_payload(confirmed).then(resp => resp.json()).then(res => {
                 if (res.write_resp_status === 200) {
-                    const popup = document.getElementById("success");
+                    const popup = document.getElementById('success');
                     popup.style.display = 'block'
                 }
                 else {
-                    const popup = document.getElementById("failure");
+                    const popup = document.getElementById('failure');
                     popup.style.display = 'block'
                 }
             })
@@ -244,6 +244,7 @@ function receive_payload() {
         get: (searchParams, prop) => searchParams.get(prop),
     });
     const access_token = params.access_token
+    /*
     Ctx.request_settings(access_token).then(resp => resp.json()).then(payload => {
         if (payload.hasOwnProperty('error')) {
             alert("Unable to authenticate your, because of this error", payload.error)
@@ -256,6 +257,7 @@ function receive_payload() {
             //start_counter()
         }
     }).catch(e => alert(e))
+    */
 }
 
 window.onload = receive_payload
