@@ -17,7 +17,7 @@ const Ctx = {
         })
     },
     send_payload: function (payload) {
-        return fetch(`${Ctx.base_url}/write_settings`, {
+        return fetch(`${this.base_url}/write_settings`, {
             method: 'POST',
             headers: this.headers,
             body: JSON.stringify(payload)
