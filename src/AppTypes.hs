@@ -443,13 +443,15 @@ $(deriveJSON defaultOptions { omitNothingFields = True } ''ReadResp)
 
 data WriteReq = WriteReq {
     write_req_hash :: T.Text,
-    write_req_settings :: Settings
+    write_req_settings :: Settings,
+    write_req_confirm :: Maybe Bool
 }
 
 $(deriveJSON defaultOptions { omitNothingFields = True } ''WriteReq)
 
 data WriteResp = WriteResp {
     write_resp_status :: Int,
+    write_resp_checkout :: Maybe T.Text,
     write_resp_error :: Maybe T.Text
 }
 

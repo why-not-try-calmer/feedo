@@ -150,15 +150,39 @@ readSettings (ReadReq hash) = do
         ok cid c = ReadResp (Just $ sub_settings c) (Just cid) Nothing
 
 writeSettings :: MonadIO m => WriteReq -> App m WriteResp
-writeSettings (WriteReq hash settings) = do
+writeSettings (WriteReq hash settings Nothing) = do
     env <- ask
     evalDb env (CheckLogin hash) >>= \case
-        DbErr err -> pure . nope $ renderDbError err
-        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $
-            \chats -> case HMS.lookup cid chats of
-            Nothing -> pure (chats, nope "Unable to find the target chat")
-            Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
+        DbErr err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
+        DbLoggedIn cid -> do
+            chats <- liftIO $ readMVar (subs_state env)
+            case HMS.lookup cid chats of
+                Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
+                Just c -> pure (WriteResp 200 (Just $ diff (sub_settings c) settings) Nothing)
         _ -> undefined
     where
-        nope = WriteResp 504 . Just
-        ok = WriteResp 200 Nothing
+        diff s s' = T.intercalate "\n" [
+            T.intercalate "=>" $ map (T.pack . show . settings_digest_collapse) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_digest_interval) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_digest_size) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_digest_start) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_digest_title) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_disable_web_view) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_paused) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_pin) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_word_matches) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_share_link) [s,s'],
+            T.intercalate "=>" $ map (T.pack . show . settings_follow) [s,s']
+            ]
+writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing
+writeSettings (WriteReq hash settings (Just True)) = do
+    env <- ask
+    evalDb env (CheckLogin hash) >>= \case
+        DbErr err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
+        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $ \chats -> 
+            case HMS.lookup cid chats of
+                Nothing -> pure (chats, WriteResp 504 (Just  "Unable to find the target chat") Nothing)
+                Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
+        _ -> undefined
+    where
+        ok = WriteResp 200 (Just "Updated.") Nothing

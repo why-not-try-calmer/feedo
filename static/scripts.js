@@ -4,7 +4,7 @@ const Ctx = {
     settings: {},
     chat_id: null,
     acess_token: '',
-    base_url: 'https://feedfarer-webapp.azurewebsites.net',//'http://0.0.0.0:8443',
+    base_url: 'http://0.0.0.0:8443',//'https://feedfarer-webapp.azurewebsites.net',//
     headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -109,10 +109,17 @@ function submit_listener(e) {
                 break
         }
     }
-    const payload = { write_req_hash: Ctx.access_token, write_req_settings: settings }
-    Ctx.send_payload(payload).catch(e => alert(e)).then(resp => resp.json()).then(o => {
-        if (o.write_resp_status === 200) alert('Thanks, it worked.')
-        else alert('Failed for this reason', o.write_resp_error)
+    const preflight = { write_req_hash: Ctx.access_token, write_req_settings: settings }
+    Ctx.send_payload(preflight).then(resp => resp.json()).then(res => {
+        if (confirm(res.write_resp_checkout)) {
+            const confirmed = Object.assign({ write_req_confirm: true}, preflight)
+            return Ctx.send_payload(confirmed).then(resp => resp.json()).then(res => {
+                const popup = document.getElementById("myPopup");
+                if (res.write_resp_status === 200) popup.innerHTML = "Updated!"
+                else popup.innerHTML = "Cancelled"
+                popup.classList.toggle("show")
+            })
+        }
     }).catch(e => alert('Failed for this reason', e))
 }
 
