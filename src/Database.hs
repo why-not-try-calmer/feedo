@@ -6,7 +6,7 @@ module Database where
 import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (foldl'), traverse_)
 import qualified Data.HashMap.Strict as HMS
@@ -16,7 +16,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime, diffUTCTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
@@ -56,6 +56,11 @@ instance MongoDoc LogItem where
     writeDoc = logToBson
     checks v = v == (readDoc . writeDoc $ v)
 
+instance MongoDoc AdminUser where
+    readDoc = bsonToAdmin
+    writeDoc = adminToBson
+    checks v = v == (readDoc . writeDoc $ v)
+
 class Db m where
     openDbHandle :: AppConfig -> m ()
     evalDb :: AppConfig -> DbAction -> m DbRes
@@ -90,9 +95,7 @@ withMongo config action = go >>= \case
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
     where
-        alertGiveUp err = do
-            alert err
-            pure $ Left ()
+        alertGiveUp err = alert err >> pure (Left ())
         alert err = liftIO $ writeChan (postjobs config) . JobTgAlert $
             "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
             " If the connector timed out, one retry will be carried out."
@@ -163,7 +166,35 @@ buildSearchQuery ws mb_last_time =
     in  case mb_last_time of
             Nothing -> [search, project]
             Just t -> [search, match t, project]
+
 evalMongo :: (Db m, MonadIO m) => AppConfig -> DbAction -> m DbRes
+evalMongo env (DbAskForLogin uid h cid) = do
+    let r = findOne (select ["admin_uid" =: uid, "admin_chatid" =: cid] "admins")
+        w n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
+        del = deleteOne (select ["admin_token" =: h] "admins")
+    now <- liftIO getCurrentTime
+    res <- withMongo env r
+    case res of
+        Left _ -> pure . DbErr $ FaultyToken
+        Right Nothing -> do
+            _ <- withMongo env (w now)
+            pure DbOk
+        Right (Just doc) -> do
+            when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env del >> pure ())
+            pure DbOk
+evalMongo env (CheckLogin h) =
+    let r = findOne (select ["admin_token" =: h] "admins")
+        del = deleteOne (select ["admin_token" =: h] "admins")
+    in  liftIO getCurrentTime >>= \now ->
+        withMongo env r >>= \case
+            Left _ -> nope
+            Right Nothing -> nope
+            Right (Just doc) ->
+                if diffUTCTime now (admin_created . readDoc $ doc) < 2592000
+                then pure $ DbLoggedIn (admin_chatid $ readDoc doc)
+                else withMongo env del >> nope
+    where
+        nope = pure . DbErr $ FaultyToken
 evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
@@ -228,12 +259,12 @@ evalMongo env (PruneOld t) =
 evalMongo env (ReadDigest _id) =
     let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
             Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
-                Nothing -> Left DbInvalidIdentifier 
-                Just n -> Right ["digest_id" =: n] 
+                Nothing -> Left FailedToProduceValidId
+                Just n -> Right ["digest_id" =: n]
             Just oid -> Right ["_id" =: oid ]
         action s = findOne $ select s "digests"
     in  case mkSelector of
-        Left err -> pure err
+        Left err -> pure $ DbErr err
         Right selector ->  withMongo env (action selector) >>= \case
             Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
             Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
@@ -481,6 +512,24 @@ collectLogStats env = do
         showLength = T.pack . show . length
         showAvgLength a l = T.pack . show $ fromIntegral a `div` length l
 
+{- Admins -}
+
+bsonToAdmin :: Document -> AdminUser
+bsonToAdmin doc =
+    let uid = fromJust $ M.lookup "admin_uid" doc
+        token = fromJust $ M.lookup "admin_token" doc
+        cid = fromJust $ M.lookup "admin_chatid" doc
+        created = fromJust $ M.lookup "admin_created" doc
+    in  AdminUser uid token cid created
+
+adminToBson :: AdminUser -> Document
+adminToBson AdminUser{..} = [
+        "admin_uid" =: admin_uid,
+        "admin_chatid" =: admin_chatid,
+        "admin_token" =: admin_token,
+        "admin_created" =: admin_created
+    ]
+
 {- Cleanup -}
 
 purgeCollections :: (Db m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
@@ -512,12 +561,14 @@ checkDbMapper = do
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
         digest = Digest Nothing now [item] [mempty] [mempty]
+        admin_user = AdminUser 123 "just user" 456 now
         equalities = [
             ("item", checks item),
             ("digest", checks digest),
             ("feed", checks feed),
             ("chat", checks chat),
-            ("log", checks log')] :: [(T.Text, Bool)]
+            ("log", checks log'),
+            ("admin", checks admin_user)] :: [(T.Text, Bool)]
     if all snd equalities
     then pure ()
     else liftIO $ do
