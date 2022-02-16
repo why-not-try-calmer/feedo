@@ -58,7 +58,7 @@ executables:
 
 tests:
   feedfarer-test:
-    main:                Tests.hs
+    main:                Spec.hs
     source-dirs:         test
     ghc-options:
     - -threaded
@@ -66,3 +66,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - feedfarer
+    - hspec

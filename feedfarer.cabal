@@ -108,8 +108,11 @@ executable feedfarer-exe
 
 test-suite feedfarer-test
   type: exitcode-stdio-1.0
-  main-is: Tests.hs
+  main-is: Spec.hs
   other-modules:
+      DatabaseSpec
+      ParsingSpec
+      UtilsSpec
       Paths_feedfarer
   hs-source-dirs:
       test
@@ -129,6 +132,7 @@ test-suite feedfarer-test
     , containers
     , cryptonite
     , feedfarer
+    , hspec
     , mongoDB
     , mtl
     , req
