@@ -561,12 +561,14 @@ checkDbMapper = do
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
         digest = Digest Nothing now [item] [mempty] [mempty]
+        admin_user = AdminUser 123 "just user" 456 now
         equalities = [
             ("item", checks item),
             ("digest", checks digest),
             ("feed", checks feed),
             ("chat", checks chat),
-            ("log", checks log')] :: [(T.Text, Bool)]
+            ("log", checks log'),
+            ("admin", checks admin_user)] :: [(T.Text, Bool)]
     if all snd equalities
     then pure ()
     else liftIO $ do
