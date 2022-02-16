@@ -240,7 +240,7 @@ mkReply (FromDigest fs mb_link s) =
                         else "This is a shortened version. Read the full digest "
                     link_href = toHrefEntities Nothing "here" link
                     footer = "--\n" `T.append` link_txt `T.append` link_href `T.append` "."
-                in  if settings_share_link s then header `T.append` body `T.append` footer
+                in  if settings_share_link s || collapse > 0 then header `T.append` body `T.append` footer
                     else header `T.append` body
     in  ChatReply {
             reply_contents = payload,
