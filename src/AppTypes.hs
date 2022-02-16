@@ -308,7 +308,7 @@ data DbConnector = MongoPipe Pipe | SomethingElse
 type AdminToken = T.Text
 
 data DbAction
-  = DbAskForLogin UserId AdminToken ChatId
+  = DbAskForLogin UserId ChatId
   | CheckLogin AdminToken
   | ArchiveItems [Feed]
   | DeleteChat ChatId
@@ -334,6 +334,7 @@ data DbRes = DbFeeds [Feed]
   | DbErr DbError
   | DbOk
   | DbLoggedIn ChatId
+  | DbToken T.Text
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime 
   | DbDigest Digest

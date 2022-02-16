@@ -8,6 +8,7 @@ import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
+import Data.Functor
 import qualified Data.HashMap.Strict as HMS
 import Data.List (sort)
 import qualified Data.Set as S
@@ -15,17 +16,12 @@ import qualified Data.Text as T
 import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
-import Replies (render, mkReply)
+import Replies (mkReply, render)
 import Requests (reqSend, setWebhook)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, tooManySubs)
-import Crypto.Hash.Algorithms (SHA256(SHA256))
-import Crypto.Hash (hashWith)
-import Data.Time.Clock.System (getSystemTime)
-import qualified Data.ByteString.Char8 as B
-import Data.Functor
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -260,15 +256,11 @@ evalTgAct uid (AskForLogin target_id) cid = do
             Nothing -> pure . Left $ TelegramErr
             Just ok ->
                 if not ok then pure . Left $ UserNotAdmin else do
-                safe_hash <- mkSafeHash
-                evalDb env (DbAskForLogin uid safe_hash cid) >>= \case
-                    DbOk -> pure . Right . mkReply . FromAdmin (base_url env) $ safe_hash
+                evalDb env (DbAskForLogin uid cid) >>= \case
+                    DbToken h -> pure . Right . mkReply . FromAdmin (base_url env) $ h
                     _ -> pure . Right . mkReply . FromAdmin (base_url env) $ 
                         "Unable to log you in. Are you sure this token \
                         \ is still valid? Tokens expire after one month."
-    where
-        mkSafeHash = liftIO getSystemTime <&> 
-            T.pack . show . hashWith SHA256 . B.pack . show
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ =  pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
