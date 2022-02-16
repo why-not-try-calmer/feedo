@@ -178,6 +178,8 @@ data ParsingSettings =
     PFollow Bool
     deriving (Show, Eq)
 
+data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (Eq, Show)
+
 data UserAction
   = About FeedRef
   | AskForLogin ChatId
@@ -201,7 +203,7 @@ data UserAction
   | ResetChannel ChatId
   | Search [T.Text]
   | SetChannelSettings ChatId [ParsingSettings]
-  | SetChatSettings [ParsingSettings]
+  | SetChatSettings SettingsUpdater
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]

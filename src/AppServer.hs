@@ -72,7 +72,7 @@ server =
                                     Right r -> reply (tok env) cid r (postjobs env)
 
     staticSettings :: MonadIO m => ServerT Raw m
-    staticSettings = serveDirectoryWebApp "/var/www"
+    staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
     
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server

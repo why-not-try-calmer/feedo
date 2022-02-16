@@ -6,7 +6,16 @@
         <title>Feedfarer Settings Editor</title>
     </head>
     <body>
-        <div class="popup"><span class="popuptext" id="myPopup"></span></div>
+        <div>
+            <div id="success" class="success" style="display:none">
+                <span class="closebtn">&times;</span> 
+                Settings updated! You may now leave this page.
+            </div>
+            <div id="failure" class="failure" style="display:none">
+                <span class="closebtn">&times;</span>
+                Settings update failed or aborted. Get in touch with the developer if this happens again.
+            </div>
+        </div>
         <h2>Manage your settings</h2>
         <p id="chat_id"></p>
         <p id="access_token"></p>

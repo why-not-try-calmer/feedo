@@ -152,7 +152,7 @@ interpretCmd contents
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> case parseSettings body of
                 Left err -> Left . BadInput $ err
-                Right settings -> Right $ SetChatSettings settings
+                Right settings -> Right . SetChatSettings . Parsed $ settings
             Just n -> if null $ tail args then Right $ GetSubchannelSettings n else
                 case parseSettings body of
                 Left err -> Left . BadInput $ err
@@ -415,7 +415,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
                 else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
                     DbSearchRes keys sc -> pure . Right $ mkReply (FromSearchRes keys sc)
                     _ -> pure . Left . BadInput $ "The database was not able to run your query."
-evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings settings) chan_id
+evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case

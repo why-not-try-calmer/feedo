@@ -180,7 +180,7 @@ instance Renderable (S.Set T.Text, [SearchResult]) where
         in  "Results from your search with keywords "
                 `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
                 `T.append` ":\n"
-                `T.append` foldl' (\acc t -> acc `T.append` " " `T.append` body t `T.append` "\n") mempty items
+                `T.append` foldl' (\acc t -> acc `T.append` "- " `T.append` body t `T.append` "\n") mempty items
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
