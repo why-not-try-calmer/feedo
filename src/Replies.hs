@@ -58,7 +58,7 @@ mkDigestUrl :: T.Text -> T.Text -> T.Text
 mkDigestUrl base _id = base `T.append` "/digests/" `T.append` _id
 
 mkAccessSettingsUrl :: T.Text -> T.Text -> T.Text
-mkAccessSettingsUrl base token = base `T.append` "/settings?access_token=" `T.append` token
+mkAccessSettingsUrl base token = base `T.append` "/settings/index.html?access_token=" `T.append` token
 
 class Renderable e where
     render :: e -> T.Text
