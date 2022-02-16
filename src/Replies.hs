@@ -54,8 +54,11 @@ mkViewUrl items =
                 fs' = if flink `notElem` fs then flink:fs else fs
             in  if pub_i < x then (pub_i:x:xs, fs') else (x:pub_i:xs, fs')
 
-mkDigestUrl :: T.Text -> T.Text
-mkDigestUrl = T.append "https://feedfarer-webapp.azurewebsites.net/digests/"
+mkDigestUrl :: T.Text -> T.Text -> T.Text
+mkDigestUrl base _id = base `T.append` "/digests/" `T.append` _id
+
+mkAccessSettingsUrl :: T.Text -> T.Text -> T.Text
+mkAccessSettingsUrl base token = base `T.append` "/settings/index.html?access_token=" `T.append` token
 
 class Renderable e where
     render :: e -> T.Text
@@ -177,7 +180,7 @@ instance Renderable (S.Set T.Text, [SearchResult]) where
         in  "Results from your search with keywords "
                 `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
                 `T.append` ":\n"
-                `T.append` foldl' (\acc t -> acc `T.append` " " `T.append` body t `T.append` "\n") mempty items
+                `T.append` foldl' (\acc t -> acc `T.append` "- " `T.append` body t `T.append` "\n") mempty items
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
@@ -194,11 +197,11 @@ defaultReply payload = ChatReply {
     reply_contents = payload,
     reply_markdown = True,
     reply_pin_on_send = False,
-    reply_disable_webview = False,
-    reply_share_link = False
+    reply_disable_webview = False
     }
 
 mkReply :: Replies -> Reply
+mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedfarer"
 mkReply (FromChatFeeds _ feeds) =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
@@ -222,7 +225,7 @@ mkReply (FromFollow fs _) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         payload = "New 'follow update'.\n--\n" 
             `T.append` render (fitems, 0 :: Int)     
-    in  ChatReply payload True True False False
+    in  ChatReply payload True True False
 mkReply (FromDigest fs mb_link s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         collapse = fromMaybe 0 $ settings_digest_collapse s 
@@ -243,15 +246,14 @@ mkReply (FromDigest fs mb_link s) =
             reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
-            reply_disable_webview = settings_disable_web_view s,
-            reply_share_link = settings_share_link s
+            reply_disable_webview = settings_disable_web_view s
             }
 mkReply (FromFeedLinkItems flinkitems) =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False False
-mkReply FromStart = ChatReply renderCmds True True False False
+mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False
+mkReply FromStart = ChatReply renderCmds True True False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

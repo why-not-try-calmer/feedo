@@ -21,6 +21,10 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, tooManySubs)
+import Crypto.Hash.Algorithms (SHA256(SHA256))
+import Crypto.Hash (hashWith)
+import Data.Time.Clock.System (getSystemTime)
+import qualified Data.ByteString.Char8 as B
 import Data.Functor
 
 registerWebhook :: AppConfig -> IO ()
@@ -36,7 +40,9 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
     Just ok ->
         if ok then pure $ Just True
         else getChatAdmins >>= \case
-        Left _ -> pure Nothing
+        Left err -> do
+            liftIO $ print err
+            pure Nothing
         Right res_chat_type ->
             let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
                 chat_members = resp_cm_result res_cms :: [ChatMember]
@@ -51,7 +57,9 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
 
 checkIfPrivate :: MonadIO m => BotToken -> ChatId -> m (Maybe Bool)
 checkIfPrivate tok cid = liftIO $ getChatType >>= \case
-    Left _ -> pure Nothing
+    Left err -> do
+        liftIO $ print err
+        pure Nothing
     Right res_chat ->
         let chat_resp = responseBody res_chat :: TgGetChatResponse
             c = resp_result chat_resp :: Chat
@@ -64,6 +72,11 @@ exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
 interpretCmd :: T.Text -> Either UserError UserAction
 interpretCmd contents
+    | cmd == "/admin" =
+        if length args /= 1 then Left $ BadInput "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The value passed to /admin could not be parsed into a valid chat_id."
+            Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
         if length args == 1 then case toFeedRef args of
@@ -139,7 +152,7 @@ interpretCmd contents
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> case parseSettings body of
                 Left err -> Left . BadInput $ err
-                Right settings -> Right $ SetChatSettings settings
+                Right settings -> Right . SetChatSettings . Parsed $ settings
             Just n -> if null $ tail args then Right $ GetSubchannelSettings n else
                 case parseSettings body of
                 Left err -> Left . BadInput $ err
@@ -236,6 +249,26 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                         in  case feed of
                             Nothing -> pure . Left $ NotSubscribed
                             Just f -> pure . Right $ mkReply (FromFeedDetails f)
+evalTgAct uid (AskForLogin target_id) cid = do
+    env <- ask
+    let tok = bot_token . tg_config $ env
+    checkIfPrivate tok cid >>= \case
+        Nothing -> pure . Left $ TelegramErr
+        Just private ->
+            if not private then pure . Left $ ChatNotPrivate
+            else checkIfAdmin tok uid target_id >>= \case
+            Nothing -> pure . Left $ TelegramErr
+            Just ok ->
+                if not ok then pure . Left $ UserNotAdmin else do
+                safe_hash <- mkSafeHash
+                evalDb env (DbAskForLogin uid safe_hash cid) >>= \case
+                    DbOk -> pure . Right . mkReply . FromAdmin (base_url env) $ safe_hash
+                    _ -> pure . Right . mkReply . FromAdmin (base_url env) $ 
+                        "Unable to log you in. Are you sure this token \
+                        \ is still valid? Tokens expire after one month."
+    where
+        mkSafeHash = liftIO getSystemTime <&> 
+            T.pack . show . hashWith SHA256 . B.pack . show
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ =  pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
@@ -382,7 +415,7 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
                 else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
                     DbSearchRes keys sc -> pure . Right $ mkReply (FromSearchRes keys sc)
                     _ -> pure . Left . BadInput $ "The database was not able to run your query."
-evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings settings) chan_id
+evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid = ask >>= \env ->
     let tok = bot_token . tg_config $ env in
     checkIfAdmin tok uid cid >>= \case

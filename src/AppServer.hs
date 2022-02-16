@@ -12,7 +12,7 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Database (checkDbMapper, initConnectionMongo)
-import HtmlViews
+import Web
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -29,13 +29,23 @@ type BotAPI =
     Get '[HTML] Markup :<|>
     "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
     "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
-    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
+    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
+    "read_settings" :> ReqBody '[JSON] ReadReq :> Post '[JSON] ReadResp :<|>
+    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteResp :<|>
+    "settings" :> Raw
 
 botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = home :<|> handleWebhook :<|> viewDigests :<|> viewSearchRes where
+server = 
+    home :<|> 
+    handleWebhook :<|>
+    viewDigests :<|> 
+    viewSearchRes :<|> 
+    readSettings :<|>
+    writeSettings :<|> 
+    staticSettings where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
@@ -61,6 +71,9 @@ server = home :<|> handleWebhook :<|> viewDigests :<|> viewSearchRes where
                                     Left err -> finishWith env cid err
                                     Right r -> reply (tok env) cid r (postjobs env)
 
+    staticSettings :: MonadIO m => ServerT Raw m
+    staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
+    
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server
 
@@ -71,6 +84,7 @@ makeConfig :: [(String, String)] -> IO (AppConfig, Int, Maybe [T.Text])
 makeConfig env =
     let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
         alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
+        base = T.pack . fromJust $ lookup "BASE_URL" env
         webhook =
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
             in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
@@ -94,6 +108,7 @@ makeConfig env =
         Right pipe -> newIORef pipe
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
+        base_url = base,
         last_worker_run = Nothing,
         feeds_state = mvar1,
         subs_state = mvar2,
@@ -119,5 +134,5 @@ startApp = do
     (config, port, feeds_urls) <- makeConfig env
     registerWebhook config
     initStart config feeds_urls
-    print $ "Server now istening to port " `T.append`(T.pack . show $ port)
+    print $ "Server now listening to port " `T.append`(T.pack . show $ port)
     run port . withServer $ config

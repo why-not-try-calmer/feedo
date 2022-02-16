@@ -78,8 +78,10 @@ withChat action cid = do
             Purge -> evalDb env (DeleteChat cid) >>= \case
                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.delete cid hmap, Right ChatOk)
-            SetChatSettings parsed ->
-                let updated_settings = updateSettings parsed $ sub_settings c
+            SetChatSettings s ->
+                let updated_settings = case s of
+                        Parsed p -> updateSettings p $ sub_settings c
+                        Immediate settings -> settings
                     updated_next_notification now =
                         let start = fromMaybe now $ settings_digest_start updated_settings
                         in  Just . findNextTime start . settings_digest_interval $ updated_settings
@@ -91,7 +93,7 @@ withChat action cid = do
                             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
                             DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
-                            _ -> pure (updated_cs, Right . ChatUpdated $ updated_c)
+                            _ -> pure (updated_cs, Right . ChatUpdated $ updated_c) 
             Pause pause_or_resume ->
                 let updated_sets = (sub_settings c) { settings_paused = pause_or_resume }
                     updated_c = c { sub_settings = updated_sets }

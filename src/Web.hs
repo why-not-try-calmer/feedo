@@ -1,10 +1,14 @@
 {-# LANGUAGE RecordWildCards #-}
-module HtmlViews where
+
+module Web where
 
 import AppTypes
+import Control.Concurrent (modifyMVar, readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet as S
 import Data.List (sortOn)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -12,24 +16,22 @@ import Data.Ord (Down (Down))
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
 import Database (Db (evalDb))
+import Database.MongoDB (ObjectId)
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
+import Parsing (eitherUrlScheme)
 import Text.Blaze (Markup, textValue, (!))
 import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
-import qualified Data.HashSet as S
-import Parsing (eitherUrlScheme)
 import Utils (mbTime)
-import Database.MongoDB (ObjectId)
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
-    DbInvalidIdentifier -> "Invalid identifier. Please report this as a bug to the developer."
     DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
-    DbDigest Digest{..} -> 
-        let flt = 
+    DbDigest Digest{..} ->
+        let flt =
                 let titles = if null digest_titles then digest_links else digest_titles
                 in Map.fromList $ zip digest_links titles
         in
@@ -132,3 +134,59 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
             Left _ -> []
             Right lks -> map renderUrl lks
         abortWith msg = pure msg
+
+readSettings :: MonadIO m => ReadReq -> App m ReadResp
+readSettings (ReadReq hash) = do
+    env <- ask
+    evalDb env (CheckLogin hash) >>= \case
+        DbErr err -> pure $ failedWith (renderDbError err)
+        DbLoggedIn cid -> liftIO (readMVar $ subs_state env) >>=
+            \chats -> case HMS.lookup cid chats of
+            Nothing -> pure $ failedWith "Chat does not exist."
+            Just c -> pure $ ok cid c
+        _ -> undefined
+    where
+        failedWith err = ReadResp Nothing Nothing (Just err)
+        ok cid c = ReadResp (Just $ sub_settings c) (Just cid) Nothing
+
+writeSettings :: MonadIO m => WriteReq -> App m WriteResp
+writeSettings (WriteReq hash new_settings Nothing) = do
+    env <- ask
+    evalDb env (CheckLogin hash) >>= \case
+        DbErr err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
+        DbLoggedIn cid -> do
+            chats <- liftIO . readMVar $ subs_state env
+            case HMS.lookup cid chats of
+                Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
+                Just c ->  
+                    case diffed (sub_settings c) new_settings of
+                        Nothing -> pure (WriteResp 200 (Just "You didn't change any of your settings") Nothing)
+                        Just diffs -> pure (WriteResp 200 (Just $ "These settings have changed:\n" `T.append` T.intercalate "\n"  diffs) Nothing)
+        _ -> undefined
+    where
+        diff (v1, v2) = if v1 == v2 then Nothing else Just $ T.intercalate "=>" $ map (T.pack . show) [v1, v2]
+        diffed s s' = sequence [
+                diff (settings_digest_collapse s, settings_digest_collapse s'),
+                diff (settings_digest_interval s, settings_digest_interval s'),
+                diff (settings_digest_size s, settings_digest_size s'),
+                diff (settings_digest_start s, settings_digest_start s'),
+                diff (settings_digest_title s, settings_digest_title s'),
+                diff (settings_disable_web_view s, settings_disable_web_view s'),
+                diff (settings_paused s, settings_paused s'),
+                diff (settings_pin s, settings_pin s'),
+                diff (settings_word_matches s, settings_word_matches s'),
+                diff (settings_share_link s, settings_share_link s'),
+                diff (settings_follow s, settings_follow s')
+            ]
+writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing
+writeSettings (WriteReq hash settings (Just True)) = do
+    env <- ask
+    evalDb env (CheckLogin hash) >>= \case
+        DbErr err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
+        DbLoggedIn cid -> liftIO . modifyMVar (subs_state env) $ \chats ->
+            case HMS.lookup cid chats of
+                Nothing -> pure (chats, WriteResp 504 (Just  "Unable to find the target chat") Nothing)
+                Just c -> pure (HMS.update (\_ -> Just c { sub_settings = settings }) cid chats, ok)
+        _ -> undefined
+    where
+        ok = WriteResp 200 (Just "Updated.") Nothing

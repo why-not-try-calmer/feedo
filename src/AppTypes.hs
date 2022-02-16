@@ -1,19 +1,21 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module AppTypes where
 
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
+import Data.Aeson.TH (Options (fieldLabelModifier, omitNothingFields), defaultOptions, deriveJSON)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
-import Database.MongoDB (Host, Pipe, PortID, ObjectId)
+import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId)
+import TgramOutJson (ChatId, UserId)
 
 {- Replies -}
 
@@ -22,9 +24,8 @@ data Reply =
         reply_contents :: T.Text,
         reply_markdown :: Bool,
         reply_disable_webview :: Bool,
-        reply_pin_on_send :: Bool,
-        reply_share_link :: Bool
-    } | ServiceReply T.Text
+        reply_pin_on_send :: Bool } 
+    | ServiceReply T.Text
     deriving Show
 
 {- URLs -}
@@ -84,6 +85,8 @@ data DigestInterval = DigestInterval {
     digest_at :: Maybe [(Int, Int)]
 } deriving (Eq, Show)
 
+$(deriveJSON defaultOptions ''DigestInterval)
+
 type FeedLink = T.Text
 
 type BlackList = S.Set T.Text
@@ -93,6 +96,8 @@ data WordMatches = WordMatches {
     match_searchset :: Scope,
     match_only_search_results :: S.Set FeedLink
 } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 6 } ''WordMatches)
 
 data Settings = Settings {
     settings_digest_collapse :: Maybe Int,
@@ -107,6 +112,8 @@ data Settings = Settings {
     settings_share_link :: Bool,
     settings_follow :: Bool
 } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = drop 9 } ''Settings)
 
 data SubChat = SubChat
   { sub_chatid :: ChatId,
@@ -142,6 +149,15 @@ toFeedRef ss
     intoUrls = map ByUrl ss
     intoIds = maybe [] (map ById) (traverse (readMaybe . T.unpack) ss)
 
+{- Admins -}
+
+data AdminUser = AdminUser {
+    admin_uid :: UserId,
+    admin_token :: T.Text,
+    admin_chatid :: ChatId,
+    admin_created :: UTCTime
+} deriving (Eq, Show)
+
 {- User actions, errors -}
 
 data ParsingSettings =
@@ -161,8 +177,11 @@ data ParsingSettings =
     PFollow Bool
     deriving (Show, Eq)
 
+data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (Eq, Show)
+
 data UserAction
   = About FeedRef
+  | AskForLogin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
   | GetChannelItems ChatId FeedRef
@@ -183,7 +202,7 @@ data UserAction
   | ResetChannel ChatId
   | Search [T.Text]
   | SetChannelSettings ChatId [ParsingSettings]
-  | SetChatSettings [ParsingSettings]
+  | SetChatSettings SettingsUpdater
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]
@@ -203,6 +222,8 @@ data UserError
   | UpdateError T.Text
   | TelegramErr
   | Ignore T.Text
+  | ChatNotPrivate
+  | UserNotAdmin
   deriving (Eq, Show)
 
 renderUserError :: UserError -> T.Text
@@ -218,6 +239,8 @@ renderUserError (BadRef contents) = T.append "References to web feeds must be ei
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
 renderUserError TelegramErr = "Telegram responded with an error. Are you sure you're using the right chat_id?"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
+renderUserError ChatNotPrivate = "Unable to send personal credentials to non-private chat. Please message the post."
+renderUserError UserNotAdmin = "Only admins can change settings."
 
 data ChatRes = 
     ChatUpdated SubChat |
@@ -225,7 +248,8 @@ data ChatRes =
 
 {- Replies -}
 
-data Replies = FromChangelog
+data Replies = FromAdmin T.Text T.Text
+    | FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
     | FromFeedDetails Feed
@@ -281,8 +305,12 @@ data DbCreds
 
 data DbConnector = MongoPipe Pipe | SomethingElse
 
+type AdminToken = T.Text
+
 data DbAction
-  = ArchiveItems [Feed]
+  = DbAskForLogin UserId AdminToken ChatId
+  | CheckLogin AdminToken
+  | ArchiveItems [Feed]
   | DeleteChat ChatId
   | Get100Feeds
   | GetAllChats
@@ -303,9 +331,9 @@ data DbRes = DbFeeds [Feed]
   | DbNoChat
   | DbNoFeed
   | DbNoDigest
-  | DbInvalidIdentifier
   | DbErr DbError
   | DbOk
+  | DbLoggedIn ChatId
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime 
   | DbDigest Digest
@@ -313,7 +341,7 @@ data DbRes = DbFeeds [Feed]
 
 data DbError
   = PipeNotAcquired
-  | DbLoginFailed
+  | FaultyToken
   | NoFeedFound T.Text
   | FailedToUpdate T.Text T.Text
   | FailedToLog
@@ -325,7 +353,7 @@ data DbError
 
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
-renderDbError DbLoginFailed = "Pipe acquired, but login failed."
+renderDbError FaultyToken = "Login failed. This token is not valid, and perhaps never was."
 renderDbError (FailedToUpdate items reason) = "Unable to update the following items :" `T.append` items `T.append` ". Reason: " `T.append` reason
 renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
 renderDbError FailedToLog = "Failed to log."
@@ -393,11 +421,42 @@ data AppConfig = AppConfig
     db_config :: DbCreds,
     db_connector :: IORef DbConnector,
     tg_config :: ServerConfig,
+    base_url :: T.Text,
     feeds_state :: MVar KnownFeeds,
     subs_state :: MVar SubChats,
     postjobs :: Chan Job,
     worker_interval :: Int
   }
+
+{- Web responses -}
+
+newtype ReadReq = ReadReq { read_req_hash :: T.Text }
+
+$(deriveJSON defaultOptions ''ReadReq)
+
+data ReadResp = ReadResp {
+    read_resp_settings :: Maybe Settings,
+    read_resp_cid :: Maybe ChatId,
+    read_resp_error :: Maybe T.Text
+}
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''ReadResp)
+
+data WriteReq = WriteReq {
+    write_req_hash :: T.Text,
+    write_req_settings :: Settings,
+    write_req_confirm :: Maybe Bool
+}
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteReq)
+
+data WriteResp = WriteResp {
+    write_resp_status :: Int,
+    write_resp_checkout :: Maybe T.Text,
+    write_resp_error :: Maybe T.Text
+}
+
+$(deriveJSON defaultOptions { omitNothingFields = True } ''WriteResp)
 
 {- Application -}
 

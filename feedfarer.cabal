@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           feedfarer
-version:        0.1.0.0
+version:        1.1
 description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
 homepage:       https://github.com/githubuser/feedfarer#readme
 bug-reports:    https://github.com/githubuser/feedfarer/issues
@@ -28,7 +28,6 @@ library
       AppTypes
       Backend
       Database
-      HtmlViews
       Jobs
       Parsing
       Replies
@@ -37,6 +36,7 @@ library
       TgramInJson
       TgramOutJson
       Utils
+      Web
   other-modules:
       Paths_feedfarer
   hs-source-dirs:
@@ -55,6 +55,7 @@ library
     , blaze-markup
     , bytestring
     , containers
+    , cryptonite
     , mongoDB
     , mtl
     , req
@@ -89,6 +90,7 @@ executable feedfarer-exe
     , blaze-markup
     , bytestring
     , containers
+    , cryptonite
     , feedfarer
     , mongoDB
     , mtl
@@ -125,6 +127,7 @@ test-suite feedfarer-test
     , blaze-markup
     , bytestring
     , containers
+    , cryptonite
     , feedfarer
     , mongoDB
     , mtl
