@@ -11,7 +11,7 @@ import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Database (checkDbMapper, initConnectionMongo)
+import Database (initConnectionMongo)
 import Web
 import Jobs
 import Network.Wai
@@ -129,7 +129,6 @@ initStart config mb_urls = case mb_urls of
 
 startApp :: IO ()
 startApp = do
-    checkDbMapper
     env <- getEnvironment
     (config, port, feeds_urls) <- makeConfig env
     registerWebhook config
