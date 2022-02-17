@@ -26,6 +26,17 @@ jobs:
         username: ${{ secrets.AzureAppService_ContainerUsername_8a4fc4d7e1234904ab5d3cff2891db4c }}
         password: ${{ secrets.AzureAppService_ContainerPassword_4c37abdea9c544b4b25daa03ee0bb6b4 }}
 
+    - name: Build
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        file: ./Dockerfile
+        tags: feedfarer
+      
+    - name: Test
+      run: |
+        docker run --rm feedfarer stack test
+
     - name: Build and push container image to registry
       uses: docker/build-push-action@v2
       with:
