@@ -27,7 +27,6 @@ jobs:
         password: ${{ secrets.AzureAppService_ContainerPassword_4c37abdea9c544b4b25daa03ee0bb6b4 }}
 
     - name: Build and Test
-      uses: docker/build-push-action@v2
       with:
         file: ./Dockerfile
         tags: feedfarer
