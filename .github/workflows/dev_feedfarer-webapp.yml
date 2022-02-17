@@ -45,7 +45,6 @@ jobs:
       with:
         push: true
         tags: adrienazure.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_8a4fc4d7e1234904ab5d3cff2891db4c }}/feedfarer-master:${{ github.sha }}
-        file: ./Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
