@@ -8,7 +8,7 @@ on:
     workflows: ["Test suite"]
       branches: [master]
       types:
-        - completed
+      - completed
 
   workflow_dispatch:
 
