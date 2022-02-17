@@ -239,7 +239,7 @@ renderUserError (BadRef contents) = T.append "References to web feeds must be ei
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
 renderUserError TelegramErr = "Telegram responded with an error. Are you sure you're using the right chat_id?"
 renderUserError (Ignore input) = "Ignoring " `T.append` input
-renderUserError ChatNotPrivate = "Unable to send personal credentials to non-private chat. Please message the post."
+renderUserError ChatNotPrivate = "Unwilling to share authentication credentials in a non-private chat. Please use this command in a private conversation with to the bot."
 renderUserError UserNotAdmin = "Only admins can change settings."
 
 data ChatRes = 
