@@ -6,6 +6,7 @@ name: Build and deploy container app to Azure Web App - feedfarer-webapp
 on:
   workflow_run:
     workflows: ["Test suite"]
+      branches: [master]
       types:
         - completed
 
