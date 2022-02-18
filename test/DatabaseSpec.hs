@@ -72,6 +72,6 @@ spec = go >> go1
                     now <- getCurrentTime
                     let dig = DbDigest (Digest Nothing now [] [] [])
                     config <- testConfig
-                    res <- getTestM $ evalDb config (ReadDigest mempty)
+                    res <- runTestM $ evalDb config (ReadDigest mempty)
                     res `shouldSatisfy` (\(DbDigest d) -> digest_created d > now)
             in  desc $ as target

@@ -9,18 +9,10 @@ import GHC.IO (evaluate)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import TgActions (evalTgAct, interpretCmd)
+import TgramOutJson (UserId, ChatId)
 
-class FakeIO m where
-    fakeIt :: m a -> m T.Text
-
-instance MonadIO m => FakeIO (App m) where
-    fakeIt action = pure "ok"
-
-testConfig :: IO AppConfig
-testConfig = 
-    getEnvironment >>= 
-    makeConfig >>= \(config, _, _) -> 
-    pure config
+evalTgtTest :: Monad m => UserId -> UserAction -> ChatId -> m (Either UserError Reply)
+evalTgtTest _ action _ = pure . Right . ServiceReply $ T.pack . show $ action
 
 spec :: Spec
 spec = go where
@@ -35,7 +27,7 @@ spec = go where
         let desc as = describe "evalTgAct" as
             as func = it "evaluate a monadic action issued from Telegram" func
             target = do
-                config <- testConfig
-                res <- runApp config $ fakeIt . evalTgAct 0 (GetLastXDaysItems 1) $ 0
-                res `shouldBe` "ok"
+                let action = GetLastXDaysItems 1
+                res <- runTestM $ evalTgtTest 0 action 0
+                res `shouldSatisfy` (\(Right (ServiceReply reply)) -> reply == "GetLastXDaysItems 1")
         in  desc $ as target
