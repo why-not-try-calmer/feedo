@@ -12,7 +12,6 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Database (initConnectionMongo)
-import Web
 import Jobs
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -24,6 +23,7 @@ import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
 import TgramOutJson (ChatId, UserId)
+import Web
 
 type BotAPI =
     Get '[HTML] Markup :<|>

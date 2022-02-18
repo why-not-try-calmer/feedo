@@ -17,7 +17,7 @@ import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
 import Replies (mkReply, render)
-import Requests (reqSend, setWebhook)
+import Requests (evalReq, setWebhook, TgReqM (evalReq))
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -30,7 +30,7 @@ registerWebhook config =
     in  putStrLn "Trying to set webhook" >> setWebhook tok webhook >>
             print ("Webhook successfully set at " `T.append` webhook)
 
-checkIfAdmin :: MonadIO m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
+checkIfAdmin :: TgReqM m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
 checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
     Nothing -> pure Nothing
     Just ok ->
@@ -44,7 +44,7 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
                 chat_members = resp_cm_result res_cms :: [ChatMember]
             in  pure . Just $ if_admin chat_members
     where
-        getChatAdmins = reqSend tok "getChatAdministrators" $ GetChatAdministrators cid
+        getChatAdmins = evalReq tok "getChatAdministrators" $ GetChatAdministrators cid
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
@@ -61,7 +61,7 @@ checkIfPrivate tok cid = liftIO $ getChatType >>= \case
             c = resp_result chat_resp :: Chat
         in  pure . Just $ chat_type c == Private
     where
-        getChatType = reqSend tok "getChat" $ GetChatAdministrators cid
+        getChatType = evalReq tok "getChat" $ GetChatAdministrators cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -181,11 +181,11 @@ interpretCmd contents
                 (h:_) = T.splitOn "@" h'
             in  (h, t)
 
-testChannel :: MonadIO m => BotToken -> ChatId -> Chan Job -> m (Either UserError ())
+testChannel :: TgReqM m => BotToken -> ChatId -> Chan Job -> m (Either UserError ())
 testChannel tok chan_id jobs =
     -- tries sending a message to the given channel
     -- if the response rewards the test with a message_id, it's won.
-    reqSend tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing) >>= \case
+    evalReq tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing) >>= \case
     Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ chan_id) `T.append` ". Make sure the bot has administrative rights in that channel."
     Right resp ->
         let res = responseBody resp :: TgGetMessageResponse

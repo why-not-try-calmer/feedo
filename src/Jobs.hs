@@ -24,7 +24,7 @@ import Replies
   ( mkDigestUrl,
     mkReply,
   )
-import Requests (reply, reqSend_)
+import Requests (reply, reqSend_, TgReqM)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage), ChatId)
 import Utils (findNextTime, scanTimeSlices)
 
@@ -33,7 +33,7 @@ import Utils (findNextTime, scanTimeSlices)
 runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
 runForever_ action handler = void . async . forever $ catch action handler
 
-procNotif :: MonadIO m => App m ()
+procNotif :: TgReqM m => App m ()
 procNotif = do
     env <- ask
     let tok = bot_token . tg_config $ env

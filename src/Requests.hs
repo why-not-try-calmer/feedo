@@ -4,7 +4,7 @@
 
 module Requests where
 
-import AppTypes (BotToken, Job (JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, ChatReply, ServiceReply))
+import AppTypes (BotToken, Job (JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, ChatReply, ServiceReply), TestApp, App)
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad (void)
@@ -15,6 +15,26 @@ import qualified Data.Text as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (ChatId, Outbound (OutboundMessage, out_chat_id, out_text, out_parse_mode, out_disable_web_page_preview))
+
+{- Interface -}
+
+class MonadIO m => TgReqM m where
+    evalReq :: (FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
+    fakeReq :: BotToken -> T.Text -> Outbound -> m Outbound
+
+instance MonadIO m => TgReqM (App m) where
+    evalReq = reqSend
+    fakeReq = undefined
+
+instance TgReqM IO where
+    evalReq = reqSend
+    fakeReq = undefined
+
+instance MonadIO m => TgReqM (TestApp m) where
+    evalReq = undefined
+    fakeReq _ _ out = return out
+
+{- Actions -}
 
 setWebhook :: MonadIO m => BotToken -> T.Text -> m ()
 setWebhook tok webhook = do
@@ -55,7 +75,7 @@ reqSend_ a b c = reqSend a b c >>= \case
     Left txt -> pure $ Left txt
     Right (_ :: JsonResponse Value) -> pure $ Right ()
 
-reply :: MonadIO m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
+reply :: TgReqM m => BotToken -> ChatId -> Reply -> Chan Job -> m ()
 reply tok cid rep chan =
     let mid_from resp =
             let b = responseBody resp :: TgGetMessageResponse
@@ -70,7 +90,7 @@ reply tok cid rep chan =
         redirect err = void $ reqSend_ tok "sendMessage" $ OutboundMessage cid err Nothing Nothing
         non_empty txt = if T.null txt then "No result for this command." else txt
         triage_replies msg@ChatReply{..}
-            | reply_pin_on_send = reqSend tok "sendMessage" (fromReply msg) >>= \case
+            | reply_pin_on_send = evalReq tok "sendMessage" (fromReply msg) >>= \case
                 Left err -> redirect err
                 Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
             | otherwise = reqSend_ tok "sendMessage" (fromReply msg) >>= \case

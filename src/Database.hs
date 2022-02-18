@@ -79,6 +79,12 @@ instance Db IO where
     openDbHandle = openDbHandle
     evalDb = evalMongo
 
+instance Monad m => Db (TestApp m) where
+    openDbHandle _ = pure ()
+    evalDb _ _ = pure DbOk
+
+{- Setup -}
+
 installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
 installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
     (db_connector config)
