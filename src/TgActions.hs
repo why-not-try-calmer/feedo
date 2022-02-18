@@ -17,7 +17,7 @@ import Database (Db (evalDb))
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
 import Replies (mkReply, render)
-import Requests (evalReq, setWebhook, TgReqM (evalReq))
+import Requests (runSend, setWebhook, TgReqM (runSend))
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -44,7 +44,7 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
                 chat_members = resp_cm_result res_cms :: [ChatMember]
             in  pure . Just $ if_admin chat_members
     where
-        getChatAdmins = evalReq tok "getChatAdministrators" $ GetChatAdministrators cid
+        getChatAdmins = runSend tok "getChatAdministrators" $ GetChatAdministrators cid
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
@@ -61,7 +61,7 @@ checkIfPrivate tok cid = liftIO $ getChatType >>= \case
             c = resp_result chat_resp :: Chat
         in  pure . Just $ chat_type c == Private
     where
-        getChatType = evalReq tok "getChat" $ GetChatAdministrators cid
+        getChatType = runSend tok "getChat" $ GetChatAdministrators cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -185,7 +185,7 @@ testChannel :: TgReqM m => BotToken -> ChatId -> Chan Job -> m (Either UserError
 testChannel tok chan_id jobs =
     -- tries sending a message to the given channel
     -- if the response rewards the test with a message_id, it's won.
-    evalReq tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing) >>= \case
+    runSend tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing) >>= \case
     Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ chan_id) `T.append` ". Make sure the bot has administrative rights in that channel."
     Right resp ->
         let res = responseBody resp :: TgGetMessageResponse
