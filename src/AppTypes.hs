@@ -466,3 +466,6 @@ newtype App m a = App {getApp :: ReaderT AppConfig m a}
 
 runApp :: AppConfig -> App m a -> m a
 runApp env = flip runReaderT env . getApp
+
+newtype TestApp m a = TestM { getTestM :: m a} 
+    deriving (Functor, Applicative, Monad, MonadIO)
