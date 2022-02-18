@@ -1,13 +1,14 @@
 module TgActionsSpec where
-import Test.Hspec
-import TgActions (interpretCmd, evalTgAct)
-import AppTypes
-import Data.Foldable (traverse_)
-import System.Environment (getEnvironment)
-import Control.Monad.IO.Class (liftIO, MonadIO)
+
 import AppServer (makeConfig)
-import GHC.IO (evaluate)
+import AppTypes
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Foldable (traverse_)
 import qualified Data.Text as T
+import GHC.IO (evaluate)
+import System.Environment (getEnvironment)
+import Test.Hspec
+import TgActions (evalTgAct, interpretCmd)
 
 class FakeIO m where
     fakeIt :: m a -> m T.Text

@@ -4,7 +4,7 @@
 
 module Requests where
 
-import AppTypes (BotToken, Job (JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, ChatReply, ServiceReply), TestApp, App)
+import AppTypes (BotToken, Job (JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, ChatReply, ServiceReply), App)
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad (void)
@@ -32,11 +32,6 @@ instance TgReqM IO where
     runSend = reqSend
     runSend_ = reqSend_
     fakeRunSend = undefined
-
-instance MonadIO m => TgReqM (TestApp m) where
-    runSend = undefined
-    runSend_ = undefined
-    fakeRunSend _ _ out = return out
 
 {- Actions -}
 

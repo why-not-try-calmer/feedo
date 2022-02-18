@@ -303,7 +303,7 @@ data DbCreds
       }
   deriving (Eq, Show)
 
-data DbConnector = MongoPipe Pipe | SomethingElse
+data DbConnector = MongoPipe Pipe | FakeConnector
 
 type AdminToken = T.Text
 
@@ -339,6 +339,7 @@ data DbRes = DbFeeds [Feed]
   | DbView [Item] UTCTime UTCTime 
   | DbDigest Digest
   | DbDigestId T.Text
+  deriving (Eq, Show)
 
 data DbError
   = PipeNotAcquired

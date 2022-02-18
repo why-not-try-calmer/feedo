@@ -3,9 +3,14 @@ module RequestsSpec where
 import Test.Hspec
 import Control.Concurrent (newChan)
 import AppTypes
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (liftIO, MonadIO)
 import TgramOutJson (Outbound(OutboundMessage))
-import Requests (TgReqM(fakeRunSend))
+import Requests (TgReqM(fakeRunSend, runSend, runSend_))
+
+instance MonadIO m => TgReqM (TestApp m) where
+    runSend = undefined
+    runSend_ = undefined
+    fakeRunSend _ _ out = return out
 
 spec :: Spec
 spec = go where
