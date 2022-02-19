@@ -115,6 +115,7 @@ test-suite feedfarer-test
       RequestsSpec
       TgActionsSpec
       UtilsSpec
+      WebBrowserSpec
       Paths_feedfarer
   hs-source-dirs:
       test

@@ -55,8 +55,8 @@ function submit_listener(e) {
             digest_at: null,
         },
         digest_collapse: null,
-        digest_size: null,
-        digest_start: '',
+        digest_size: 0,
+        digest_start: null,
         digest_title: '',
         disable_web_view: false,
         paused: false,
@@ -80,7 +80,7 @@ function submit_listener(e) {
                 settings.digest_interval.digest_every_secs = parsed > 0  ? parsed : null
                 break
             case 'digest_size':
-                settings.digest_size = parseInt(v)
+                settings.digest_size = parseInt(v) || null
                 break
             case 'digest_collapse':
                 parsed = parseInt(v)

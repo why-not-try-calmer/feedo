@@ -22,6 +22,6 @@ spec = go where
                 let tok = "0"
                     cid = 0
                     out = OutboundMessage 0 mempty Nothing Nothing
-                res <- getTestM $ fakeRunSend tok mempty out
+                res <- runTestM $ fakeRunSend tok mempty out
                 res `shouldBe` OutboundMessage 0 mempty Nothing Nothing
         in  desc $ as target
