@@ -57,7 +57,7 @@ fetchFeed url = liftIO (try action :: IO (Either SomeException LbsResponse)) >>=
         action = withReqManager $ runReq defaultHttpConfig . pure request
         request = req GET url NoReqBody lbsResponse mempty
 
-reqSend :: (TgReqM m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
+reqSend :: (MonadIO m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
 reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
     Left (SomeException err) ->
         let msg = "Tried to send a request, but failed for this reason: " ++ show err ++ " Please try again the very action you were doing"
@@ -70,7 +70,7 @@ reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
             in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) jsonResponse mempty
 
 reqSend_ :: TgReqM m => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
-reqSend_ a b c = runSend a b c >>= \case
+reqSend_ a b c = reqSend a b c >>= \case
     Left txt -> pure $ Left txt
     Right (_ :: JsonResponse Value) -> pure $ Right ()
 

@@ -24,7 +24,7 @@ import Replies
   ( mkDigestUrl,
     mkReply,
   )
-import Requests (reply, reqSend_, TgReqM)
+import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage), ChatId)
 import Utils (findNextTime, scanTimeSlices)
 
@@ -33,7 +33,7 @@ import Utils (findNextTime, scanTimeSlices)
 runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
 runForever_ action handler = void . async . forever $ catch action handler
 
-procNotif :: TgReqM m => App m ()
+procNotif :: MonadIO m => App m ()
 procNotif = do
     env <- ask
     let tok = bot_token . tg_config $ env
@@ -65,7 +65,7 @@ procNotif = do
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
-            -- rebuilding feeds and dispatching notifications
+            -- rebuilding feeds and collecting notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
                 FeedDigests notif_hmap search_notif -> do
@@ -73,15 +73,12 @@ procNotif = do
                     -- sending digests, follows & search notifications
                     notified_chats_feeds <- fst <$> concurrently (send_tg_notif notif_hmap now) (send_tg_search search_notif)
                     t3 <- systemSeconds <$> getSystemTime
-                    -- preparing updates
+                    -- confirming notifications against locally stored + database chats
                     let notified_chats = map fst notified_chats_feeds
                         read_feeds =
                             S.toList .
                             S.fromList .
                             foldMap snd $ notified_chats_feeds :: [FeedLink]
-                    -- increasing reads count
-                    writeChan (postjobs env) $ JobIncReadsJob read_feeds
-                    -- confirming notifications against locally stored + database chats
                     modifyMVar_ (subs_state env) $ \subs ->
                         let updated_chats = updated_notified_chats notified_chats subs now
                         -- updating db
@@ -92,6 +89,9 @@ procNotif = do
                                 pure subs
                             DbOk -> pure updated_chats
                             _ -> pure subs
+                    -- increasing reads count
+                    writeChan (postjobs env) $ JobIncReadsJob read_feeds
+                    -- wrapping up performance stats
                     (t4, later) <- (\t -> (systemSeconds t, systemToUTCTime t)) <$> getSystemTime
                     let perf = scanTimeSlices [t1, t2, t3, t4]
                     when (length perf == 3) $ do
@@ -109,13 +109,13 @@ procNotif = do
                             log_updating = perf !! 2,
                             log_total = sum perf
                             }
-                        -- writing logs
+                        -- sending logs
                         writeChan (postjobs env) $ JobLog item
                 FeedsError err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \
                         \ failed to acquire notification package and got this error: "
                         `T.append` renderDbError err
-                -- probably pulled a 'FeedsOk'
+                -- to avoid an incomplete pattern
                 _ -> pure ()
         wait_action = threadDelay interval >> notify
         handler e = onError e >> notify
