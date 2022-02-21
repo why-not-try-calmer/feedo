@@ -222,27 +222,33 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
             let is = f_items f
                 l = f_link f
                 feeds_items =
-                    let fresh = fresh_filtered c is
+                    let fresh = 
+                            take (settings_digest_size . sub_settings $ c) . 
+                            fresh_filtered c $ is
                     in  if (l `notElem` recipes) || null fresh
                         then fs
                         else f { f_items = fresh }:fs
             in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
-        fresh_filtered c is = 
+        fresh_filtered c is =
             let filtered_on_time_and_blacklist = filterItemsWith (sub_settings c) (sub_last_digest c) is
-            in  if S.null $ only_on_search c
+            in  if S.null $ search_filters c
                 then filtered_on_time_and_blacklist
-                else filter (\i -> i_feed_link i `S.notMember` only_on_search c) filtered_on_time_and_blacklist
-        only_on_search = match_only_search_results . settings_word_matches . sub_settings
+                else foldl' (\acc i ->
+                    if (i_feed_link i `S.notMember` search_filters c) || include (search_filters c) i
+                    then i:acc 
+                    else acc) [] filtered_on_time_and_blacklist
+        search_filters = 
+            match_only_search_results . 
+            settings_word_matches . 
+            sub_settings
         with_filters fs i = all ($ i) fs
-        blacklist filters i = not . any
+        include filters i = any
+            (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) filters
+        exclude filters i = not . any
             (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters
-        filterItemsWith Settings{..} Nothing items =
-            take settings_digest_size .
-            filter (with_filters [blacklist (match_blacklist settings_word_matches)]) $ items
-        filterItemsWith Settings{..} (Just last_time) items =
-            take settings_digest_size .
-            filter (with_filters [blacklist (match_blacklist settings_word_matches), fresh]) $ items
+        filterItemsWith Settings{..} Nothing items = filter (with_filters [exclude (match_blacklist settings_word_matches)]) items
+        filterItemsWith Settings{..} (Just last_time) items = filter (with_filters [exclude (match_blacklist settings_word_matches), fresh]) items
             where
                 fresh i = last_time < i_pubdate i
