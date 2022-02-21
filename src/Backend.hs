@@ -245,7 +245,7 @@ collectDue chats last_run now =
                                 then HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
                                 else hmap
                         else hmap
-                Just new -> 
+                Just new ->
                     if new < now 
                     then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
                     else hmap
