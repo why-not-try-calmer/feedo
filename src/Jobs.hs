@@ -1,15 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Jobs where
 
-import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title, f_items), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), Settings (..), SubChat (..), Replies (..), renderDbError, runApp, SubChats, FeedLink, Batch (Digests, Follows))
-import Backend (evalFeeds)
+import AppTypes (App (..), AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title, f_items), FeedsAction (..), FeedsRes (..), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), SubChat (..), Replies (..), renderDbError, runApp, FeedLink, Batch (Digests, Follows))
+import Backend (evalFeeds, markNotified)
 import Control.Concurrent
-  ( modifyMVar_,
-    readChan,
+  ( readChan,
     threadDelay,
     writeChan,
   )
-import Control.Concurrent.Async (async, concurrently, forConcurrently, forConcurrently_)
+import Control.Concurrent.Async (async, forConcurrently)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -17,7 +16,7 @@ import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (addUTCTime, getCurrentTime, UTCTime)
+import Data.Time (addUTCTime, getCurrentTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database (evalDb, saveToLog)
 import Replies
@@ -25,8 +24,8 @@ import Replies
     mkReply,
   )
 import Requests (reply, reqSend_)
-import TgramOutJson (Outbound (DeleteMessage, PinMessage), ChatId)
-import Utils (findNextTime, scanTimeSlices)
+import TgramOutJson (Outbound (DeleteMessage, PinMessage))
+import Utils (scanTimeSlices)
 
 {- Background tasks -}
 
@@ -41,9 +40,6 @@ procNotif = do
         onError (SomeException err) = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
             writeChan (postjobs env) . JobTgAlert $ report
-        -- sending search payloads
-        send_tg_search search_payload = forConcurrently_ (HMS.toList search_payload) $
-            \(cid, DbSearchRes keys results) -> reply tok cid (mkReply (FromSearchRes keys results)) (postjobs env)
         -- sending digests + follows
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
             \(cid, (c, batch)) -> let sets = sub_settings c in case batch of
@@ -68,10 +64,10 @@ procNotif = do
             -- rebuilding feeds and collecting notifications
             res <- runApp (env { last_worker_run = Just now }) $ evalFeeds Refresh
             case res of
-                FeedDigests notif_hmap search_notif -> do
+                FeedDigests notif_hmap -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending digests, follows & search notifications
-                    notified_chats_feeds <- fst <$> concurrently (send_tg_notif notif_hmap now) (send_tg_search search_notif)
+                    notified_chats_feeds <- send_tg_notif notif_hmap now
                     t3 <- systemSeconds <$> getSystemTime
                     -- confirming notifications against locally stored + database chats
                     let notified_chats = map fst notified_chats_feeds
@@ -79,16 +75,7 @@ procNotif = do
                             S.toList .
                             S.fromList .
                             foldMap snd $ notified_chats_feeds :: [FeedLink]
-                    modifyMVar_ (subs_state env) $ \subs ->
-                        let updated_chats = updated_notified_chats notified_chats subs now
-                        -- updating db
-                        in  evalDb env (UpsertChats updated_chats) >>= \case
-                            DbErr err -> do
-                                writeChan (postjobs env) $ JobTgAlert $ "notifier: failed to \
-                                    \ save updated chats to db because of this error" `T.append` renderDbError err
-                                pure subs
-                            DbOk -> pure updated_chats
-                            _ -> pure subs
+                    markNotified env notified_chats now
                     -- increasing reads count
                     writeChan (postjobs env) $ JobIncReadsJob read_feeds
                     -- wrapping up performance stats
@@ -96,11 +83,7 @@ procNotif = do
                     let perf = scanTimeSlices [t1, t2, t3, t4]
                     when (length perf == 3) $ do
                         let from_keys = T.intercalate ", " . map (T.pack . show) . HMS.keys
-                            (report1, report2) = (from_keys notif_hmap, from_keys search_notif)
-                            msg = "notifier ran on update notif package for "
-                                `T.append` report1
-                                `T.append` " and search notif package for "
-                                `T.append` report2
+                            msg = "notifier ran on update notif package for " `T.append` from_keys notif_hmap
                             item = LogPerf {
                             log_message = msg,
                             log_at = later,
@@ -120,25 +103,6 @@ procNotif = do
         wait_action = threadDelay interval >> notify
         handler e = onError e >> notify
     liftIO $ runForever_ wait_action handler
-    where
-        updated_notified_chats ::
-            [ChatId] ->
-            SubChats ->
-            UTCTime ->
-            HMS.HashMap ChatId SubChat
-        updated_notified_chats notified_chats chats now = HMS.mapWithKey (\cid c ->
-            if cid `elem` notified_chats
-            then
-                let next = Just . findNextTime now . settings_digest_interval . sub_settings $ c
-                in  -- updating last, next, and consuming 'settings_digest_start'
-                    case settings_digest_start . sub_settings $ c of
-                    Nothing -> c { sub_last_digest = Just now, sub_next_digest = next }
-                    Just _ -> c { 
-                        sub_last_digest = Just now,
-                        sub_next_digest = next,
-                        sub_settings = (sub_settings c) { settings_digest_start = Nothing }
-                        }
-            else c) chats
 
 postProcJobs :: MonadIO m => App m ()
 postProcJobs = ask >>= \env ->

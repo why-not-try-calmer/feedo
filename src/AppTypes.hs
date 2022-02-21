@@ -380,9 +380,7 @@ type FeedItems = [(Feed, [Item])]
 
 data FeedsRes = FeedsOk
     | FeedsError DbError
-    | FeedDigests 
-        (HMS.HashMap ChatId (SubChat, Batch))
-        (HMS.HashMap ChatId DbRes)
+    | FeedDigests (HMS.HashMap ChatId (SubChat, Batch))
     | FeedLinkDigest [(FeedLink, [Item])]
 {- Logs -}
 
