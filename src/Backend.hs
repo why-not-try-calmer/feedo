@@ -185,9 +185,9 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
     then pure FeedsOk
     else rebuild env flinks_to_rebuild now >>= \case
         Left e -> pure . FeedsError $ e
-        Right fs ->
+        Right rebuilt_fs ->
             -- creating update notification payload
-            let notif_hmap = notifFrom flinks_to_rebuild fs due
+            let notif_hmap = notifFrom flinks_to_rebuild rebuilt_fs due
             -- preparing search notification payload
                 scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _) ->
                     let keywords = match_searchset . settings_word_matches . sub_settings $ chat
