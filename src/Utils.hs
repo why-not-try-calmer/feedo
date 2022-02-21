@@ -223,13 +223,17 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
                 l = f_link f
                 feeds_items =
                     let fresh = fresh_filtered c is
-                    in  if (l `notElem` recipes) || (l `elem` only_on_search c) || null fresh
+                    in  if (l `notElem` recipes) || null fresh
                         then fs
                         else f { f_items = fresh }:fs
             in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
-        fresh_filtered c is = filterItemsWith (sub_settings c) (sub_last_digest c) is
+        fresh_filtered c is = 
+            let filtered_on_time_and_blacklist = filterItemsWith (sub_settings c) (sub_last_digest c) is
+            in  if S.null $ only_on_search c
+                then filtered_on_time_and_blacklist
+                else filter (\i -> i_feed_link i `S.notMember` only_on_search c) filtered_on_time_and_blacklist
         only_on_search = match_only_search_results . settings_word_matches . sub_settings
         with_filters fs i = all ($ i) fs
         blacklist filters i = not . any
