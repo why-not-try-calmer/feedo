@@ -178,29 +178,23 @@ evalFeeds (IncReadsF links) = ask >>= \env -> do
 evalFeeds Refresh = ask >>= \env -> liftIO $ do
     chats <- readMVar $ subs_state env
     now <- getCurrentTime
-    let last_run = last_worker_run env
-        due = collectDue chats last_run now
-        flinks_to_rebuild = foldMap (readBatchRecipe . snd) due
-    if HMS.null due
-    then pure FeedsOk
-    else rebuild env flinks_to_rebuild now >>= \case
+    let     last_run = last_worker_run env
+            due = collectDue chats last_run now
+            flinks_to_rebuild = foldMap (readBatchRecipe . snd) due
+    if      HMS.null due
+    then    pure FeedsOk
+    else    rebuild env flinks_to_rebuild now >>= \case
         Left e -> pure . FeedsError $ e
         Right rebuilt_fs ->
             -- creating update notification payload
-            let notif_hmap = notifFrom flinks_to_rebuild rebuilt_fs due
-            -- preparing search notification payload
-                scheduled_searches = HMS.foldlWithKey' (\hmap cid (chat, _) ->
-                    let keywords = match_searchset . settings_word_matches . sub_settings $ chat
-                        scope = match_only_search_results . settings_word_matches . sub_settings $ chat
-                    in  if S.null keywords
-                        then hmap
-                        else HMS.insert cid (keywords, scope) hmap) HMS.empty notif_hmap
-            -- performing db search
-            in  do
-                dbres <- forM scheduled_searches $ \(kws, sc) -> evalDb env $ DbSearch kws sc last_run
-                let not_null_dbres = HMS.filter (\(DbSearchRes _ res) -> not $ null res) dbres
-                -- returning to calling thread
-                pure $ FeedDigests notif_hmap not_null_dbres
+            let digests = notifFrom flinks_to_rebuild rebuilt_fs due
+                has_digest = HMS.keys digests
+                no_digest = HMS.foldl' (\acc (!c, _) -> 
+                    let cid = sub_chatid  c in
+                    if cid `notElem` has_digest then cid:acc else acc) [] due
+            -- marking chats with no digest as notified
+            -- returning payload to the ones to notify
+            in  markNotified env no_digest now >> pure (FeedDigests digests)
     where
         rebuild env flinks_to_rebuild now = do
             -- else rebuilding all feeds with any subscribers
@@ -212,13 +206,12 @@ evalFeeds Refresh = ask >>= \env -> liftIO $ do
             -- archiving
             writeChan (postjobs env) $ JobArchive succeeded now
             -- updating memory on successful db write
-            modifyMVar (feeds_state env) $ \old_feeds -> 
-                evalDb env (UpsertFeeds succeeded) >>= \case
-                    DbErr e -> pure (old_feeds, Left e)
-                    _ ->
-                        let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
-                            to_keep_in_memory = HMS.union fresh_feeds old_feeds
-                        in  pure (to_keep_in_memory, Right to_keep_in_memory)
+            modifyMVar (feeds_state env) $ \old_feeds -> evalDb env (UpsertFeeds succeeded) >>= \case
+                DbErr e -> pure (old_feeds, Left e)
+                _ ->
+                    let fresh_feeds = HMS.fromList $ map (\f -> (f_link f, f)) succeeded
+                        to_keep_in_memory = HMS.union fresh_feeds old_feeds
+                    in  pure (to_keep_in_memory, Right to_keep_in_memory)
 
 collectDue ::
     SubChats ->
@@ -254,6 +247,36 @@ collectDue chats last_run now =
         nextWasNow Nothing Nothing _ = True
         nextWasNow (Just next_t) _ _ = next_t < now
         nextWasNow Nothing (Just last_t) i = findNextTime last_t i < now
+
+markNotified :: AppConfig -> [ChatId] -> UTCTime -> IO ()
+-- marking input chats as notified 
+markNotified env notified_chats now = liftIO $ modifyMVar_ (subs_state env) $ \subs ->
+    let updated_chats = updated_notified_chats notified_chats subs
+    in  evalDb env (UpsertChats updated_chats) >>= \case
+        DbErr err -> do
+            writeChan (postjobs env) $ JobTgAlert $ "notifier: failed to \
+                \ save updated chats to db because of this error" `T.append` renderDbError err
+            pure subs
+        DbOk -> pure updated_chats
+        _ -> pure subs
+    where
+        updated_notified_chats ::
+            [ChatId] ->
+            SubChats ->
+            HMS.HashMap ChatId SubChat
+        updated_notified_chats notified chats = HMS.mapWithKey (\cid c ->
+            if cid `elem` notified
+            then
+                let next = Just . findNextTime now . settings_digest_interval . sub_settings $ c
+                in  -- updating last, next, and consuming 'settings_digest_start'
+                    case settings_digest_start . sub_settings $ c of
+                    Nothing -> c { sub_last_digest = Just now, sub_next_digest = next }
+                    Just _ -> c { 
+                        sub_last_digest = Just now,
+                        sub_next_digest = next,
+                        sub_settings = (sub_settings c) { settings_digest_start = Nothing }
+                        }
+            else c) chats
 
 regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
 regenFeeds chats = ask >>= \env ->
