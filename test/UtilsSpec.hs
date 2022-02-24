@@ -6,11 +6,11 @@ import Utils (partitionEither, fromEither, maybeUserIdx, scanTimeSlices, findNex
 import qualified Data.Text as T
 import Data.Int (Int64)
 import Data.Time (getCurrentTime, readTime, diffUTCTime)
-import AppTypes (DigestInterval(DigestInterval))
+import AppTypes (DigestInterval(DigestInterval), Item (Item, i_link, i_title), i_desc)
 import Data.Maybe
 
 spec :: Spec
-spec = sequence_ [go, go1, go2, go3, go4, go5]
+spec = sequence_ [go, go1, go2, go3, go4, go5, go6]
     where
         go =
             let desc as = describe "partitionEither" as
@@ -40,7 +40,6 @@ spec = sequence_ [go, go1, go2, go3, go4, go5]
                     let t = fromJust $ mbTime "2022-02-17T00:01:00Z"
                     t `shouldSatisfy` (< now)
             in  desc $ as target
-        
         go5 =
             let desc as = describe "findNextTime" as
                 as func = it "find the next time point from now given a set DigestInterval value" func
@@ -53,3 +52,20 @@ spec = sequence_ [go, go1, go2, go3, go4, go5]
                     t1 `shouldSatisfy` (\x -> diffUTCTime t1 x <= 7200)
                     t2 `shouldSatisfy` (\x -> let v = diffUTCTime t2 x in v <= 18000)
             in  desc $ as target
+        go6 =
+            let desc as = describe "filter items" as
+                as func = it "filters items in or out depending on textual occrrences" func
+                target = do
+                    now <- getCurrentTime 
+                    let i1 = Item "my title" "A new way of Russian nationalism is lashing out all over Western Europe" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
+                        i2 = Item "my title" "Until dawn we won't know what happened" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
+                        i3 = Item "my title" "something" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
+                        onlyD = filter (include ["Dawn"]) [i1, i2, i3]
+                        exceptN = filter (exclude ["nationalisM"]) [i1, i2, i3]
+                    onlyD `shouldBe` [i2]
+                    exceptN `shouldBe` [i2, i3] 
+            in  desc $ as target
+            where
+                include ws i = any
+                    (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) ws
+                exclude ws i = not $ include ws i
