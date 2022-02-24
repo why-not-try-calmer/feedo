@@ -244,10 +244,10 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
             settings_word_matches . 
             sub_settings
         with_filters fs i = all ($ i) fs
-        include filters i = any
-            (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) filters
-        exclude filters i = not . any
-            (\bw -> any (\t -> bw `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) $ filters
+        include ws i = any
+            (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) ws
+        exclude ws i = not $ any
+            (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) ws
         filterItemsWith Settings{..} Nothing items = filter (with_filters [exclude (match_blacklist settings_word_matches)]) items
         filterItemsWith Settings{..} (Just last_time) items = filter (with_filters [exclude (match_blacklist settings_word_matches), fresh]) items
             where
