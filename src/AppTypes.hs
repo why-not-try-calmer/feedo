@@ -76,6 +76,7 @@ type Scope = S.Set FeedLink
 data SearchResult = SearchResult {
     sr_title :: T.Text,
     sr_link :: T.Text,
+    sr_pubdate :: UTCTime,
     sr_feedlink :: T.Text,
     sr_score :: Double
 } deriving (Show, Eq)

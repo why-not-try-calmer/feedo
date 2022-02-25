@@ -60,6 +60,19 @@ mkDigestUrl base _id = base `T.append` "/digests/" `T.append` _id
 mkAccessSettingsUrl :: T.Text -> T.Text -> T.Text
 mkAccessSettingsUrl base token = base `T.append` "/settings/index.html?access_token=" `T.append` token
 
+intoTimeLine :: [Item] -> T.Text
+intoTimeLine = fst . foldl' step (mempty, 0)
+    where
+        step (!str, !d) i =
+            let day = utctDay $ i_pubdate i
+                (_, _, d') = toGregorian day
+                date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
+            in  if d == d'
+                then (str `T.append` finish (i_title i) (i_link i), d)
+                else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
+                    finish (i_title i) (i_link i), d')
+        finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
+
 class Renderable e where
     render :: e -> T.Text
 
@@ -140,17 +153,7 @@ instance Renderable SubChat where
             in T.append rendered "\n\nToo many settings? Check out the docs for examples: https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md"
 
 instance Renderable [Item] where
-    render = fst . foldl' into_timeline (mempty, 0)
-        where
-        into_timeline (!str, !d) i =
-            let day = utctDay $ i_pubdate i
-                (_, _, d') = toGregorian day
-                date = T.pack . formatTime defaultTimeLocale "%A, %B %e, %Y" $ i_pubdate i
-            in  if d == d'
-                then (str `T.append` finish (i_title i) (i_link i), d)
-                else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
-                    finish (i_title i) (i_link i), d')
-        finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
+    render = intoTimeLine
 
 instance Renderable ([(FeedLink, [Item])], Int) where
     render (!f_items, !collapse_size) =
@@ -175,12 +178,12 @@ instance Renderable ([(FeedLink, [Item])], Int) where
         in  foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
-    render (keys, items) =
-        let body t = toHrefEntities Nothing (sr_title t) (sr_link t)
+    render (keys, search_res) =
+        let items = map (\SearchResult{..} -> Item sr_title mempty sr_link sr_feedlink sr_pubdate) search_res
         in  "Results from your search with keywords "
                 `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
                 `T.append` ":\n"
-                `T.append` foldl' (\acc t -> acc `T.append` "- " `T.append` body t `T.append` "\n") mempty items
+                `T.append` render items
 
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
@@ -258,6 +261,7 @@ mkReply FromStart = ChatReply renderCmds True True False
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"
     [
+        "/admin: manage the chat settings from the comfort of a web browser",
         "/changelog: link to the changelog",
         "/feed `<# or url>`: show info about the subscribed to feed",
         "/fresh `<n>`: display n-old items, in number of days",
@@ -276,6 +280,7 @@ renderCmds = T.intercalate "\n"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
+admin - manage your chat settings from the Web.
 changelog - recent changes to the bot
 feed - <# or url> info about the feed
 fresh - <n> n-old items, in number of days

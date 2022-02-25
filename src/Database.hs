@@ -15,11 +15,11 @@ import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
 import Data.List (sortOn)
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, addUTCTime, diffUTCTime, getCurrentTime, UTCTime)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
@@ -142,7 +142,7 @@ writeOrRetry res env action =
     if not $ failed res then pure DbOk
     else openDbHandle env >> action >>= \case
         Left _ -> liftIO $ giveUp env res
-        Right retried -> if failed retried then liftIO $ giveUp env retried else pure DbOk
+        Right retried -> if not $ failed retried then pure DbOk else liftIO $ giveUp env retried
     where
         giveUp config err = do
             writeChan (postjobs config) . JobTgAlert $
@@ -167,6 +167,7 @@ buildSearchQuery ws mb_last_time =
                 "i_title" =: (1 :: Int),
                 "i_feed_link" =: (1 :: Int),
                 "i_link"=: (1 :: Int),
+                "i_pubdate" =: (1 :: Int),
                 "score" =: [ "$meta" =: ("searchScore" :: T.Text)]
             ]]
     in  case mb_last_time of
@@ -179,18 +180,18 @@ evalMongo env (DbAskForLogin uid cid) =
         get_doc = findOne $ select selector "admins"
         write_doc h n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
         delete_doc = deleteOne $ select selector "admins"
-    in  liftIO getCurrentTime >>= \now -> 
+    in  liftIO getCurrentTime >>= \now ->
         withMongo env get_doc >>= \case
             Left _ -> pure . DbErr $ FaultyToken
             Right Nothing -> do
-                h <- mkSafeHash 
+                h <- mkSafeHash
                 _ <- withMongo env (write_doc h now)
                 pure $ DbToken h
             Right (Just doc) -> do
                 when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env delete_doc >> pure ())
                 pure $ DbToken . admin_token . readDoc $ doc
     where
-        mkSafeHash = liftIO getSystemTime <&> 
+        mkSafeHash = liftIO getSystemTime <&>
             T.pack . show . hashWith SHA256 . B.pack . show
 evalMongo env (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
@@ -219,13 +220,17 @@ evalMongo env (DbSearch keywords scope last_time) =
             let mkSearchRes doc =
                     let title = M.lookup "i_title" doc
                         link = M.lookup "i_link" doc
+                        pubdate = M.lookup "i_pubdate" doc :: Maybe UTCTime
                         f_link = M.lookup "i_feed_link" doc
-                        score = M.lookup "score" doc
-                    in  case sequence [title, link, f_link] :: Maybe [T.Text] of
-                        Just [t, l, fl] -> case score :: Maybe Double of
-                            Nothing -> Nothing
-                            Just s -> Just $ SearchResult t l fl s
-                        _ -> Nothing
+                        score = M.lookup "score" doc :: Maybe Double
+                        nothings = [isNothing title, isNothing link, isNothing pubdate, isNothing f_link, isNothing score]
+                    in  if or nothings then Nothing else Just $ SearchResult {
+                            sr_title = fromJust title,
+                            sr_link = fromJust link,
+                            sr_pubdate = fromJust pubdate,
+                            sr_feedlink = fromJust f_link,
+                            sr_score = fromJust score
+                    }
                 sort_limit = take 10 . sortOn (Down . sr_score)
                 rescind = filter (\sr -> sr_feedlink sr `elem` scope)
                 payload r =
@@ -388,7 +393,7 @@ bsonToChat doc =
             settings_digest_size = fromMaybe (settings_digest_size defaultChatSettings) $ M.lookup "settings_digest_size" settings_doc :: Int,
             settings_digest_title = fromMaybe (settings_digest_title defaultChatSettings) $ M.lookup "settings_digest_title" settings_doc,
             settings_digest_start = fromMaybe (settings_digest_start defaultChatSettings) $ M.lookup "settings_digest_start" settings_doc :: Maybe UTCTime,
-            settings_paused = fromMaybe False $ M.lookup "settings_paused" settings_doc,
+            settings_paused = Just True == M.lookup "settings_paused" settings_doc,
             settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ M.lookup "settings_disable_web_view" settings_doc,
             settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc,
             settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc,

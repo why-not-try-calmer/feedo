@@ -1,4 +1,5 @@
 module Utils where
+
 import AppTypes
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
@@ -13,6 +14,7 @@ import Data.Time.Clock.POSIX
   )
 import Data.Time.Format.ISO8601
 import TgramOutJson (ChatId)
+
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
