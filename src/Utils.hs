@@ -230,12 +230,11 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
                 scope = match_only_search_results . settings_word_matches . sub_settings $ c
                 query = match_searchset . settings_word_matches . sub_settings $ c
             in  foldl' (\acc i -> 
-                    let k = 
-                            if i_feed_link i `S.member` scope then fresher_than i (sub_last_digest c) && 
-                            i `has_keywords` query &&
-                            i `lacks_keywords` bl
-                            else fresher_than i (sub_last_digest c) && i `lacks_keywords` bl
-                    in  if k then i:acc else acc) [] is
+                    let off_scope = [fresher_than i (sub_last_digest c), i `lacks_keywords` bl]
+                        in_scope = off_scope ++ [i `has_keywords` query]
+                    in  if i_feed_link i `S.member` scope then 
+                            if and in_scope then i:acc else acc
+                        else if and off_scope then i:acc else acc) [] is
         fresher_than _ Nothing = True
         fresher_than i (Just t) = t < i_pubdate i
         has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) kws
