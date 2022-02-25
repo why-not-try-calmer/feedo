@@ -67,9 +67,11 @@ data Digest = Digest {
 
 {- Searches -}
 
-type Scope = S.Set T.Text
-
 type Keywords = S.Set T.Text
+
+type FeedLink = T.Text
+
+type Scope = S.Set FeedLink
 
 data SearchResult = SearchResult {
     sr_title :: T.Text,
@@ -87,14 +89,10 @@ data DigestInterval = DigestInterval {
 
 $(deriveJSON defaultOptions ''DigestInterval)
 
-type FeedLink = T.Text
-
-type BlackList = S.Set T.Text
-
 data WordMatches = WordMatches {
-    match_blacklist :: BlackList,
-    match_searchset :: Scope,
-    match_only_search_results :: S.Set FeedLink
+    match_blacklist :: Keywords,
+    match_searchset :: Keywords,
+    match_only_search_results :: Scope
 } deriving (Show, Eq)
 
 $(deriveJSON defaultOptions { fieldLabelModifier = drop 6 } ''WordMatches)

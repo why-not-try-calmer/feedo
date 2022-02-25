@@ -60,12 +60,11 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6]
                     let i1 = Item "my title" "A new way of Russian nationalism is lashing out all over Western Europe" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
                         i2 = Item "my title" "Until dawn we won't know what happened" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
                         i3 = Item "my title" "something" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
-                        onlyD = filter (include ["Dawn"]) [i1, i2, i3]
-                        exceptN = filter (exclude ["nationalisM"]) [i1, i2, i3]
+                        onlyD = filter (\i -> i `has_keywords` ["Dawn"]) [i1, i2, i3]
+                        exceptN = filter (\i -> i `lacks_keywords` ["nationalisM"]) [i1, i2, i3]
                     onlyD `shouldBe` [i2]
                     exceptN `shouldBe` [i2, i3] 
             in  desc $ as target
             where
-                include ws i = any
-                    (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) ws
-                exclude ws i = not $ include ws i
+                has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) kws
+                lacks_keywords i kws = not $ has_keywords i kws
