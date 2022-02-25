@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Utils where
 import AppTypes
 import qualified Data.HashMap.Strict as HMS
@@ -222,32 +220,23 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
             let is = f_items f
                 l = f_link f
                 feeds_items =
-                    let fresh = 
-                            take (settings_digest_size . sub_settings $ c) . 
-                            fresh_filtered c $ is
-                    in  if (l `notElem` recipes) || null fresh
-                        then fs
-                        else f { f_items = fresh }:fs
+                    let fresh = take (settings_digest_size . sub_settings $ c) . fresh_filtered c $ is
+                    in  if l `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
             in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
         fresh_filtered c is =
-            let filtered_on_time_and_blacklist = filterItemsWith (sub_settings c) (sub_last_digest c) is
-            in  if S.null $ search_filters c
-                then filtered_on_time_and_blacklist
-                else foldl' (\acc i ->
-                    if (i_feed_link i `S.notMember` search_filters c) || include (search_filters c) i
-                    then i:acc 
-                    else acc) [] filtered_on_time_and_blacklist
-        search_filters = 
-            match_only_search_results . 
-            settings_word_matches . 
-            sub_settings
-        with_filters fs i = all ($ i) fs
-        include ws i = any
-            (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) ws
-        exclude ws i = not $ include ws i
-        filterItemsWith Settings{..} Nothing items = filter (with_filters [exclude (match_blacklist settings_word_matches)]) items
-        filterItemsWith Settings{..} (Just last_time) items = filter (with_filters [exclude (match_blacklist settings_word_matches), fresh]) items
-            where
-                fresh i = last_time < i_pubdate i
+            let bl = match_blacklist . settings_word_matches . sub_settings $ c
+                scope = match_only_search_results . settings_word_matches . sub_settings $ c
+                query = match_searchset . settings_word_matches . sub_settings $ c
+            in  foldl' (\acc i -> 
+                    let k = 
+                            if i_feed_link i `S.member` scope then fresher_than i (sub_last_digest c) && 
+                            i `has_keywords` query &&
+                            i `lacks_keywords` bl
+                            else fresher_than i (sub_last_digest c) && i `lacks_keywords` bl
+                    in  if k then i:acc else acc) [] is
+        fresher_than _ Nothing = True
+        fresher_than i (Just t) = t < i_pubdate i
+        has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) kws
+        lacks_keywords i kws = not $ has_keywords i kws
