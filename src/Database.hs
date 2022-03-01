@@ -85,7 +85,7 @@ withMongo config action = go >>= \case
         in  authWith creds pipe >>= \case
             Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
             Right _ -> go >>= \case
-                Left e -> alertGiveUp $ "Giving up on" ++ show e
+                Left e -> alertGiveUp $ "Giving up after successful re-authentication on: " ++ show e
                 Right r -> pure $ Right r
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
