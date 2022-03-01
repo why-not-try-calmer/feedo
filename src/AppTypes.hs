@@ -8,7 +8,6 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import Data.Aeson.TH (Options (fieldLabelModifier, omitNothingFields), defaultOptions, deriveJSON)
 import qualified Data.HashMap.Strict as HMS
-import Data.IORef (IORef)
 import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -418,7 +417,7 @@ data Job =
 data AppConfig = AppConfig
   { last_worker_run :: Maybe UTCTime,
     db_config :: DbCreds,
-    db_connector :: IORef DbConnector,
+    db_connector :: DbConnector,
     tg_config :: ServerConfig,
     base_url :: T.Text,
     feeds_state :: MVar KnownFeeds,

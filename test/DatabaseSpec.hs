@@ -2,17 +2,17 @@ module DatabaseSpec where
 
 import AppServer (makeConfig)
 import AppTypes
+import Control.Concurrent (newChan, newEmptyMVar)
+import Control.Exception
 import Control.Monad.IO.Class
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
-import Database (Db (evalDb, openDbHandle), checkDbMapper)
+import Database
+import Database (Db (evalDb), checkDbMapper)
 import System.Environment (getEnvironment)
 import Test.Hspec
-import Control.Concurrent (newEmptyMVar, newChan)
-import Data.IORef (newIORef)
 
 instance MonadIO m => Db (TestApp m) where
-    openDbHandle _ = pure ()
     evalDb _ action = liftIO getCurrentTime >>= \now -> case action of
         DbAskForLogin _ _ -> pure $ DbToken mempty
         CheckLogin _ -> pure $ DbLoggedIn 0
@@ -41,11 +41,13 @@ testConfig = do
     mvar1 <- newEmptyMVar
     mvar2 <- newEmptyMVar
     chan <- newChan
-    ioref <- newIORef FakeConnector
+    pipe <- initConnectionMongo db >>= \case
+        Left err -> throwIO . userError $ T.unpack $ renderDbError err
+        Right pipe -> pure pipe
     pure AppConfig { 
         last_worker_run = t,
         db_config = db,
-        db_connector = ioref,
+        db_connector = pipe,
         tg_config = tg,
         base_url = ba,
         feeds_state = mvar1,

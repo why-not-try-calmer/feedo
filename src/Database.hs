@@ -13,7 +13,6 @@ import qualified Data.ByteString.Char8 as B
 import Data.Foldable (Foldable (foldl'), traverse_)
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
-import Data.IORef (readIORef)
 import Data.List (sortOn)
 import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Ord
@@ -24,7 +23,6 @@ import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
-import GHC.IORef (atomicSwapIORef)
 import Text.Read (readMaybe)
 import Utils (defaultChatSettings)
 
@@ -66,26 +64,13 @@ instance MongoDoc AdminUser where
     checks v = v == (readDoc . writeDoc $ v)
 
 class Db m where
-    openDbHandle :: AppConfig -> m ()
     evalDb :: AppConfig -> DbAction -> m DbRes
 
 instance MonadIO m => Db (App m) where
-    openDbHandle config = initConnectionMongo (db_config config) >>= \case
-        Left err -> liftIO . print $ renderDbError err
-        Right p -> installPipe p config
     evalDb = evalMongo
 
 instance Db IO where
-    openDbHandle = openDbHandle
     evalDb = evalMongo
-
-{- Setup -}
-
-installPipe :: MonadIO m => DbConnector -> AppConfig -> m ()
-installPipe (MongoPipe pipe) config = void . liftIO $ atomicSwapIORef
-    (db_connector config)
-    (MongoPipe pipe)
-installPipe _ _ = undefined
 
 {- Evaluation -}
 
@@ -95,8 +80,8 @@ runMongo pipe = access pipe master "feedfarer"
 withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
 withMongo config action = go >>= \case
     Left (ConnectionFailure err) -> do
-        alert err >> openDbHandle config >> go >>= \case
-            Left (e :: Failure) -> alertGiveUp e
+        alert err >> go >>= \case
+            Left e -> alertGiveUp $ "Giving up on" ++ show e
             Right r -> pure $ Right r
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
@@ -106,7 +91,7 @@ withMongo config action = go >>= \case
             "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
             " If the connector timed out, one retry will be carried out."
         go = liftIO $ do
-            MongoPipe pipe <- readIORef $ db_connector config
+            let (MongoPipe pipe) = db_connector config
             try $ runMongo pipe action
 
 {- Connection -}
@@ -140,7 +125,7 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
 writeOrRetry :: (MonadIO m, Db m) => WriteResult -> AppConfig -> m (Either () WriteResult) -> m DbRes
 writeOrRetry res env action =
     if not $ failed res then pure DbOk
-    else openDbHandle env >> action >>= \case
+    else action >>= \case
         Left _ -> liftIO $ giveUp env res
         Right retried -> if not $ failed retried then pure DbOk else liftIO $ giveUp env retried
     where

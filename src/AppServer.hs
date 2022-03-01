@@ -8,7 +8,6 @@ import Control.Concurrent (newChan, newMVar)
 import Control.Exception (throwIO)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
-import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Database (initConnectionMongo)
@@ -103,9 +102,9 @@ makeConfig env =
     mvar1 <- newMVar HMS.empty
     mvar2 <- newMVar HMS.empty
     chan <- newChan
-    pipe_ref <- initConnectionMongo creds >>= \case
+    pipe <- initConnectionMongo creds >>= \case
         Left err -> throwIO . userError $ T.unpack $ renderDbError err
-        Right pipe -> newIORef pipe
+        Right pipe -> pure pipe
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         base_url = base,
@@ -115,7 +114,7 @@ makeConfig env =
         postjobs = chan,
         worker_interval = interval,
         db_config = creds,
-        db_connector = pipe_ref
+        db_connector = pipe
         }, port, starting_feeds)
 
 initStart :: AppConfig -> Maybe [T.Text] -> IO ()
