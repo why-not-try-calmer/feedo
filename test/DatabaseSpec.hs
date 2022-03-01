@@ -7,8 +7,7 @@ import Control.Exception
 import Control.Monad.IO.Class
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
-import Database
-import Database (Db (evalDb), checkDbMapper)
+import Database (Db (evalDb), checkDbMapper, initConnectionMongo)
 import System.Environment (getEnvironment)
 import Test.Hspec
 
