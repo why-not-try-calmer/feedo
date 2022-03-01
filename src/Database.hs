@@ -79,10 +79,14 @@ runMongo pipe = access pipe master "feedfarer"
 
 withMongo :: (Db m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
 withMongo config action = go >>= \case
-    Left (ConnectionFailure err) -> do
-        alert err >> go >>= \case
-            Left e -> alertGiveUp $ "Giving up on" ++ show e
-            Right r -> pure $ Right r
+    Left (ConnectionFailure err) -> alert err >>
+        let (MongoPipe pipe) = db_connector config
+            creds = db_config config
+        in  authWith creds pipe >>= \case
+            Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
+            Right _ -> go >>= \case
+                Left e -> alertGiveUp $ "Giving up on" ++ show e
+                Right r -> pure $ Right r
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
     where
