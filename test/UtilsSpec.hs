@@ -2,15 +2,18 @@
 module UtilsSpec where
 
 import Test.Hspec
-import Utils (partitionEither, fromEither, maybeUserIdx, scanTimeSlices, findNextTime, mbTime)
+import Utils (partitionEither, fromEither, maybeUserIdx, scanTimeSlices, findNextTime, mbTime, defaultChatSettings, notifFrom)
 import qualified Data.Text as T
 import Data.Int (Int64)
 import Data.Time (getCurrentTime, readTime, diffUTCTime)
-import AppTypes (DigestInterval(DigestInterval), Item (Item, i_link, i_title), i_desc)
+import AppTypes (DigestInterval(DigestInterval), Item (Item, i_link, i_title, i_feed_link), i_desc, Feed (f_link, Feed), BatchRecipe (DigestFeedLinks), FeedType (Rss), SubChat (SubChat), Batch (Digests, Follows), Settings (settings_word_matches), WordMatches (WordMatches))
 import Data.Maybe
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.Set as S
+import TgramOutJson (ChatId)
 
 spec :: Spec
-spec = sequence_ [go, go1, go2, go3, go4, go5, go6]
+spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
     where
         go =
             let desc as = describe "partitionEither" as
@@ -57,14 +60,38 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6]
                 as func = it "filters items in or out depending on textual occrrences" func
                 target = do
                     now <- getCurrentTime 
-                    let i1 = Item "my title" "A new way of Russian nationalism is lashing out all over Western Europe" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
-                        i2 = Item "my title" "Until dawn we won't know what happened" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
+                    let i1 = Item "HackerNews item" "Here is my target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
+                        i2 = Item "Python item" "Until dawn we won't know what happened" "https://pyton.org/item" "https://python.org" now
                         i3 = Item "my title" "something" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
-                        onlyD = filter (\i -> i `has_keywords` ["Dawn"]) [i1, i2, i3]
-                        exceptN = filter (\i -> i `lacks_keywords` ["nationalisM"]) [i1, i2, i3]
-                    onlyD `shouldBe` [i2]
-                    exceptN `shouldBe` [i2, i3] 
+                        onlyD = filter (\i -> i `has_keywords` ["is"]) [i1, i2, i3]
+                        exceptN = filter (\i -> i `lacks_keywords` ["my"]) [i1, i2, i3]
+                    onlyD `shouldBe` [i1]
+                    exceptN `shouldBe` [i2] 
             in  desc $ as target
             where
                 has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) kws
                 lacks_keywords i kws = not $ has_keywords i kws
+        go7 = 
+            let desc as = describe "notifFrom" as
+                as func = it "filter items according to chat settings, and prepares notifications accordingly" func
+                target = do
+                    now <- getCurrentTime
+                    let i1 = Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
+                        i2 = Item "Python item" "Until dawn we won't know what happened" "https://pyton.org/item" "https://python.org" now
+                        fl = map i_feed_link [i1, i2]
+                        f1 = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" [i1] Nothing Nothing 0
+                        f2 = Feed Rss "Python.org Description" "Python.org Title" "https://python.org" [i2] Nothing Nothing 0
+                        known_feeds = HMS.fromList $ map (\f -> (f_link f, f)) [f1, f2]
+                        dg = DigestFeedLinks fl
+                        word_b = WordMatches S.empty (S.fromList ["Target"]) (S.fromList ["https://hnrss.org/frontpage"])
+                        c = SubChat 0 Nothing Nothing (S.fromList fl) defaultChatSettings { 
+                                settings_word_matches = word_b
+                            }
+                        hmap = HMS.fromList [(0, (c, dg))] :: HMS.HashMap ChatId (SubChat, BatchRecipe)
+                    (label, val) <- case HMS.lookup 0 (notifFrom fl known_feeds hmap) of 
+                        Nothing -> undefined
+                        Just (_, b) -> case b of 
+                            Digests fs -> pure ("Digests", fs)
+                            Follows fs' -> pure ("Follow", fs')
+                    (label, val) `shouldSatisfy` (\(l, v) -> l == "Digests" && length v == 2)
+            in  desc $ as target

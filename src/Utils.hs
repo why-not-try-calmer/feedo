@@ -219,25 +219,23 @@ notifFrom ::
 notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
     let recipes = readBatchRecipe batch
         collected = foldl' (\fs f ->
-            let is = f_items f
-                l = f_link f
-                feeds_items =
-                    let fresh = take (settings_digest_size . sub_settings $ c) . fresh_filtered c $ is
-                    in  if l `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
+            let feeds_items =
+                    let fresh = take (settings_digest_size . sub_settings $ c) . fresh_filtered c . f_items $ f
+                    in  if f_link f `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
             in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
         fresh_filtered c is =
             let bl = match_blacklist . settings_word_matches . sub_settings $ c
-                scope = match_only_search_results . settings_word_matches . sub_settings $ c
-                query = match_searchset . settings_word_matches . sub_settings $ c
-            in  foldl' (\acc i -> 
+                only_search_notif = match_only_search_results . settings_word_matches . sub_settings $ c
+                search_notif = match_searchset . settings_word_matches . sub_settings $ c
+            in  foldl' (\acc i ->
                     let off_scope = [fresher_than i (sub_last_digest c), i `lacks_keywords` bl]
-                        in_scope = off_scope ++ [i `has_keywords` query]
-                    in  if i_feed_link i `S.member` scope then 
+                        in_scope = off_scope ++ [i `has_keywords` search_notif]
+                    in  if i_feed_link i `S.member` only_search_notif then
                             if and in_scope then i:acc else acc
                         else if and off_scope then i:acc else acc) [] is
         fresher_than _ Nothing = True
         fresher_than i (Just t) = t < i_pubdate i
-        has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i]) kws
+        has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i]) kws
         lacks_keywords i kws = not $ has_keywords i kws

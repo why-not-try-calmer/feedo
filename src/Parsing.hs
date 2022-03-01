@@ -146,7 +146,7 @@ parseSettings :: [T.Text] -> Either T.Text [ParsingSettings]
 parseSettings [] = Left "Unable to parse from an empty list of strings."
 parseSettings lns = case foldr mkPairs Nothing lns of
     Nothing -> Left "Unable to parse the settings you've sent, please respect the format: \
-        \ /set <optional: chat_id>\nkey: val val\nkey:val val"
+        \ /set <optional: chat_id>\nkey: val"
     Just pairs ->
         let (not_parsed, parsed) = foldl' intoParsing ([],[]) pairs in
         if null not_parsed then Right parsed

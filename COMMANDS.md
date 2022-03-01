@@ -93,7 +93,7 @@ _Remarks_:
 - all defaults can be reset to their default value with:
     ```
     /set
-    <key>: reset`
+    <key>: reset
     ```
 - when `digest_at` is set, `digest_every` is used a step in terms of number of days. Values below "1d" are ignored. This means you can set
     ```
