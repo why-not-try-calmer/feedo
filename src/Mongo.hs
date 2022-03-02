@@ -139,23 +139,6 @@ withMongo config action = go >>= \case
         
 {- Actions -}
 
-writeOrRetry :: (MonadIO m, HasMongo m) => 
-    WriteResult -> 
-    AppConfig -> 
-    m (Either () WriteResult) -> 
-    m DbRes
-writeOrRetry res env action =
-    if not $ failed res then pure DbOk
-    else action >>= \case
-        Left _ -> liftIO $ giveUp env res
-        Right retried -> if not $ failed retried then pure DbOk else liftIO $ giveUp env retried
-    where
-        giveUp config err = do
-            writeChan (postjobs config) . JobTgAlert $
-                "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
-                " If the connector timed out, one retry will be carried out."
-            pure . DbErr $ FailedToUpdate "writeOrRetry failed for this reason: " (T.pack . show $ res)
-
 buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
 buildSearchQuery ws mb_last_time =
     let search = [
@@ -217,7 +200,9 @@ evalMongo env (ArchiveItems feeds) =
         action = withMongo env $ updateAll "items" selector
     in  action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
-        Right res -> writeOrRetry res env action
+        Right res -> 
+            if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+            else pure DbOk
 evalMongo env (DbSearch keywords scope last_time) =
     let action = aggregate "items" $ buildSearchQuery keywords last_time
     in  withMongo env action >>= \case
@@ -300,13 +285,17 @@ evalMongo env (UpsertChats chatshmap) =
         action = withMongo env $ updateAll "chats" selector
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
-        Right res -> writeOrRetry res env action
+        Right res ->
+            if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+            else pure DbOk
 evalMongo env (UpsertFeeds feeds) =
     let selector = map (\f -> (["f_link" =: f_link f], writeDoc f, [Upsert])) feeds
         action = withMongo env $ updateAll "feeds" selector
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
-        Right res -> writeOrRetry res env action
+        Right res -> 
+            if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+            else pure DbOk
 evalMongo env (View flinks start end) =
     let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
     in  withMongo env query >>= \case
