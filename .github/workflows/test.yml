@@ -10,12 +10,7 @@ on:
 jobs:
   build:
     runs-on: 'ubuntu-latest'
-    env:
-       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-       BASE_URL: ${{ secrets.BASE_URL }}
-       ALERT_CHATID: ${{ secrets.ALERT_CHATID }}
-       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-       MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
+    
     steps:
     - uses: actions/checkout@v2
 
@@ -23,6 +18,13 @@ jobs:
       uses: docker/setup-buildx-action@v1
       
     - name: Build & run tests
+      env:
+       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+       BASE_URL: ${{ secrets.BASE_URL }}
+       ALERT_CHATID: ${{ secrets.ALERT_CHATID }}
+       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+       MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
       run: |
+        echo '${BASE_URL}'
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
