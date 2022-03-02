@@ -6,12 +6,12 @@ services:
         build: .
         command: stack test
         ports: [80:80]
-        secretsironment:
+        environment:
          - TELEGRAM_TOKEN=${{secrets.TELEGRAM_TOKEN}}}
-         - BASE_URL=${secrets.BASE_URL}
-         - ALERT_CHATID=${secrets.ALERT_CHATID}
-         - WEBHOOK_URL=${secrets.WEBHOOK_URL}
-         - MONGO_CONN_STRING=${secrets.MONGO_CONN_STRING}
+         - BASE_URL=${{secrets.BASE_URL}}
+         - ALERT_CHATID=${{secrets.ALERT_CHATID}}
+         - WEBHOOK_URL=${{secrets.WEBHOOK_URL}}
+         - MONGO_CONN_STRING=${{secrets.MONGO_CONN_STRING}}
     redis:
         image: redis:latest
         ports: [6379:6379]
