@@ -1,0 +1,21 @@
+version: "3"
+services:
+    feedfarer:
+        image: adrienazure.azurecr.io/feedfarer-master
+        depends_on: [redis]
+        restart: on-failure
+        build: .
+        command: stack exec feedfarer-exe
+        ports: [80:80]
+        environment:
+         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+         BASE_URL: ${BASE_URL}
+         ALERT_CHATID: ${ALERT_CHATID}
+         WEBHOOK_URL: ${WEBHOOK_URL}
+         MONGO_CONN_STRING: ${MONGO_CONN_STRING}
+    redis:
+        image: redis:latest
+        ports: [6379:6379]
+        restart: always
+        volumes:
+          - /data/redis-store

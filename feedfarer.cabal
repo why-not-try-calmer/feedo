@@ -1,0 +1,159 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           feedfarer
+version:        1.1
+description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
+homepage:       https://github.com/githubuser/feedfarer#readme
+bug-reports:    https://github.com/githubuser/feedfarer/issues
+author:         Adrien Glauser
+maintainer:     mrnycticorax@gmail.com
+copyright:      2021 Adrien Glauser
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/feedfarer
+
+library
+  exposed-modules:
+      AppServer
+      AppTypes
+      Backend
+      Broker
+      Jobs
+      Mongo
+      Parsing
+      Redis
+      Replies
+      Requests
+      TgActions
+      TgramInJson
+      TgramOutJson
+      Utils
+      Web
+  other-modules:
+      Paths_feedfarer
+  hs-source-dirs:
+      src
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
+      StrictData
+      BangPatterns
+  ghc-options: -Wall
+  build-depends:
+      aeson
+    , async
+    , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
+    , bytestring
+    , containers
+    , cryptonite
+    , hedis
+    , hspec
+    , mongoDB
+    , mtl
+    , req
+    , servant-blaze
+    , servant-server
+    , text
+    , time
+    , unordered-containers
+    , uri-encode
+    , wai
+    , warp
+    , xml-conduit
+  default-language: Haskell2010
+
+executable feedfarer-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_feedfarer
+  hs-source-dirs:
+      app
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
+      StrictData
+      BangPatterns
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
+  build-depends:
+      aeson
+    , async
+    , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
+    , bytestring
+    , containers
+    , cryptonite
+    , feedfarer
+    , hedis
+    , hspec
+    , mongoDB
+    , mtl
+    , req
+    , servant-blaze
+    , servant-server
+    , text
+    , time
+    , unordered-containers
+    , uri-encode
+    , wai
+    , warp
+    , xml-conduit
+  default-language: Haskell2010
+
+test-suite feedfarer-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      BrokerSpec
+      DatabaseSpec
+      ParsingSpec
+      RequestsSpec
+      TgActionsSpec
+      UtilsSpec
+      WebBrowserSpec
+      Paths_feedfarer
+  hs-source-dirs:
+      test
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
+      StrictData
+      BangPatterns
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , async
+    , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
+    , bytestring
+    , containers
+    , cryptonite
+    , feedfarer
+    , hedis
+    , hspec
+    , mongoDB
+    , mtl
+    , req
+    , servant-blaze
+    , servant-server
+    , text
+    , time
+    , unordered-containers
+    , uri-encode
+    , wai
+    , warp
+    , xml-conduit
+  default-language: Haskell2010

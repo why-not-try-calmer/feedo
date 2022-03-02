@@ -1,0 +1,28 @@
+name: GitHub Test suite
+
+on: 
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: 'ubuntu-latest'
+    env:
+       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+       BASE_URL: ${{ secrets.BASE_URL }}
+       ALERT_CHATID: ${{ secrets.ALERT_CHATID }}
+       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+       MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+      
+    - name: Build & run tests
+      run: |
+        docker-compose -f test-build.yml up \
+          --abort-on-container-exit

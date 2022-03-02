@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+    <html lang="en-US">
+    <head>
+        <script type="text/javascript" src="scripts.js"></script>
+        <link rel="stylesheet" href="styles.css">
+        <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,300,300italic,400italic,600' rel='stylesheet' type='text/css'>
+        <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet">
+        <title>Feedfarer Settings Editor</title>
+    </head>
+    <body>
+        <h2>Manage your settings</h2>
+        <p id="chat_id"></p>
+        <p id="access_token"></p>
+        <!-- <p>Seconds left before token expiration: <span id="time_left"></span></p> -->
+        <form id="form">
+            <div id="digests">
+                <h4>Digests</h4>
+                <label for="title">digest_title</label>
+                <div class="tooltip">[?]<span class="tooltiptext">The title of your daily digest</span></div>
+                <input type="text" id="digest_title" name="digest_title" placeholder="title">
+                <button type="text" class="field_resetter" name="digest_title">reset</button>
+                <br />
+                <label for="start">digest_start (UTC)</label>
+                <div class="tooltip">[?]<span class="tooltiptext">Use this setting to schedule a new digest at the given time. No digest will be sent until then.</span></div>
+                <input type="text" name="start_yyyy" placeholder="yyyy"><input type="text" name="start_mm" placeholder="mm"><input type="text" name="start_dd" placeholder="dd">
+                <br />
+                <label for="digest_every_secs">digest_every</label>
+                <div class="tooltip">[?]<span class="tooltiptext">A number of seconds to use as interval between digests. You can use this settings together with 'display_at' below.</span></div>
+                <input type="text" id="digest_every_secs" name="digest_every_secs" placeholder="seconds">
+                <input type="text" id="digest_every_secs_helper" name="every_n_helper" disabled>
+                <button type="text" class="field_resetter" name="digest_every">reset</button>
+                <br />
+                <label for="digest_at">digest_at (UTC)</label>
+                <div class="tooltip">[?]<span class="tooltiptext">A sequence of times at which you want to receive digests.</span></div>
+                <input type="text" id="digest_at" name="digest_at" placeholder="HH:MM HH:MM HH:MM...">
+                <button type="text" class="field_resetter" name="digest_at">reset</button>
+                <br />
+                <label for="size">digest_size</label>
+                <div class="tooltip">[?]<span class="tooltiptext">The maximum number of items to list in each digest.</span></div>
+                <input type="text" id="digest_size" name="digest_size" placeholder="nb of items in a digest">
+                <button type="text" class="field_resetter" name="digest_size">reset</button>
+                <br />
+                <label for="digest_collapse">digest_collapse</label>
+                <div class="tooltip">[?]<span class="tooltiptext">Use this setting to keep digests short. The value here will be used as a maximum number of items to include with each digest, but the remaining items will still be available from the web page associated with the digest.</span></div>
+                <input type="text" id="digest_collapse" name="digest_collapse" placeholder="max nb to keep when collapsing">
+                <button type="text" class="field_resetter" name="digest_collapse">reset</button>                
+            </div>
+            <div>
+                <h4>Blacklisted keywords</h4>
+                <label for="blacklist">blacklist</label>
+                <div class="tooltip">[?]<span class="tooltiptext">If an item (across all feeds) includes a word from this list, it won't appear anywhere.</span></div>
+                <textarea rows="3" cols="30" id="blacklist" name="blacklist" placeholder="keyword1 keyword2..."></textarea>
+                <button type="text" class="field_resetter" name="blacklist">reset</button>
+            </div>
+            <div id="searches">
+                <h4>Searches</h4>
+                <label for="searchset">searchset</label>
+                <div class="tooltip">[?]<span class="tooltiptext">If an item (across all feeds) includes a word from this list, you will get a 'special' notification to let you know about it.</span></div>
+                <textarea rows="3" cols="30" id="searchset" name="searchset" placeholder="keyword1 keyword2..."></textarea>
+                <button type="text" class="field_resetter" name="searchset">reset</button>
+                <br />
+                <label for="only_search_results">only_search_results</label>
+                <div class="tooltip">[?]<span class="tooltiptext">The url of a feed you're subscribed to occurs in this list, you will never get items from it unless the item matches any of the words from the previous setting.</span></div>
+                <textarea rows="3" cols="30" id="only_search_results" name="only_search_results" placeholder="url1 url2..."></textarea>
+                <button type="text" class="field_resetter" name="only_search_results">reset</button>
+            </div>
+            <div id="misc">
+                <h4>Miscellaneous</h4>
+                <label for="webview">disable_web_view</label>
+                <div class="tooltip">[?]<span class="tooltiptext">Prevent Telegram from displaying a webview of the first link on the list.</span></div>
+                <input type="checkbox" id="disable_web_view" name="disable_web_view">
+                <button type="text" class="field_resetter" name="disable_web_view">reset</button>
+                <br />
+                <label for="follow">follow</label>
+                <div class="tooltip">[?]<span class="tooltiptext">Enable to receive a post every 20 minutes with updates to your feeds. Regular digests will still be sent.</span></div>
+                <input type="checkbox" id="follow" name="follow">
+                <button type="text" class="field_resetter" name="follow">reset</button>
+                <br />
+                <label for="pin">pin</label>
+                <div class="tooltip">[?]<span class="tooltiptext">Enable to let the bot try to pin new digests. The bot needs to be have 'pin rights' for this to work.</span></div>
+                <input type="checkbox" id="pin" name="pin">
+                <button type="text" class="field_resetter" name="pin">reset</button>
+                <br />
+                <label for="share_link">share_link</label>
+                <div class="tooltip">[?]<span class="tooltiptext">Disable to remove the 'share link' at the end of digests. Notice that this setting won't be applied if you have 'collapse' enabled.</span></div>
+                <input type="checkbox" id="share_link" name="share_link">
+                <button type="text" class="field_resetter" name="share_link">reset</button>
+            </div>
+            <br />
+            <button type="submit">Submit</button>
+            <button type="text" id="reset_all">Reset all to defaults</button>
+            <button type="text" id="reload">Load your settings again</button>
+        </form>
+        <div>
+            <div id="success" class="success" style="display:none">
+                <span class="closebtn">&times;</span> 
+                Settings updated! You may now leave this page.
+            </div>
+            <div id="failure" class="failure" style="display:none">
+                <span class="closebtn">&times;</span>
+                Settings update failed or aborted. Get in touch with the developer if this happens again.
+            </div>
+        </div>
+    </body>
+</html>
