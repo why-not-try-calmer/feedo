@@ -25,7 +25,7 @@ jobs:
        WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
        MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
       run: |
-        echo "Are the environment variables set to the appropriate value? Let's find out."
-        echo "${{ secrets.BASE_URL }}""
+        echo Are the environment variables set to the appropriate value? Let's find out.
+        echo ${{ secrets.BASE_URL }}
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
