@@ -24,7 +24,6 @@ jobs:
        ALERT_CHATID: ${{ secrets.ALERT_CHATID }}
        WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
        MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
-      
       run: |
         docker-compose -f test-build.yml up \
           --abort-on-container-exit

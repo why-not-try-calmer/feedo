@@ -26,6 +26,7 @@ import Web
 import Redis (setupRedis)
 import Broker (withCache)
 import Control.Exception (throwIO)
+import Data.IORef (newIORef)
 
 type BotAPI =
     Get '[HTML] Markup :<|>
@@ -100,6 +101,7 @@ makeConfig env =
     (pipe, creds) <- setupMongo mongo_connection_string >>= \case
         Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
         Right p -> pure p
+    pipe_ioref <- newIORef pipe
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         base_url = base,
@@ -108,7 +110,7 @@ makeConfig env =
         subs_state = mvar,
         postjobs = chan,
         worker_interval = interval,
-        connectors = (conn, pipe)
+        connectors = (conn, pipe_ioref)
         }, port)
 
 initStart :: MonadIO m => App m ()
