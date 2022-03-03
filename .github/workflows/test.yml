@@ -19,11 +19,11 @@ jobs:
 
     - name: Build & run tests
       env:
-       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-       BASE_URL: ${{ secrets.BASE_URL }}
-       ALERT_CHATID: ${{ secrets.ALERT_CHATID }}
-       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-       MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
+       TELEGRAM_TOKEN: ${{ secrets.production.TELEGRAM_TOKEN }}
+       BASE_URL: ${{ secrets.production.BASE_URL }}
+       ALERT_CHATID: ${{ secrets.production.ALERT_CHATID }}
+       WEBHOOK_URL: ${{ secrets.production.WEBHOOK_URL }}
+       MONGO_CONN_STRING: ${{ secrets.production.MONGO_CONN_STRING }}
       shell: bash
       run: |
         BASE_URL=$BASE_URL
