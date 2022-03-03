@@ -23,6 +23,7 @@ jobs:
         BASE_URL=$BASE_URL
         echo $BASE_URL
         echo BASE_URL
-        echo '${{ secrets.BASE_URL }}'
+        echo '${{ production.BASE_URL }}'
+        echo '${{ env.BASE_URL }}'
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
