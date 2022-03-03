@@ -23,7 +23,6 @@ jobs:
         BASE_URL=$BASE_URL
         echo $BASE_URL
         echo BASE_URL
-        echo '${{ environment.BASE_URL }}'
         echo '${{ env.BASE_URL }}'
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
