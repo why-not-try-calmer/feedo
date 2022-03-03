@@ -18,16 +18,17 @@ jobs:
       uses: docker/setup-buildx-action@v1
 
     - name: Build & run tests
+      env:
+       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+       BASE_URL: ${{ secrets.BASE_URL }}
+       ALERT_CHATID: ${{ secrets.ALERT_CHATID }}
+       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+       MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}
       shell: bash
       run: |
-        echo "Checking envars."
-        echo "$BASE_URL"
-        echo "Proceeding."
+        BASE_URL=$BASE_URL
+        echo $BASE_URL
+        echo BASE_URL
+        echo '${{ secrets.BASE_URL }}'
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
-      env:
-        TELEGRAM_TOKEN: '${{ secrets.TELEGRAM_TOKEN }}'
-        BASE_URL: '${{ secrets.BASE_URL }}'
-        ALERT_CHATID: '${{ secrets.ALERT_CHATID }}'
-        WEBHOOK_URL: '${{ secrets.WEBHOOK_URL }}'
-        MONGO_CONN_STRING: ${{ secrets.MONGO_CONN_STRING }}'
