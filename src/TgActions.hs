@@ -11,8 +11,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
-import Data.List (find, sort, sortOn)
-import Data.Ord (Down (Down))
+import Data.List (find, sort)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Mongo (evalDb)
@@ -248,14 +247,13 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
             let subs = sort . S.toList . sub_feeds_links $ c
             in  if null subs then pure . Left $ NotSubscribed
                 else withCache (CachePullFeeds subs) >>= \case
-                Right (CacheFeeds fs) ->
-                    let fs' = sortOn (Down . f_title) fs
-                        searching = case ref of
-                            ById n -> maybeUserIdx fs' n
-                            ByUrl u -> find (\f -> f_link f == u) fs'
-                    in  case searching of
+                Right (CacheFeeds fs) -> 
+                    let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
+                    in  case found of
                         Nothing -> pure . Left $ NotFoundFeed mempty
-                        Just f -> pure . Right . mkReply $ FromFeedDetails f
+                        Just u -> case find (\f -> f_link f == u) fs of
+                            Nothing -> pure . Left $ NotFoundFeed mempty
+                            Just f -> pure . Right . mkReply $ FromFeedDetails f
                 _ -> pure . Left $ NotFoundFeed mempty
 evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask

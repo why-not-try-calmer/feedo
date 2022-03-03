@@ -2,17 +2,15 @@ name: GitHub Test suite
 
 on: 
   pull_request:
-    branches: [master]
+    branches: [dev]
   push:
-    branches: [master]
+    branches: [dev]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: 'ubuntu-latest'
     environment: production
-    env:
-     BASE_URL: ${{ secrets.BASE_URL }}
     steps:
     - uses: actions/checkout@v2
 
@@ -22,9 +20,5 @@ jobs:
     - name: Build & run tests
       shell: bash
       run: |
-        BASE_URL=$BASE_URL
-        echo $BASE_URL
-        echo BASE_URL
-        echo '${{ secrets.BASE_URL }}'
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
