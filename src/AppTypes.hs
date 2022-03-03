@@ -16,6 +16,7 @@ import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId, UserId)
 import Database.Redis (Connection)
+import Data.IORef (IORef)
 
 {- Replies -}
 
@@ -445,7 +446,7 @@ $(deriveJSON defaultOptions { omitNothingFields = True } ''WriteResp)
 
 {- Application, settings -}
 
-type Connectors = (Connection, Pipe)
+type Connectors = (Connection, IORef Pipe)
 
 type BotToken = T.Text
 

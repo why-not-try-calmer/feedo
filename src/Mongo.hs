@@ -2,7 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Mongo where
-
 import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
@@ -18,11 +17,12 @@ import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, addUTCTime, diffUTCTime, getCurrentTime, UTCTime)
+import Data.Time (NominalDiffTime, UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
+import GHC.IORef (atomicModifyIORef', readIORef)
 import Text.Read (readMaybe)
 import Utils (defaultChatSettings)
 
@@ -78,7 +78,7 @@ instance HasMongo IO where
 {- Connection -}
 
 setupMongo :: MonadIO m => [Char] -> m (Either DbError (Pipe, MongoCreds))
-setupMongo connection_string = 
+setupMongo connection_string =
     let [h, db, user, passwd] = T.splitOn ":" . T.pack $ connection_string
         creds = MongoCredsReplicaSrv (T.unpack h) db user passwd
     in  initConnectionMongo creds >>= \case
@@ -123,20 +123,24 @@ withMongo config action = go >>= \case
         let creds = mongo_creds config
         in  initConnectionMongo creds >>= \case
             Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
-            Right _ -> go >>= \case
-                Left e -> alertGiveUp $ "Giving up after successful re-authentication on: " ++ show e
-                Right r -> pure $ Right r
+            Right pipe ->
+                let ref = snd . connectors $ config
+                in  liftIO (atomicModifyIORef' ref (const (pipe, ()))) >> go >>= \case
+                    Left e -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+                    Right r -> pure $ Right r
     Left err -> alertGiveUp err
     Right r -> pure $ Right r
     where
         runMongo :: MonadIO m => Pipe -> Action m a -> m a
         runMongo pipe = access pipe master (database_name . mongo_creds $ config)
-        go = liftIO . try $ runMongo (snd $ connectors config) action
+        go = liftIO $ do
+            pipe <- readIORef . snd . connectors $ config
+            try $ runMongo pipe action
         alertGiveUp err = alert err >> pure (Left ())
         alert err = liftIO $ writeChan (postjobs config) . JobTgAlert $
             "withMongo failed with " `T.append` (T.pack . show $ err) `T.append`
             " If the connector timed out, one retry will be carried out."
-        
+
 {- Actions -}
 
 buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
@@ -200,7 +204,7 @@ evalMongo env (ArchiveItems feeds) =
         action = withMongo env $ updateAll "items" selector
     in  action >>= \case
         Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
-        Right res -> 
+        Right res ->
             if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
             else pure DbOk
 evalMongo env (DbSearch keywords scope last_time) =
@@ -293,7 +297,7 @@ evalMongo env (UpsertFeeds feeds) =
         action = withMongo env $ updateAll "feeds" selector
     in  action >>= \case
         Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
-        Right res -> 
+        Right res ->
             if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
             else pure DbOk
 evalMongo env (View flinks start end) =

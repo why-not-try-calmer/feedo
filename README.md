@@ -36,6 +36,10 @@ For the exhaustive list of commands, see this [document](https://github.com/why-
 
 For typical settings, see [that one](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).
 
+__Preview__:
+
+![Demo](../assets/demo.gif?raw=true)
+
 ## Usage
 
 ### As a service
