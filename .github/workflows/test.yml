@@ -27,6 +27,7 @@ jobs:
       shell: bash
       run: |
         echo "$BASE_URL"
-        export TELEGRAM=$TELEGRAM BASE_URL=$BASE_URL WEBHOOK_URL=$WEBHOOK_URL MONGO_CONN_STRING=$MONGO_CONN_STRING
+        echo $BASE_URL
+        export TELEGRAM="$TELEGRAM" BASE_URL="$BASE_URL" WEBHOOK_URL="$WEBHOOK_URL" MONGO_CONN_STRING="$MONGO_CONN_STRING"
         docker-compose -f test-build.yml up \
           --abort-on-container-exit
