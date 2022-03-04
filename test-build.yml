@@ -1,17 +1,18 @@
 version: "3"
 services:
     feedfarer:
-        depends_on: [redis]
-        restart: "no"
-        build: .
-        command: stack test
-        ports: [80:80]
-        environment:
-         - TELEGRAM_TOLKIEN
-         - BASE_URL
-         - ALERT_CHATID
-         - WEBHOOK_URL
-         - MONGO_CONN_STRING
+      container_name: feedfarer
+      depends_on: [redis]
+      restart: "no"
+      build: .
+      command: stack test
+      ports: [80:80]
+      environment:
+        - TELEGRAM_TOLKIEN
+        - BASE_URL
+        - ALERT_CHATID
+        - WEBHOOK_URL
+        - MONGO_CONN_STRING
     redis:
         image: redis:latest
         ports: [6379:6379]

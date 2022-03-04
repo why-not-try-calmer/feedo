@@ -29,7 +29,7 @@ jobs:
 
     - name: Build
       run: |
-        docker-compose build
+        docker-compose -f production-build.yml build
         docker-compose push
        
 #  deploy:
