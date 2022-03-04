@@ -1,4 +1,4 @@
-[![Test suite](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/testing.yml/badge.svg)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/testing.yml) [![Build and deploy container app to Azure Web App - feedfarer-webapp](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/dev_feedfarer-webapp.yml/badge.svg)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/dev_feedfarer-webapp.yml)
+[![GitHub Test suite](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml) [![Build and deploy container app to Azure Web App - feedfarer-master](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml)
 
 # feedfarer
 A fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
