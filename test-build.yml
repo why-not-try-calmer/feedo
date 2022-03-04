@@ -8,7 +8,7 @@ services:
       command: stack test
       ports: [80:80]
       environment:
-        - TELEGRAM_TOLKIEN
+        - TELEGRAM_TOKEN
         - BASE_URL
         - ALERT_CHATID
         - WEBHOOK_URL
