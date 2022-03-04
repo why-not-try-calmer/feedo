@@ -1,8 +1,8 @@
-name: Build and deploy container app to Azure Web App - feedfarer-master
+name: Build Then Push
 
 on:
   workflow_run:
-    workflows: ["GitHub Test suite"]
+    workflows: ["Tests"]
     branches: [master]
     types:
     - completed
