@@ -1,6 +1,6 @@
 version: "3"
 services:
-    feedfarer:
+    feedfarer-test:
       container_name: feedfarer-test
       depends_on: [redis]
       restart: "no"
