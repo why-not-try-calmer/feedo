@@ -1,7 +1,10 @@
 [![GitHub Test suite](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml) [![Build and deploy container app to Azure Web App - feedfarer-master](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml)
 
 # feedfarer
-A fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
+
+[@feedfarer](https://t.me/feedfarer_bot) is a fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
+
+Check out [our channel](https://t.me/feedfarer) for the latest updates & news.
 
 ## Contents
 - [What this package provides](#what-this-package-provides)
@@ -17,20 +20,22 @@ A fast, efficient network app for subscribing Telegram chats to web feeds, using
 - a Telegram bot able to post updates to any web feed (Atom or RSS) feed a chat is subscribed to; the bot is also replies directly to commands for consuming feeds at one's favorite pace
 - a server-side application consumed by the said bot so that any user can host and play with it.
 
-## Features
+## Key features
 - web feed notifications on updates as they come or in digests
 - subscription management
 - filters, blacklists
 - full-text search
 - supports all Telegram group types
-- does not require permissions
+- web interface for managing per-group settings (currently in beta)
+- does __not__ require permissions
 
 All chats types are supported:
 - one-to-one chats (with the bot)
 - group private
 - group public
+- channels
 
-The bot does not require any permission; it just need to be a member of the group to which it posts updates.
+The bot does not require any permission; it just need to be a member of the group to which it posts updates, including channels. Bot used in channels can be managed from any chats, provided that user is an admin in both the channel and the chat.
 
 For the exhaustive list of commands, see this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).
 
@@ -50,102 +55,95 @@ __Getting started__:
 1. Start a chat with the bot (1-1 chat) or invite it to any chat (group or private). The bot listens only to messages using commands defined for it.
 2. Subscribe the chat to a bunch of web feeds with `/sub <url1 url2 ur3>`.
 3. Adjust your settings with `/set`, as in:
+
 ```
 /set  # mind the linebreak!
 digest_at: 12:00 
 ```
-
 for a daily noon digest.
 
 For more typical settings, see [that one](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).
 
-### As an application 
-The bot relies upon the Haskell `warp` server. By default it provides an endpoint at `https://<your.nice.domain>/webhook/bot<your token>` handling inbound and outbound HTTP requests from / to Telegram services via webhooks (only webhooks are supported as they provide a more resource-efficient communication method). 
+### As a self-hosted application 
 
-This application is written from scratch, using exclusively HTTP requests-responses as specified by the [Telegram Bot API](https://core.telegram.org/bots/api). It relies on no Telegram SDK or third-party library.
+The bot relies upon the Haskell `warp` server. By default it provides an endpoint at `https://<your.nice.domain>/webhook/bot<your token>` handling inbound and outbound HTTP requests from / to Telegram services via webhooks.
 
-## Beta testing
-Ask for an invite with https://t.me/+zMdPlkeEu7w2NjM0.
+Only webhooks are supported as they provide a more resource-efficient communication method. 
 
-Check out our channel for more info: https://t.me/feedfarer.
+I've written the application from scratch, relying exclusively on HTTP requests-responses as specified by the [Telegram Bot API](https://core.telegram.org/bots/api). It relies on no Telegram SDK or third-party library.
 
 ## Roadmap
 - [x] Architecture, business logic
 - [x] Implementation
 - [x] Tests
-- [x] Test deployment
+- [x] CD/CI
 - [x] Deployment
-- [x] Tests in deployment
-- [...] Factoring out database details to avoid depending on mongoDB
+- [x] Tests in production
 
-## Test builds
+## Testing & deploying
 
-__Build__
+### Requisites
 
-This step requires having a working installation of [stack](https://docs.haskellstack.org/).
+_Compose_. Deployment and integration tests depend on having running instances of the images defined in `docker-compose.yml`. Make sure you have Docker installed and appropriately configured on your system. 
 
-`cd` to a parent directory and then clone the repository with:
+_Environment variables_. Also, make sure you have an `.env` file in the root directory set as appropriate (see below).
+
+### Testing 
+
+`cd` to a parent directory. Then:
 ```
 git clone https://github.com/why-not-try-calmer/feedfarer2.git
-```
-Then build with
-```
-stack build
-```
-__Run__
-
-This step requires having an `.env` file in the root directory set as appropriate. Then:
-```
-stack build
-stack exec feedfarer-exe
+docker-compose -f test-build.yml up
 ```
 
-## Deployment
+### Deploying
 
-### Local
+Assuming you have run the tests following the method from the previous section, all you need to do is edit the following files with the values that suit your use case:
 
-This step requires having an `.env` file in the root directory set as appropriate (see below). Substitute `docker` for `podman` in the instructions if you don't use _podman_.
+- `Dockerfile`: edit the value of `EXPOSE` as fits
+- `docker-compose.yml`: edit the value of `image` to the correct destination for the output image (i.e. typically your container registry); also make sure the both `ports` fields are associated with the appropriate values.
 
-`cd` to to a parent directory. Then:
-```
-git clone https://github.com/why-not-try-calmer/feedfarer2.git
-podman build . -t feedfarer-img
-podman run --rm --name feedfarer -it -p 8443:80 --env-file=.env feedfarer-img
-```
-
-For compatibility with most cloud providers, the container exposes port 80.
-
-If you need to prototype the app on your local machine you might need to pick another port and forward it to 80. It's recommended to pick a port between [443, 80, 88 or 8443] to forward to 80, as only those are compatible with Telegram HTTP API. I usually use 8443 as it does not require root permissions.
-
-### Remote
-Run with 
+Finally:
 
 ```
-docker run --rm --name feedfarer -d -p 80:80
+docker-compose build
+docker-compose push
 ```
-
-Make sure to use the appropriate method to provide the containerized app the proper environment variables (see below). You could use the `docker run` flags `--env` or `--env-file` for this purpose.
-
-Also keep in mind that Telegram requires HTTPS for sending and receiving, but this application _does not_ do any of that. You will need to make sure that the host to which the application is deployed takes care of the HTTPS business.
 
 ### Configuration
+
+When testing locally, simply create an `.env` file at the root of the directory.
+
+When deploying, use your provider's proposed method. Most cloud providers offer a "Configuration" menu defining custom environment variables. If you plan on deploying with remote CI/CD, make use of "secrets" to pass the values to Compose (you can take a look at `.github/workflows` for examples).
+
+__Schema__
+
 The application expects the following environment variables:
 ```
-ALERT_CHATID=<Telegram chat id>
-MONGODB_CONNECTION_STRING=<host_name:db_name:user_name:password>
-STARTING_FEEDS=<comma-separated feed urls>
-TELEGRAM_TOKEN=<Telegram bot token>
-WEBHOOK_URL=<webhook url>
+ALERT_CHATID=<Telegram chat id where you want to receive application alerts>
+
+MONGODB_CONNECTION_STRING=< host_name:db_name:user_name:password >
+
+STARTING_FEEDS=< comma-separated feed urls if you want to preload the application with some well-known feeds >
+
+TELEGRAM_TOKEN=< the token of your Telegram bot >
+
+WEBHOOK_URL=< webhook url >
 ```
-Example:
+
+__Example__
 ```
 ALERT_CHATID=1234567890
+
 MONGODB_CONNECTION_STRING=<host_name:db_name:user_name:password>
+
 STARTING_FEEDS=https://blog.system76.com/rss,https://www.reddit.com/r/pop_os.rss
+
 TELEGRAM_TOKEN=1202309djkj@@kskdjkcjkjxkj
+
 WEBHOOK_URL=https://mydomain.org/path/to/wehbook
 
 ```
 
 ## Support this project
-I am hosting the bot on my own. If you want to [pay me a coffee or a beer](https://paypal.me/WhyNotTryCalmer) to show your appreciation, that will help me maintain the code and pay the electricity bills...
+I am hosting the bot on my own. If you want to [pay me a coffee or a beer](https://www.buymeacoffee.com/WhyNotTryCalmer) to show your appreciation, that will help me maintain the code and pay the electricity bills...
