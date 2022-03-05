@@ -8,12 +8,10 @@ Check out [our channel](https://t.me/feedfarer) for the latest updates & news.
 
 ## Contents
 - [What this package provides](#what-this-package-provides)
-- [Bot features](#features)
+- [Bot features](#key-features)
 - [Usage](#usage)
-- [Beta testing](#beta-testing)
 - [Roadmap](#roadmap)
-- [Test builds](#test-builds)
-- [Deployment](#deployment)
+- [Testing & deploying](#testing-and-deploying)
 - [Support this project](#support-this-project)
 
 ## What this package provides
@@ -80,7 +78,7 @@ I've written the application from scratch, relying exclusively on HTTP requests-
 - [x] Deployment
 - [x] Tests in production
 
-## Testing & deploying
+## Testing and deploying
 
 ### Requisites
 
