@@ -6,11 +6,11 @@ cabal-version: 1.12
 
 name:           feedfarer
 version:        1.1
-description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
-homepage:       https://github.com/githubuser/feedfarer#readme
-bug-reports:    https://github.com/githubuser/feedfarer/issues
+description:    Please see the README on GitHub at <https://github.com/why-not-try-calmer/feedfarer2#readme>
+homepage:       https://github.com/why-not-try-calmer/feedfarer#readme
+bug-reports:    https://github.com/why-not-try-calmer/feedfarer/issues
 author:         Adrien Glauser
-maintainer:     mrnycticorax@gmail.com
+maintainer:     adrien.glauser@gmail.com
 copyright:      2021 Adrien Glauser
 license:        BSD3
 license-file:   LICENSE
@@ -20,7 +20,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/feedfarer
+  location: https://github.com/why-not-try-calmer/feedfarer
 
 library
   exposed-modules:

@@ -1,15 +1,15 @@
 name:                feedfarer
 version:             1.1
-github:              "githubuser/feedfarer"
+github:              "why-not-try-calmer/feedfarer"
 license:             BSD3
 author:              "Adrien Glauser"
-maintainer:          "mrnycticorax@gmail.com"
+maintainer:          "adrien.glauser@gmail.com"
 copyright:           "2021 Adrien Glauser"
 
 extra-source-files:
 - README.md
 
-description:         Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
+description:         Please see the README on GitHub at <https://github.com/why-not-try-calmer/feedfarer2#readme>
 
 default-extensions:
 - LambdaCase
