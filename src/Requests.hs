@@ -82,7 +82,7 @@ reply tok cid rep chan =
         fromReply ChatReply{..} = OutboundMessage {
                 out_chat_id = cid,
                 out_text = non_empty reply_contents,
-                out_parse_mode = if reply_markdown then Just "Markdown" else Nothing,
+                out_parse_mode = if reply_markdown then Just "MarkdownV2" else Nothing,
                 out_disable_web_page_preview = if reply_disable_webview then Just True else Nothing
             }
         fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True)

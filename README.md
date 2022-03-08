@@ -2,7 +2,7 @@
 
 # feedfarer
 
-[@feedfarer](https://t.me/feedfarer_bot) is a fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
+[@feedfarer_bot](https://t.me/feedfarer_bot) is a fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
 
 Check out [our channel](https://t.me/feedfarer) for the latest updates & news.
 
@@ -85,6 +85,8 @@ I've written the application from scratch, relying exclusively on HTTP requests-
 _Compose_. Deployment and integration tests depend on having running instances of the images defined in `docker-compose.yml`. Make sure you have Docker installed and appropriately configured on your system. 
 
 _Environment variables_. Also, make sure you have an `.env` file in the root directory set as appropriate (see below).
+
+_Chat with the bot_. Using the Telegram account corresponding to the `ALERT_CHATID` value (see _Configuration_ below), start a chat with [@feedfarer_bot](https://t.me/feedfarer_bot). This is required for some of the tests mobilizing Telegram servers.
 
 ### Testing 
 

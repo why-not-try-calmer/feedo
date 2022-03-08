@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Replies (defaultReply, mkdSingles, mkdDoubles, render, Reply(..), mkReply, Replies(..), mkViewUrl, mkDigestUrl) where
+module Replies where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
@@ -19,18 +19,12 @@ escapeWhere txt suspects =
     T.foldl' (\t c ->
         let c' = T.singleton c
         in  if c' `elem` suspects
-            then t `T.append` "\\" `T.append` T.singleton c
-            else t `T.append` T.singleton c
+            then t `T.append` "\\" `T.append` c'
+            else t `T.append` c'
     ) mempty txt
 
-skipWhere :: T.Text -> [T.Text] -> T.Text
-skipWhere txt suspects = T.filter (\t -> T.singleton t `notElem` suspects) txt
-
-mkdSingles :: [T.Text]
-mkdSingles = ["_", "*", "`"]
-
-mkdDoubles :: [T.Text]
-mkdDoubles = ["[", "]"]
+mkdV2 :: [T.Text]
+mkdV2 = ["_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"]
 
 mkViewUrl ::[Item] -> Maybe T.Text
 mkViewUrl [] = Nothing
@@ -71,7 +65,7 @@ intoTimeLine = fst . foldl' step (mempty, 0)
                 then (str `T.append` finish (i_title i) (i_link i), d)
                 else (str `T.append` "_" `T.append` date `T.append` "_ \n" `T.append`
                     finish (i_title i) (i_link i), d')
-        finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
+        finish title link = "- " `T.append` toMkdV2Link Nothing title link `T.append` "\n"
 
 class Renderable e where
     render :: e -> T.Text
@@ -181,19 +175,19 @@ instance Renderable (S.Set T.Text, [SearchResult]) where
     render (keys, search_res) =
         let items = map (\SearchResult{..} -> Item sr_title mempty sr_link sr_feedlink sr_pubdate) search_res
         in  "Results from your search with keywords "
-                `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
+                `T.append` T.intercalate ", " (map (`escapeWhere` mkdV2) . S.toList $ keys)
                 `T.append` ":\n"
                 `T.append` render items
 
-toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
-toHrefEntities mbcounter tag link =
-    let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
-        link' = "(" `T.append` link `T.append` ")"
-    in  case mbcounter of
-        Nothing -> tag' `T.append` link'
+toMkdV2Link :: Maybe Int -> T.Text -> T.Text -> T.Text 
+toMkdV2Link mb_count tag link =
+    let t = "[" `T.append` escapeWhere tag mkdV2 `T.append` "]"
+        l = "(" `T.append` link `T.append` ")"
+    in  case mb_count of
+        Nothing -> t `T.append` l
         Just c ->
-            let counter = T.pack . show $ c
-            in  counter `T.append` ") " `T.append` tag' `T.append` link'
+            let count = T.pack . show $ c
+            in  count `T.append` ")" `T.append` t `T.append` l
 
 defaultReply :: T.Text -> Reply
 defaultReply payload = ChatReply {
@@ -211,7 +205,7 @@ mkReply (FromChatFeeds _ feeds) =
         step = (\(!txt, !counter) f ->
             let link = f_link f
                 title = f_title f
-                rendered = toHrefEntities (Just counter) title link
+                rendered = toMkdV2Link (Just counter) title link
             in  (T.append txt rendered `T.append` "\n", counter + 1))
         payload = fst $ foldl' step start feeds
     in  defaultReply payload
@@ -241,7 +235,7 @@ mkReply (FromDigest fs mb_link s) =
                         if collapse == 0
                         then "This post may also be viewed "
                         else "This is a shortened version. Read the full digest "
-                    link_href = toHrefEntities Nothing "here" link
+                    link_href = toMkdV2Link Nothing "here" link
                     footer = "--\n" `T.append` link_txt `T.append` link_href `T.append` "."
                 in  if settings_share_link s || collapse > 0 then header `T.append` body `T.append` footer
                     else header `T.append` body
@@ -252,7 +246,7 @@ mkReply (FromDigest fs mb_link s) =
             reply_disable_webview = settings_disable_web_view s
             }
 mkReply (FromFeedLinkItems flinkitems) =
-    let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
+    let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdV2 `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
 mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False

@@ -18,7 +18,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import Network.HTTP.Req
-import Replies (mkdDoubles)
+import Replies
 import Requests (fetchFeed)
 import Text.Read (readMaybe)
 import Text.XML
@@ -222,7 +222,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings):parsed) else (not_parsed, PDigestTitle txt:parsed)
             | k == "search_notif" =
                 if T.length txt < 3 then ("'search_notif' cannot be shorter than 3 characters.":not_parsed, parsed)
-                else if any (`T.isPrefixOf` txt) mkdDoubles then ("'search_notif' accepts only alphanumeric symbols":not_parsed, parsed) else
+                else if any (`T.isPrefixOf` txt) mkdV2 then ("'search_notif' accepts only alphanumeric symbols":not_parsed, parsed) else
                     let v = if "reset" `T.isInfixOf` T.toCaseFold txt then S.empty else S.fromList . T.words . T.toLower $ txt
                     in (not_parsed, PSearchKws v:parsed)
             | k == "only_search_notif" =
