@@ -4,17 +4,16 @@
 
 module Requests where
 
-import AppTypes (BotToken, Job (JobPin), Reply (reply_contents, reply_markdown, reply_disable_webview, reply_pin_on_send, ChatReply, ServiceReply), App)
+import AppTypes (App, BotToken, Job (JobPin, JobTgAlert), Reply (ChatReply, ServiceReply, reply_contents, reply_disable_webview, reply_markdown, reply_pin_on_send))
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
-import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (FromJSON, Value)
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (ChatId, Outbound (OutboundMessage, out_chat_id, out_text, out_parse_mode, out_disable_web_page_preview))
+import TgramOutJson (ChatId, Outbound (OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_text))
 
 {- Interface -}
 
@@ -86,16 +85,18 @@ reply tok cid rep chan =
                 out_disable_web_page_preview = if reply_disable_webview then Just True else Nothing
             }
         fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True)
-        redirect err = void $ runSend_ tok "sendMessage" $ OutboundMessage cid err Nothing Nothing
+        report err = 
+            let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
+            in  liftIO . writeChan chan $ JobTgAlert err_msg
         non_empty txt = if T.null txt then "No result for this command." else txt
         triage_replies msg@ChatReply{..}
             | reply_pin_on_send = runSend tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> redirect err
+                Left err -> report err
                 Right resp -> liftIO . writeChan chan $ JobPin cid (mid_from resp)
             | otherwise = runSend_ tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> redirect err
+                Left err -> report err
                 Right _ -> pure ()
         triage_replies serv_rep = runSend_ tok "sendMessage" (fromReply serv_rep) >>= \case
-            Left err -> redirect err
+            Left err -> report err
             Right _ ->  pure ()
     in  triage_replies rep
