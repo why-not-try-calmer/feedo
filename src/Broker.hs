@@ -21,8 +21,8 @@ import Data.Time (getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
 import Parsing (rebuildFeed)
-import Redis (singleK, withRedis, HasRedis)
-import Utils (freshLastXDays, notifFrom, partitionEither)
+import Redis (HasRedis, pageCidMidK, singleK, withRedis)
+import Utils (freshLastXDays, notifFrom, partitionEither, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -34,12 +34,12 @@ instance MonadIO m => HasCache (App m) where
 
 writeOneFeed :: Feed -> Redis (TxResult Integer)
 writeOneFeed f = multiExec $ do
-    _ <- set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ f
+    _ <- set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
     sadd "feeds" [B.encodeUtf8 . f_link $ f]
 
 writeManyFeeds :: [Feed] -> Redis (TxResult Integer)
 writeManyFeeds fs =
-    let write_to_keys f = set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ f
+    let write_to_keys f = set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
         write_to_sets = sadd "feeds" . map (B.encodeUtf8 . f_link) $ fs
     in  multiExec $ traverse_ write_to_keys fs >> write_to_sets
 
@@ -71,9 +71,37 @@ withBroker (CacheDeleteFeeds flinks) = ask >>= \env ->
     let action = withRedis env $ deleteManyFeeds flinks
     in  action >>= \case
         TxSuccess _ -> pure . Right $ CacheOk
-        _ -> pure . Left $ 
-                "Unable to delete these feeds: " 
+        _ -> pure . Left $
+                "Unable to delete these feeds: "
                     `T.append`  T.intercalate ", " flinks
+withBroker (CacheGetPage cid mid n) = do
+    env <- ask
+    first_pass <- withRedis env query
+    case first_pass of 
+        Right (Just page, i) -> success page i
+        _ -> do
+            _ <- refresh env
+            second_pass <- withRedis env query
+            case second_pass of
+                Right (Just page, i) -> success page i
+                _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
+    where
+        success p i = 
+            let (page', i') = (B.decodeUtf8 p, fromInteger i)
+            in  pure . Right $ CachePage page' i'
+        query = do
+            d <- lindex k (toInteger $ n-1)
+            l <- llen k
+            pure $ (,) <$> d <*> l
+        k = pageCidMidK cid mid
+        refresh env = evalDb env (GetPages cid mid) >>= \case
+            DbPages pages -> withBroker (CacheSetPages cid mid pages)
+            _ -> pure $ Left "Error while trying to refresh after pulling anew from database."            
+withBroker (CacheSetPages cid mid pages) = ask >>= \env ->
+    let k = pageCidMidK cid mid
+    in  withRedis env (lpush k $ map B.encodeUtf8 pages) >>= \case
+        Right _ -> pure $ Right CacheOk
+        Left _ -> pure $ Left "Nothing"
 withBroker (CachePullFeed flink) = do
     env <- ask
     withRedis env (get . singleK $ flink) >>= \case

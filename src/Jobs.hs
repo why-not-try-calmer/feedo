@@ -2,7 +2,7 @@
 
 module Jobs where
 
-import AppTypes (AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title, f_items), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), SubChat (..), Replies (..), renderDbError, runApp, FeedLink, Batch (Digests, Follows), CacheAction (CacheRefresh), FromCache (CacheDigests))
+import AppTypes (AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title, f_items), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), SubChat (..), Replies (..), renderDbError, runApp, FeedLink, Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), FromCache (CacheDigests))
 import Backend (markNotified)
 import Control.Concurrent
   ( readChan,
@@ -142,6 +142,14 @@ postProcJobs = ask >>= \env ->
                 let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
+            JobSetPagination cid mid pages -> fork $
+                let db = evalDb env $ UpsertPages cid mid pages
+                    cache = withCache $ CacheSetPages cid mid pages
+                in  runApp env (db >> cache) >>= \case
+                    Right _ -> pure ()
+                    _ ->
+                        let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
+                        in  writeChan (postjobs env) (JobTgAlert report)
         handler (SomeException e) = do
             let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (postjobs env) . JobTgAlert $ report
@@ -154,6 +162,3 @@ postProcJobs = ask >>= \env ->
             | delay > 30 = ("30 secs", 30000000)
             | otherwise = (show delay, delay)
         with_cid_txt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
-
-
-

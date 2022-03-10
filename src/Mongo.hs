@@ -5,7 +5,7 @@ module Mongo where
 import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (void, when)
+import Control.Monad (void, when, unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import qualified Data.ByteString.Char8 as B
@@ -259,6 +259,13 @@ evalMongo env (GetFeed link) =
         Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetFeed failed"
         Right (Just doc) -> pure $ DbFeeds [bsonToFeed doc]
         Right Nothing -> pure DbNoFeed
+evalMongo env (GetPages cid mid) =
+    let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
+    in  action >>= \case
+        Right (Just doc) -> case M.lookup "pages" doc of
+            Just pages -> pure $ DbPages pages
+            _ -> pure $ DbNoPage cid mid 
+        _ -> pure $ DbNoPage cid mid
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
@@ -300,6 +307,11 @@ evalMongo env (UpsertFeeds feeds) =
         Right res ->
             if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
             else pure DbOk
+evalMongo env (UpsertPages cid mid pages) =
+    let action = withMongo env $ insert "pages" ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
+    in  action >>= \case
+        Left () -> pure . DbErr $ FailedToInsertPage
+        _ -> pure DbOk
 evalMongo env (View flinks start end) =
     let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
     in  withMongo env query >>= \case
@@ -396,7 +408,8 @@ bsonToChat doc =
             settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ M.lookup "settings_disable_web_view" settings_doc,
             settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc,
             settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc,
-            settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
+            settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc,
+            settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
             }
     in  SubChat {
             sub_chatid = fromJust $ M.lookup "sub_chatid" doc,
@@ -423,7 +436,8 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
             "settings_paused" =: settings_paused settings,
             "settings_pin" =: settings_pin settings,
             "settings_searchset" =: searchset,
-            "settings_share_link" =: settings_share_link settings
+            "settings_share_link" =: settings_share_link settings,
+            "settings_pagination" =: settings_pagination settings
             ]
         with_secs = maybe []
             (\secs -> ["settings_digest_every_secs" =: secs])
@@ -570,7 +584,7 @@ checkDbMapper = do
     let item = Item mempty mempty mempty mempty now
         digest_interval = DigestInterval (Just 0) (Just [(1,20)])
         word_matches = WordMatches S.empty S.empty (S.fromList ["1","2","3"])
-        settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False word_matches False False
+        settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches
         chat = SubChat 0 (Just now) (Just now) S.empty settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
@@ -583,10 +597,7 @@ checkDbMapper = do
             ("chat", checks chat),
             ("log", checks log'),
             ("admin", checks admin_user)] :: [(T.Text, Bool)]
-    if all snd equalities
-    then pure ()
-    else liftIO $ do
+    unless (all snd equalities) . liftIO $ do
         print digest
         print (readDoc . writeDoc $ digest :: Digest)
         throwIO . userError $ "Mapper failed. " ++ (show . filter (not . snd) $ equalities)
-        

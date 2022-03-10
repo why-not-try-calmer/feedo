@@ -163,6 +163,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                     "disable_webview <false|true>",
                     "follow <false|true>",
                     "only_search_notif <url1 url2 ...>",
+                    "pagination <false|true>",
                     "pin <false|true>",
                     "search_notif <keyword keyword ...>",
                     "share_link <false|true>"
@@ -238,6 +239,8 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                 if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPaused True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False:parsed) else ("'share_link' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | k == "follow" =
                 if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False:parsed) else ("'follow' takes only 'true' or 'false' as values.":not_parsed, parsed)
+            | k == "pagination" =
+                if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPagination True:parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPagination False:parsed) else ("'pagination' takes only 'true' or 'false' as values.":not_parsed, parsed)
             | otherwise = (k:not_parsed, parsed)
         into_hm val acc =
             let [hh, mm] = T.splitOn ":" val

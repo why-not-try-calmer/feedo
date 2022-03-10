@@ -18,7 +18,7 @@ import Data.Time.Clock.POSIX
 import Mongo (HasMongo (evalDb), evalDb)
 import Parsing (rebuildFeed)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, findNextTime, removeByUserIdx, updateSettings)
+import Utils (defaultChatSettings, findNextTime, removeByUserIdx, sortItems, updateSettings)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
 withChat action cid = do
@@ -187,11 +187,14 @@ markNotified env notified_chats now = liftIO $ modifyMVar_ (subs_state env) $ \s
                         }
             else c) chats
 
-regenFeeds :: MonadIO m => SubChats -> App m (Either T.Text ())
-regenFeeds chats = ask >>= \env ->
+regenFeeds :: MonadIO m => App m ()
+regenFeeds = do
+    env <- ask
+    chats <- liftIO . readMVar $ subs_state env
     let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
-    in  liftIO $ forConcurrently urls rebuildFeed >>= \res -> case sequence res of
-        Left err -> pure . Left $ err
-        Right feeds -> evalDb env (UpsertFeeds feeds) >>= \case
-            DbErr err -> pure . Left . renderDbError $ err
-            _ -> pure . Right $ ()
+        report err = writeChan (postjobs env) . JobTgAlert $ "Failed to regen feeds for this reason: " `T.append` err
+    liftIO $ forConcurrently urls rebuildFeed >>= \res -> case sequence res of
+        Left err -> report err
+        Right feeds -> evalDb env (UpsertFeeds (map sortItems feeds)) >>= \case
+            DbErr err -> report $ renderDbError err
+            _ -> pure ()

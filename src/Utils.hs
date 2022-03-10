@@ -3,7 +3,7 @@ module Utils where
 import AppTypes
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
-import Data.List (foldl', sort)
+import Data.List (foldl', sort, sortOn)
 import Data.Maybe (isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -14,6 +14,7 @@ import Data.Time.Clock.POSIX
   )
 import Data.Time.Format.ISO8601
 import TgramOutJson (ChatId)
+import Data.Ord (Down(Down))
 
 {- Data -}
 
@@ -169,6 +170,7 @@ defaultChatSettings = Settings {
         settings_digest_title = "A new digest is available",
         settings_paused = False,
         settings_disable_web_view = False,
+        settings_pagination = False,
         settings_pin = False,
         settings_share_link = True,
         settings_follow = False,
@@ -210,6 +212,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
                 in  o { settings_word_matches = wm' }
             PShareLink v -> o { settings_share_link = v }
             PFollow v -> o { settings_follow = v }
+            PPagination v -> o { settings_pagination = v }
 
 notifFrom ::
     [FeedLink] ->
@@ -239,3 +242,6 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
         fresher_than i (Just t) = t < i_pubdate i
         has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i]) kws
         lacks_keywords i kws = not $ has_keywords i kws
+
+sortItems :: Feed -> Feed
+sortItems f = f { f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f }

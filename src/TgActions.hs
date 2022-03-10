@@ -1,6 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module TgActions where
+
 import AppTypes
 import Backend (withChat)
 import Broker (HasCache (withCache), getAllFeeds)
@@ -8,17 +10,18 @@ import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Reader (ask)
+import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
 import Data.List (find, sort)
+import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Mongo (evalDb)
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
 import Replies (mkReply, render)
-import Requests (TgReqM (runSend), runSend, setWebhook)
+import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -186,7 +189,7 @@ testChannel :: TgReqM m => BotToken -> ChatId -> Chan Job -> m (Either UserError
 testChannel tok chan_id jobs =
     -- tries sending a message to the given channel
     -- if the response rewards the test with a message_id, it's won.
-    runSend tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing) >>= \case
+    runSend tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing Nothing) >>= \case
     Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ chan_id) `T.append` ". Make sure the bot has administrative rights in that channel."
     Right resp ->
         let res = responseBody resp :: TgGetMessageResponse
@@ -447,3 +450,16 @@ evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
             Left err -> pure . Left $ err
             Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
+
+processCbq :: (MonadIO m, MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
+processCbq cbq = ask >>= \env ->
+    let cid = chat_id . chat . fromJust . cbq_message $ cbq
+        mid = message_id . fromJust . cbq_message $ cbq
+        action n = withCache $ CacheGetPage cid mid n
+    in  case cbq_data cbq >>= readMaybe . T.unpack :: Maybe Int of
+        Nothing -> pure ()
+        Just n -> action n >>= \case
+            Right (CachePage p i) ->
+                let rep = EditReply mid p True (mkKeyboard n i)
+                in  reply (bot_token . tg_config $ env) cid rep (postjobs env)
+            _ -> pure ()

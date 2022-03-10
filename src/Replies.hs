@@ -12,7 +12,6 @@ import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
 import Utils (nomDiffToReadable, renderAvgInterval, utcToYmd, utcToYmdHMS)
-import Data.Maybe (fromMaybe)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -130,7 +129,8 @@ instance Renderable SubChat where
                             ("Digest title", settings_digest_title sub_settings),
                             ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                             ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                            ("Follow", if settings_follow sub_settings then "enabled" else "disabled")
+                            ("Follow", if settings_follow sub_settings then "enabled" else "disabled"),
+                            ("Pagination", if settings_pagination sub_settings then "enabled" else "disabled")
                         ]
                     search_part = mapper
                         [
@@ -168,7 +168,7 @@ instance Renderable ([(FeedLink, [Item])], Int) where
                 `T.append` "\n*| "
                 `T.append` t
                 `T.append` "*:\n"
-                `T.append` (render . take 25 . sortOn (Down . i_pubdate) $ i)
+                `T.append` (render . take 30 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!t, !i) = acc
                 `T.append` "\n*| "
                 `T.append` t
@@ -200,7 +200,8 @@ defaultReply payload = ChatReply {
     reply_contents = payload,
     reply_markdown = True,
     reply_pin_on_send = False,
-    reply_disable_webview = False
+    reply_disable_webview = False,
+    reply_pagination = True
     }
 
 mkReply :: Replies -> Reply
@@ -220,7 +221,7 @@ mkReply (FromFeedDetails feed) = ServiceReply $ render feed
 mkReply (FromFeedItems f) =
     let rendered_items =
             render .
-            take 25 .
+            take 30 .
             sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
@@ -228,10 +229,10 @@ mkReply (FromFollow fs _) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         payload = "New 'follow update'.\n--\n" 
             `T.append` render (fitems, 0 :: Int)     
-    in  ChatReply payload True True False
+    in  ChatReply payload True True False True
 mkReply (FromDigest fs mb_link s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
-        collapse = fromMaybe 0 $ settings_digest_collapse s 
+        collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s 
         header = settings_digest_title s `T.append` "\n--" 
         body = render (fitems, collapse) 
         payload = case mb_link of
@@ -249,14 +250,15 @@ mkReply (FromDigest fs mb_link s) =
             reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
-            reply_disable_webview = settings_disable_web_view s
+            reply_disable_webview = settings_disable_web_view s,
+            reply_pagination = settings_pagination s
             }
 mkReply (FromFeedLinkItems flinkitems) =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False
-mkReply FromStart = ChatReply renderCmds True True False
+mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False True
+mkReply FromStart = ChatReply renderCmds True True False False
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"
