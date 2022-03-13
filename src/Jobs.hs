@@ -143,9 +143,9 @@ postProcJobs = ask >>= \env ->
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
             JobSetPagination cid mid pages -> fork $
-                let db = evalDb env $ UpsertPages cid mid pages
-                    cache = withCache $ CacheSetPages cid mid pages
-                in  runApp env (db >> cache) >>= \case
+                let to_db = evalDb env $ UpsertPages cid mid pages
+                    to_cache = withCache $ CacheSetPages cid mid pages
+                in  runApp env (to_db >> to_cache) >>= \case
                     Right _ -> pure ()
                     _ ->
                         let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)

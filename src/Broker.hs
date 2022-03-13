@@ -74,26 +74,22 @@ withBroker (CacheDeleteFeeds flinks) = ask >>= \env ->
         _ -> pure . Left $
                 "Unable to delete these feeds: "
                     `T.append`  T.intercalate ", " flinks
-withBroker (CacheGetPage cid mid n) = do
-    env <- ask
-    first_pass <- withRedis env query
-    case first_pass of 
+withBroker (CacheGetPage cid mid n) =
+    ask >>= \env ->
+    withRedis env query >>= \case
         Right (Just page, i) -> success page i
-        _ -> do
-            _ <- refresh env
-            second_pass <- withRedis env query
-            case second_pass of
-                Right (Just page, i) -> success page i
-                _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
+        _ -> refresh env >> withRedis env query >>= \case
+            Right (Just page, i) -> success page i
+            _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
     where
-        success p i = 
-            let (page', i') = (B.decodeUtf8 p, fromInteger i)
-            in  pure . Right $ CachePage page' i'
+        k = pageCidMidK cid mid
         query = do
             d <- lindex k (toInteger $ n-1)
             l <- llen k
             pure $ (,) <$> d <*> l
-        k = pageCidMidK cid mid
+        success p i = 
+            let (page', i') = (B.decodeUtf8 p, fromInteger i)
+            in  pure . Right $ CachePage page' i'        
         refresh env = evalDb env (GetPages cid mid) >>= \case
             DbPages pages -> withBroker (CacheSetPages cid mid pages)
             _ -> pure $ Left "Error while trying to refresh after pulling anew from database."            
