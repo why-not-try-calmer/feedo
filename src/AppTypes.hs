@@ -14,7 +14,7 @@ import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId, UserId)
+import TgramOutJson (ChatId, UserId, InlineKeyboardMarkup)
 import Database.Redis (Connection)
 import Data.IORef (IORef)
 
@@ -25,8 +25,16 @@ data Reply =
         reply_contents :: T.Text,
         reply_markdown :: Bool,
         reply_disable_webview :: Bool,
-        reply_pin_on_send :: Bool }
+        reply_pin_on_send :: Bool, 
+        reply_pagination :: Bool
+    }
     | ServiceReply T.Text
+    | EditReply {
+        edit_message_id :: Int,
+        edit_text :: T.Text,
+        edit_markdown :: Bool,
+        edit_pagination_keyboard :: Maybe InlineKeyboardMarkup 
+    }
     deriving Show
 
 {- URLs -}
@@ -112,11 +120,12 @@ data Settings = Settings {
     settings_digest_start :: Maybe UTCTime,
     settings_digest_title :: T.Text,
     settings_disable_web_view :: Bool,
+    settings_follow :: Bool,
+    settings_pagination :: Bool,
     settings_paused :: Bool,
     settings_pin :: Bool,
-    settings_word_matches :: WordMatches,
     settings_share_link :: Bool,
-    settings_follow :: Bool
+    settings_word_matches :: WordMatches
 } deriving (Show, Eq)
 
 $(deriveJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = drop 9 } ''Settings)
@@ -174,6 +183,7 @@ data ParsingSettings =
     PDigestTitle T.Text |
     PBlacklist (S.Set T.Text) |
     PDisableWebview Bool |
+    PPagination Bool |
     PPaused Bool |
     PPin Bool |
     PDigestCollapse Int |
@@ -319,6 +329,7 @@ data DbAction
   | GetAllFeeds
   | GetAllChats
   | GetFeed FeedLink
+  | GetPages ChatId Int
   | IncReads [FeedLink]
   | DbSearch Keywords Scope (Maybe UTCTime)
   | PruneOld UTCTime
@@ -326,6 +337,7 @@ data DbAction
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
+  | UpsertPages ChatId Int [T.Text]
   | View [FeedLink] UTCTime UTCTime
   | WriteDigest Digest
   deriving (Show, Eq)
@@ -343,6 +355,8 @@ data DbRes = DbFeeds [Feed]
   | DbView [Item] UTCTime UTCTime
   | DbDigest Digest
   | DbDigestId T.Text
+  | DbNoPage ChatId Int
+  | DbPages [T.Text]
   deriving (Eq, Show)
 
 data DbError
@@ -355,6 +369,7 @@ data DbError
   | BadQuery T.Text
   | FailedToSaveDigest
   | FailedToProduceValidId
+  | FailedToInsertPage
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
@@ -367,6 +382,7 @@ renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt
 renderDbError FailedToSaveDigest = "Unable to save this digest. The database didn't return a valid identifier."
 renderDbError FailedToProduceValidId = "Db was unable to return a valid identifier"
+renderDbError FailedToInsertPage = "Db was unable to insert these pages."
 
 {- Cache -}
 
@@ -378,15 +394,19 @@ data CacheAction =
     CachePushFeeds [Feed] |
     CacheRefresh |
     CacheWarmup |
-    CacheXDays [FeedLink] Int
+    CacheXDays [FeedLink] Int |
+    CacheGetPage ChatId Int Int |
+    CacheSetPages ChatId Int [T.Text]
     
 data FromCache =
     CacheOk |
+    CacheNothing |
     CacheFeed Feed |
     CacheFeeds [Feed] |
     CacheMissed [FeedLink] |
     CacheDigests (HMS.HashMap ChatId (SubChat, Batch)) |
-    CacheLinkDigest [(FeedLink, [Item])]
+    CacheLinkDigest [(FeedLink, [Item])] |
+    CachePage T.Text Int
     deriving (Show, Eq)
 
 type FeedItems = [(Feed, [Item])]
@@ -411,7 +431,8 @@ data Job =
     JobLog LogItem |
     JobPin ChatId Int |
     JobTgAlert T.Text |
-    JobArchive [Feed] UTCTime
+    JobArchive [Feed] UTCTime |
+    JobSetPagination ChatId Int [T.Text] 
     deriving (Eq, Show)
 
 {- Web responses -}

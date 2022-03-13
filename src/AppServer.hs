@@ -3,30 +3,30 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module AppServer (startApp, registerWebhook, makeConfig) where
+
 import AppTypes
 import Backend
+import Broker (withCache)
 import Control.Concurrent (newChan, newMVar)
+import Control.Exception (throwIO)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
+import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Mongo (setupMongo)
 import Jobs
+import Mongo (setupMongo)
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Redis (setupRedis)
 import Requests (reply)
 import Servant
 import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
 import Text.Blaze
 import TgActions
-import TgramInJson (Message (chat, from, reply_to_message, text), Update (message), User (user_id), chat_id)
-import TgramOutJson (ChatId, UserId)
+import TgramInJson (Message (chat, from, reply_to_message, text), Update (callback_query, message), User (user_id), chat_id)
 import Web
-import Redis (setupRedis)
-import Broker (withCache)
-import Control.Exception (throwIO)
-import Data.IORef (newIORef)
 
 type BotAPI =
     Get '[HTML] Markup :<|>
@@ -58,21 +58,23 @@ server =
         where
             tok = bot_token . tg_config
             finishWith env cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
-            handle upd env = case message upd of
-                Nothing -> liftIO $ putStrLn "Failed to parse message"
-                Just msg ->
-                    let cid = chat_id . chat $ msg :: ChatId
-                        uid = user_id . fromJust . from $ msg :: UserId
-                    in  case reply_to_message msg of
-                        Just _ -> pure ()
-                        Nothing -> case TgramInJson.text msg of
-                            Nothing -> pure ()
-                            Just conts -> case interpretCmd conts of
-                                Left (Ignore _) -> pure ()
-                                Left err -> finishWith env cid err
-                                Right action -> evalTgAct uid action cid >>= \case
+            handle upd env = case callback_query upd of
+                Just dat -> processCbq dat
+                Nothing -> case message upd of
+                    Nothing -> liftIO $ putStrLn "Failed to parse message"
+                    Just msg ->
+                        let cid = chat_id . chat $ msg
+                            uid = user_id . fromJust . from $ msg
+                        in  case reply_to_message msg of
+                            Just _ -> pure () -- ignoring replies
+                            Nothing -> case TgramInJson.text msg of
+                                Nothing -> pure () -- ignoring empty contents
+                                Just conts -> case interpretCmd conts of
+                                    Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
                                     Left err -> finishWith env cid err
-                                    Right r -> reply (tok env) cid r (postjobs env)
+                                    Right action -> evalTgAct uid action cid >>= \case
+                                        Left err -> finishWith env cid err
+                                        Right r -> reply (tok env) cid r (postjobs env)
 
     staticSettings :: MonadIO m => ServerT Raw m
     staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
@@ -114,14 +116,14 @@ makeConfig env =
         }, port)
 
 initStart :: MonadIO m => App m ()
-initStart = withCache CacheWarmup >>= \case
-    Left msg -> report msg >> continue
-    _ -> continue
-    where 
-        report msg = liftIO $ do
+initStart = do
+    loadChats >> regenFeeds
+    withCache CacheWarmup >>= \case
+        Left msg -> liftIO $ do
             print $ "Unable to warm up cache: " `T.append` msg
             putStrLn "Proceededing nonetheless"
-        continue = loadChats >> procNotif >> postProcJobs
+        _ -> pure ()
+    procNotif >> postProcJobs
 
 startApp :: IO ()
 startApp = do

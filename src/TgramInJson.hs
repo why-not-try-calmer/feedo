@@ -70,12 +70,23 @@ data Message = Message
 
 $(deriveJSON defaultOptions ''Message)
 
+data CallbackQuery = CallbackQuery {
+    cbq_id :: Text,
+    cbq_from :: User,
+    cbq_message :: Maybe Message,
+    cbq_chat_instance :: Text,
+    cbq_data :: Maybe Text
+} deriving (Show)
+
+$(deriveJSON defaultOptions {fieldLabelModifier = drop 4, omitNothingFields = True} ''CallbackQuery)
+
 data Update = Update
   { update_id :: Int,
-    message :: Maybe Message
+    message :: Maybe Message,
+    callback_query :: Maybe CallbackQuery
   } deriving (Show)
 
-$(deriveJSON defaultOptions ''Update)
+$(deriveJSON defaultOptions {omitNothingFields = True} ''Update)
 
 data TgGetMessageResponse = TgGetMessageResponse {resp_msg_ok :: Bool, resp_msg_result :: Message} deriving (Show)
 

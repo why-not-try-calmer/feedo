@@ -55,7 +55,7 @@ spec = pre >>= \(env, feeds) -> go env >> go1 env feeds where
         let desc as = describe "withCache: Warmup" as
             as func = it "returns from the cache an item if found there, or updates the cache with the db and returns it afterwards" func
             target = do
-                res <- runApp env $ withBroker CacheWarmup
+                res <- runApp env $ withCache CacheWarmup
                 print res
                 res `shouldSatisfy` (\case Right res -> res == CacheOk; _ -> undefined)
         in  desc $ as target
@@ -63,7 +63,7 @@ spec = pre >>= \(env, feeds) -> go env >> go1 env feeds where
         let desc as = describe "withCache: GetFeeds" as
             as func = it "tries to obtain the feeds from the cache, otherwise turns to the db" func
             target = do
-                res <- runApp env $ withBroker $ CachePullFeeds [head feeds]
+                res <- runApp env $ withCache $ CachePullFeeds [head feeds]
                 print res
                 case res of
                     Right (CacheFeeds fs) -> do
