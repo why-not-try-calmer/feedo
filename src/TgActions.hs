@@ -21,7 +21,7 @@ import Mongo (evalDb)
 import Network.HTTP.Req (renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
 import Replies (mkReply, render)
-import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook)
+import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook, answer)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -452,14 +452,20 @@ evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
 
 processCbq :: (MonadIO m, MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
-processCbq cbq = ask >>= \env ->
-    let cid = chat_id . chat . fromJust . cbq_message $ cbq
+processCbq cbq = ask >>= \env -> send_answer env >> get_page env
+    where
+        cid = chat_id . chat . fromJust . cbq_message $ cbq
         mid = message_id . fromJust . cbq_message $ cbq
-        action n = withCache $ CacheGetPage cid mid n
-    in  case cbq_data cbq >>= readMaybe . T.unpack :: Maybe Int of
-        Nothing -> pure ()
-        Just n -> action n >>= \case
-            Right (CachePage p i) ->
-                let rep = EditReply mid p True (mkKeyboard n i)
-                in  reply (bot_token . tg_config $ env) cid rep (postjobs env)
-            _ -> pure ()
+        answer_cbq = AnswerCallbackQuery (cbq_id cbq) Nothing Nothing Nothing Nothing
+        send_answer env = answer (bot_token . tg_config $ env) answer_cbq >>= \case
+            Left err -> report env err
+            Right _ -> pure ()
+        get_page env = case cbq_data cbq >>= readMaybe . T.unpack :: Maybe Int of
+            Nothing -> pure ()
+            Just n -> withCache (CacheGetPage cid mid n) >>= \case
+                Right (CachePage p i mb_url) ->
+                    let rep = EditReply mid p True (mkKeyboard n i mb_url)
+                    in  reply (bot_token . tg_config $ env) cid rep (postjobs env)
+                Left err -> report env err
+                _ -> pure ()
+        report env err = liftIO $ writeChan (postjobs env) $ JobTgAlert err

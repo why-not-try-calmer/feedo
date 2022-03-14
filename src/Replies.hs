@@ -125,12 +125,13 @@ instance Renderable SubChat where
                             ("Digest time(s)", if T.null at then "none" else at),
                             every_txt,
                             ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),
-                            ("Digest collapse", maybe "disabled" (\v -> if v == 0 then "disabled" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
+                            ("Digest collapse", maybe "false" (\v -> if v == 0 then "false" else T.pack . show $ v) $ settings_digest_collapse sub_settings),
                             ("Digest title", settings_digest_title sub_settings),
                             ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                             ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                            ("Follow", if settings_follow sub_settings then "enabled" else "disabled"),
-                            ("Pagination", if settings_pagination sub_settings then "enabled" else "disabled")
+                            ("Follow", if settings_follow sub_settings then "true" else "false"),
+                            ("Pagination", if settings_pagination sub_settings then "true" else "false"),
+                            ("Display 'share link' button", if settings_share_link sub_settings then "true" else "false")
                         ]
                     search_part = mapper
                         [
@@ -140,8 +141,8 @@ instance Renderable SubChat where
                         ]
                     telegram_part = mapper
                         [
-                            ("Webview", if settings_disable_web_view sub_settings then "disabled" else "enabled"),
-                            ("Pin new updates", if settings_pin sub_settings then "enabled" else "disabled")
+                            ("Webview", if settings_disable_web_view sub_settings then "false" else "true"),
+                            ("Pin new updates", if settings_pin sub_settings then "true" else "false")
                         ]
                 in  status_part
                     `T.append` "\n--\n"
@@ -201,7 +202,8 @@ defaultReply payload = ChatReply {
     reply_markdown = True,
     reply_pin_on_send = False,
     reply_disable_webview = False,
-    reply_pagination = True
+    reply_pagination = True,
+    reply_permalink = Nothing
     }
 
 mkReply :: Replies -> Reply
@@ -229,36 +231,29 @@ mkReply (FromFollow fs _) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         payload = "New 'follow update'.\n--\n" 
             `T.append` render (fitems, 0 :: Int)     
-    in  ChatReply payload True True False True
+    in  ChatReply payload True True False True Nothing
 mkReply (FromDigest fs mb_link s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
+        -- pagination preempting collapse when both are enabled and 
+        -- collapsing would have occurred  
         collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s 
         header = settings_digest_title s `T.append` "\n--" 
         body = render (fitems, collapse) 
-        payload = case mb_link of
-            Nothing -> header `T.append` body
-            Just link -> 
-                let link_txt = 
-                        if collapse == 0
-                        then "This post may also be viewed "
-                        else "This is a shortened version. Read the full digest "
-                    link_href = toHrefEntities Nothing "here" link
-                    footer = "--\n" `T.append` link_txt `T.append` link_href `T.append` "."
-                in  if settings_share_link s || collapse > 0 then header `T.append` body `T.append` footer
-                    else header `T.append` body
+        payload = header `T.append` body
     in  ChatReply {
             reply_contents = payload,
             reply_markdown = True,
             reply_pin_on_send = settings_pin s,
             reply_disable_webview = settings_disable_web_view s,
-            reply_pagination = settings_pagination s
+            reply_pagination = settings_pagination s,
+            reply_permalink = mb_link
             }
 mkReply (FromFeedLinkItems flinkitems) =
     let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
-mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False True
-mkReply FromStart = ChatReply renderCmds True True False False
+mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False True Nothing
+mkReply FromStart = ChatReply renderCmds True True False False Nothing
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

@@ -21,7 +21,7 @@ import Data.Time (getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
 import Parsing (rebuildFeed)
-import Redis (HasRedis, pageCidMidK, singleK, withRedis)
+import Redis (HasRedis, pageKeys, singleK, withRedis)
 import Utils (freshLastXDays, notifFrom, partitionEither, sortItems)
 
 type CacheRes = Either T.Text FromCache
@@ -77,27 +77,36 @@ withBroker (CacheDeleteFeeds flinks) = ask >>= \env ->
 withBroker (CacheGetPage cid mid n) =
     ask >>= \env ->
     withRedis env query >>= \case
-        Right (Just page, i) -> success page i
+        Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
         _ -> refresh env >> withRedis env query >>= \case
-            Right (Just page, i) -> success page i
+            Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
             _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
     where
-        k = pageCidMidK cid mid
+        (lk, k) = pageKeys cid mid
         query = do
-            d <- lindex k (toInteger $ n-1)
-            l <- llen k
-            pure $ (,) <$> d <*> l
-        success p i = 
+            d <- lindex lk (toInteger $ n-1)
+            l <- llen lk
+            url <- get k
+            pure $ (,,) <$> d <*> l <*> url
+        success p i mb_page = 
             let (page', i') = (B.decodeUtf8 p, fromInteger i)
-            in  pure . Right $ CachePage page' i'        
+            in  pure . Right $ CachePage page' i' mb_page        
         refresh env = evalDb env (GetPages cid mid) >>= \case
-            DbPages pages -> withBroker (CacheSetPages cid mid pages)
+            DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
             _ -> pure $ Left "Error while trying to refresh after pulling anew from database."            
-withBroker (CacheSetPages cid mid pages) = ask >>= \env ->
-    let k = pageCidMidK cid mid
-    in  withRedis env (lpush k $ map B.encodeUtf8 pages) >>= \case
-        Right _ -> pure $ Right CacheOk
-        Left _ -> pure $ Left "Nothing"
+withBroker (CacheSetPages cid mid pages mb_link) = ask >>= \env ->
+    let (lk, k) = pageKeys cid mid
+        action = case mb_link of
+            Nothing -> withRedis env (lpush k $ map B.encodeUtf8 pages) >>= \case
+                Right _ -> pure $ Right CacheOk
+                Left _ -> pure $ Left "Nothing"
+            Just l -> withRedis env (multiExec $ do
+                q1 <- set k $ B.encodeUtf8 l
+                q2 <- lpush lk $ map B.encodeUtf8 pages
+                pure $ (,) <$> q1 <*> q2) >>= \case
+                    TxSuccess _ -> pure $ Right CacheOk
+                    _ -> pure $ Left "Nothing"
+    in  action
 withBroker (CachePullFeed flink) = do
     env <- ask
     withRedis env (get . singleK $ flink) >>= \case
