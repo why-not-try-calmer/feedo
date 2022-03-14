@@ -253,7 +253,19 @@ mkReply (FromFeedLinkItems flinkitems) =
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
 mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False True Nothing
-mkReply FromStart = ChatReply renderCmds True True False False Nothing
+mkReply FromCmds = ChatReply renderCmds True True False False Nothing
+mkReply FromStart = 
+    let txt = "Hello there!\nThis bot allows you to subscribe to web feeds this or any chat\
+        \ or channel _where you have admin permissions_ (it works in private chats too!). Then every now and then, the bot will send messages to\
+        \ the subscribed chat with a summary of all the new items found since last time, so that you never miss out on any important news!\
+        \ \n\nI suggest you start with `/sub https://<your favorite web feed>` (the bot will tell you if the address and the feed are valid).\
+        \ Then review your settings with `/set`.\nYou can specify a time or a period of time for receiving messages. For example, to receive one post every day at 6pm and 18pm:\
+        \ \n```/set\ndigest_at: 06:00 18:00\n```\
+        \ By default the bot posts at least once a day every day.\
+        \ \nA ready-to-use list of settings can be [viewed at](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md)\
+        \ \nAll the settings and commands are [explained at](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md)\
+        \ \nHave fun and don't hesitate to [get in touch](tg://user?id=226151044) if you have questions or issues."
+    in  (defaultReply txt) { reply_disable_webview = True }
 
 renderCmds :: T.Text
 renderCmds = T.intercalate "\n"

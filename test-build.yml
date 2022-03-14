@@ -15,7 +15,7 @@ services:
         - MONGO_CONN_STRING
     redis:
         image: redis:latest
-        ports: [6379:6379]
+        ports: [6379]
         restart: unless-stopped
         volumes:
           - /data/redis-store
