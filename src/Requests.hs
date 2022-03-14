@@ -103,7 +103,7 @@ mkKeyboard tgt tot mb_url
         curr = InlineKeyboardButton out_of Nothing (Just "*")
         prev = InlineKeyboardButton "Prev." Nothing (Just . T.pack . show $ tgt - 1)
         next = InlineKeyboardButton "Next" Nothing (Just . T.pack . show $ tgt + 1)
-        reset = InlineKeyboardButton "Page" Nothing (Just "1")
+        reset = InlineKeyboardButton "Page 1" Nothing (Just "1")
 
 mkPagination :: T.Text -> Maybe T.Text -> Maybe ([T.Text], InlineKeyboardMarkup)
 mkPagination orig_txt mb_url =
