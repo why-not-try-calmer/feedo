@@ -98,8 +98,8 @@ mkKeyboard tgt tot mb_url
         Nothing -> [[prev, curr, next], [reset]]
         Just url -> [[prev, curr, next], [reset, permalink url]]
     where 
-        permalink url = InlineKeyboardButton "Permalink" (Just url) Nothing
         out_of = (T.pack . show $ tgt) `T.append` "/" `T.append` (T.pack . show $ tot)
+        permalink url = InlineKeyboardButton "Permalink" (Just url) Nothing
         curr = InlineKeyboardButton out_of Nothing (Just "*")
         prev = InlineKeyboardButton "Prev." Nothing (Just . T.pack . show $ tgt - 1)
         next = InlineKeyboardButton "Next" Nothing (Just . T.pack . show $ tgt + 1)

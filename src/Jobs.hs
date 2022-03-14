@@ -143,7 +143,7 @@ postProcJobs = ask >>= \env ->
                 print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                 reply tok (alert_chat . tg_config $ env) msg jobs
             JobSetPagination cid mid pages mb_link -> fork $
-                let to_db = evalDb env $ UpsertPages cid mid pages mb_link
+                let to_db = evalDb env $ InsertPages cid mid pages mb_link
                     to_cache = withCache $ CacheSetPages cid mid pages mb_link
                 in  runApp env (to_db >> to_cache) >>= \case
                     Right _ -> pure ()

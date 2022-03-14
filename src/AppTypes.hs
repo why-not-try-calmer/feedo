@@ -332,13 +332,13 @@ data DbAction
   | GetFeed FeedLink
   | GetPages ChatId Int
   | IncReads [FeedLink]
+  | InsertPages ChatId Int [T.Text] (Maybe T.Text)
   | DbSearch Keywords Scope (Maybe UTCTime)
   | PruneOld UTCTime
   | ReadDigest T.Text
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
-  | UpsertPages ChatId Int [T.Text] (Maybe T.Text)
   | View [FeedLink] UTCTime UTCTime
   | WriteDigest Digest
   deriving (Show, Eq)

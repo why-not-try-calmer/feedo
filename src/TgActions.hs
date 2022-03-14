@@ -7,7 +7,7 @@ import AppTypes
 import Backend (withChat)
 import Broker (HasCache (withCache), getAllFeeds)
 import Control.Concurrent (Chan, readMVar, writeChan)
-import Control.Concurrent.Async (concurrently, mapConcurrently, concurrently_)
+import Control.Concurrent.Async (concurrently, mapConcurrently)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
@@ -452,16 +452,20 @@ evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
 
 processCbq :: (MonadIO m, MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
-processCbq cbq = ask >>= \env -> liftIO $ concurrently_ (send_answer env) (get_page env)
+processCbq cbq = ask >>= \env -> send_answer env >> get_page env
     where
         cid = chat_id . chat . fromJust . cbq_message $ cbq
         mid = message_id . fromJust . cbq_message $ cbq
         answer_cbq = AnswerCallbackQuery (cbq_id cbq) Nothing Nothing Nothing Nothing
-        send_answer env = answer (bot_token . tg_config $ env) answer_cbq
+        send_answer env = answer (bot_token . tg_config $ env) answer_cbq >>= \case
+            Left err -> report env err
+            Right _ -> pure ()
         get_page env = case cbq_data cbq >>= readMaybe . T.unpack :: Maybe Int of
             Nothing -> pure ()
-            Just n -> runApp env $ withCache (CacheGetPage cid mid n) >>= \case
+            Just n -> withCache (CacheGetPage cid mid n) >>= \case
                 Right (CachePage p i mb_url) ->
                     let rep = EditReply mid p True (mkKeyboard n i mb_url)
                     in  reply (bot_token . tg_config $ env) cid rep (postjobs env)
+                Left err -> report env err
                 _ -> pure ()
+        report env err = liftIO $ writeChan (postjobs env) $ JobTgAlert err

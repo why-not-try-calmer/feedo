@@ -269,6 +269,15 @@ evalMongo env (GetPages cid mid) =
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
     in  traverse_ action links >> pure DbOk
+evalMongo env (InsertPages cid mid pages mb_link) =
+    let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
+        payload = case mb_link of
+            Nothing -> base_payload
+            Just l -> base_payload ++ ["url" =: l]
+        action = withMongo env $ insert "pages" payload
+    in  action >>= \case
+        Left () -> pure . DbErr $ FailedToInsertPage
+        _ -> pure DbOk
 evalMongo env (PruneOld t) =
     let del_items = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
         del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
@@ -307,15 +316,6 @@ evalMongo env (UpsertFeeds feeds) =
         Right res ->
             if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
             else pure DbOk
-evalMongo env (UpsertPages cid mid pages mb_link) =
-    let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
-        payload = case mb_link of
-            Nothing -> base_payload
-            Just l -> base_payload ++ ["url" =: l]
-        action = withMongo env $ insert "pages" payload
-    in  action >>= \case
-        Left () -> pure . DbErr $ FailedToInsertPage
-        _ -> pure DbOk
 evalMongo env (View flinks start end) =
     let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
     in  withMongo env query >>= \case
