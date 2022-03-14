@@ -23,14 +23,14 @@ spec = go >> go1 >> go2 where
     go =
         let desc as = describe "mkKeyboard" as
             as func = it "makes a keyboard adjusted for pagination" func
-            target = case mkKeyboard 1 2 of
+            target = case mkKeyboard 1 2 Nothing of
                 Nothing -> undefined
                 Just (InlineKeyboardMarkup keyboard) -> length keyboard `shouldBe` 1
         in  desc $ as target
     go1 =
         let desc as = describe "pagination" as
             as func = it "splits a text into many sub-texts no longer than 606 bytes" func
-            target = case mkPagination lorec of
+            target = case mkPagination lorec Nothing of
                 Nothing -> undefined
                 Just (texts, InlineKeyboardMarkup keyboard) -> do
                     let [p1, p2, p3] = texts
@@ -43,8 +43,8 @@ spec = go >> go1 >> go2 where
         let desc as = describe "pagination live test" as
             as func = it "sends a Telegram message with pagination" func
             target = do
-                let (texts, keyboard) = fromJust $ mkPagination lorec
-                    rep = ChatReply lorec False False False True
+                let (texts, keyboard) = fromJust $ mkPagination lorec Nothing
+                    rep = ChatReply lorec False False False True Nothing
                 env <- getConns
                 res <- runApp env $ reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) rep (postjobs env)
                 res `shouldBe` ()

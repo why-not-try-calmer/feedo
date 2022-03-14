@@ -263,8 +263,8 @@ evalMongo env (GetPages cid mid) =
     let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
     in  action >>= \case
         Right (Just doc) -> case M.lookup "pages" doc of
-            Just pages -> pure $ DbPages pages
-            _ -> pure $ DbNoPage cid mid 
+            Just pages -> pure $ DbPages pages (M.lookup "url" doc)
+            _ -> pure $ DbNoPage cid mid
         _ -> pure $ DbNoPage cid mid
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
@@ -307,8 +307,12 @@ evalMongo env (UpsertFeeds feeds) =
         Right res ->
             if failed res then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
             else pure DbOk
-evalMongo env (UpsertPages cid mid pages) =
-    let action = withMongo env $ insert "pages" ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
+evalMongo env (UpsertPages cid mid pages mb_link) =
+    let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
+        payload = case mb_link of
+            Nothing -> base_payload
+            Just l -> base_payload ++ ["url" =: l]
+        action = withMongo env $ insert "pages" payload
     in  action >>= \case
         Left () -> pure . DbErr $ FailedToInsertPage
         _ -> pure DbOk

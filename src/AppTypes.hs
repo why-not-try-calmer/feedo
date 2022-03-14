@@ -26,14 +26,15 @@ data Reply =
         reply_markdown :: Bool,
         reply_disable_webview :: Bool,
         reply_pin_on_send :: Bool, 
-        reply_pagination :: Bool
+        reply_pagination :: Bool,
+        reply_permalink :: Maybe T.Text
     }
     | ServiceReply T.Text
     | EditReply {
         edit_message_id :: Int,
         edit_text :: T.Text,
         edit_markdown :: Bool,
-        edit_pagination_keyboard :: Maybe InlineKeyboardMarkup 
+        edit_pagination_keyboard :: Maybe InlineKeyboardMarkup
     }
     deriving Show
 
@@ -337,7 +338,7 @@ data DbAction
   | UpsertChat SubChat
   | UpsertChats SubChats
   | UpsertFeeds [Feed]
-  | UpsertPages ChatId Int [T.Text]
+  | UpsertPages ChatId Int [T.Text] (Maybe T.Text)
   | View [FeedLink] UTCTime UTCTime
   | WriteDigest Digest
   deriving (Show, Eq)
@@ -356,7 +357,7 @@ data DbRes = DbFeeds [Feed]
   | DbDigest Digest
   | DbDigestId T.Text
   | DbNoPage ChatId Int
-  | DbPages [T.Text]
+  | DbPages [T.Text] (Maybe T.Text)
   deriving (Eq, Show)
 
 data DbError
@@ -396,7 +397,7 @@ data CacheAction =
     CacheWarmup |
     CacheXDays [FeedLink] Int |
     CacheGetPage ChatId Int Int |
-    CacheSetPages ChatId Int [T.Text]
+    CacheSetPages ChatId Int [T.Text] (Maybe T.Text)
     
 data FromCache =
     CacheOk |
@@ -406,7 +407,7 @@ data FromCache =
     CacheMissed [FeedLink] |
     CacheDigests (HMS.HashMap ChatId (SubChat, Batch)) |
     CacheLinkDigest [(FeedLink, [Item])] |
-    CachePage T.Text Int
+    CachePage T.Text Int (Maybe T.Text)
     deriving (Show, Eq)
 
 type FeedItems = [(Feed, [Item])]
@@ -432,7 +433,7 @@ data Job =
     JobPin ChatId Int |
     JobTgAlert T.Text |
     JobArchive [Feed] UTCTime |
-    JobSetPagination ChatId Int [T.Text] 
+    JobSetPagination ChatId Int [T.Text] (Maybe T.Text)
     deriving (Eq, Show)
 
 {- Web responses -}

@@ -20,9 +20,11 @@ instance MonadIO m => HasRedis (App m) where
 singleK :: T.Text -> B.ByteString
 singleK = B.append "feeds:" . T.encodeUtf8
 
-pageCidMidK :: Int64 -> Int -> B.ByteString
-pageCidMidK cid mid = "page_cid_mid:" `B.append` f cid `B.append` f mid 
+pageKeys :: Int64 -> Int -> (B.ByteString, B.ByteString)
+pageKeys cid mid = (lk, k)
     where
+        lk = "pages_cid_mid:" `B.append` f cid `B.append` f mid
+        k = "page_url_cid_mid:" `B.append` f cid `B.append` f mid
         f :: Show a => a -> B.ByteString
         f = T.encodeUtf8 . T.pack . show
 
