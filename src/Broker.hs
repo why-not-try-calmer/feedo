@@ -98,13 +98,15 @@ withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
 withBroker (CacheSetPages cid mid pages mb_link) = ask >>= \env ->
     let (lk, k) = pageKeys cid mid
         action = case mb_link of
-            Nothing -> withRedis env (lpush lk $ map B.encodeUtf8 pages) >>= \case
+            Nothing -> withRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
                 Right _ -> pure $ Right CacheOk
                 Left _ -> pure $ Left "Nothing"
             Just l -> withRedis env (multiExec $ do
                 q1 <- set k $ B.encodeUtf8 l
+                q1' <- expire k 86400
                 q2 <- lpush lk $ map B.encodeUtf8 pages
-                pure $ (,) <$> q1 <*> q2) >>= \case
+                q2' <- expire lk 86400
+                pure $ (,,,) <$> q1 <*> q2 <*> q1' <*> q2') >>= \case
                     TxSuccess _ -> pure $ Right CacheOk
                     _ -> pure $ Left "Nothing"
     in  action
