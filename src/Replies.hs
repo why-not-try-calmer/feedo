@@ -260,8 +260,7 @@ mkReply FromStart =
         \ the subscribed chat with a summary of all the new items found since last time, so that you never miss out on any important news!\
         \ \n\nI suggest you start with `/sub https://<your favorite web feed>` (the bot will tell you if the address and the feed are valid).\
         \ Then review your settings with `/set`.\nYou can specify a time or a period of time for receiving messages. For example, to receive one post every day at 6pm and 18pm:\
-        \ \n```/set <linebreak> digest_at: 06:00 18:00\n```\
-        \By default the bot posts at least once a day every day.\
+        \ \n`/set`\n`digest_at: 06:00 18:00`\nBy default the bot posts at least once a day every day.\
         \ \nA ready-to-use list of settings can be viewed [here](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).\
         \ \nAll the settings and commands are explained [there](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).\
         \ \nHave fun and don't hesitate to [get in touch](https://t.me/ad_himself) if you have questions or issues."
