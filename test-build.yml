@@ -17,5 +17,6 @@ services:
         image: redis:latest
         expose: [6379]
         restart: unless-stopped
+        command: redis-server --maxmemory 200mb --maxmemory-policy volatile-lfu
         volumes:
           - /data/redis-store
