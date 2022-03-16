@@ -15,7 +15,7 @@ services:
         MONGO_CONN_STRING: ${MONGO_CONN_STRING}
     redis:
         image: redis:latest
-        ports: [6379:6379]
-        restart: always
+        expose: [6379]
+        restart: on-failure
         volumes:
           - /data/redis-store

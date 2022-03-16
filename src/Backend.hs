@@ -139,7 +139,7 @@ collectDue chats last_run now =
                     if nextWasNow sub_next_digest sub_last_digest interval
                     -- 'digests' take priority over 'follow notifications'
                     then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-                    else 
+                    else
                         if settings_follow sub_settings then case last_run of
                             Nothing -> HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
                             Just t ->
@@ -187,7 +187,7 @@ markNotified env notified_chats now = liftIO $ modifyMVar_ (subs_state env) $ \s
                         }
             else c) chats
 
-regenFeeds :: MonadIO m => App m ()
+regenFeeds :: (MonadIO m, MonadReader AppConfig m) => m ()
 regenFeeds = do
     env <- ask
     chats <- liftIO . readMVar $ subs_state env

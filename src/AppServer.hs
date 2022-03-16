@@ -6,9 +6,9 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Broker (withCache)
-import Control.Concurrent (newChan, newMVar)
-import Control.Exception (throwIO)
+import Broker (withCache, HasCache)
+import Control.Concurrent (newChan, newMVar, writeChan)
+import Control.Exception (throwIO, SomeException (SomeException), try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
@@ -41,24 +41,20 @@ botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
-server = 
-    home :<|> 
+server =
+    home :<|>
     handleWebhook :<|>
-    viewDigests :<|> 
-    viewSearchRes :<|> 
+    viewDigests :<|>
+    viewSearchRes :<|>
     readSettings :<|>
-    writeSettings :<|> 
+    writeSettings :<|>
     staticSettings where
 
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
     handleWebhook secret update = ask >>= \env ->
-        if      EQ == compare secret (tok env)
-        then    handle update env
-        else    liftIO $ putStrLn "Secrets do not match."
-        where
-            tok = bot_token . tg_config
-            finishWith env cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
-            handle upd env = case callback_query upd of
+        let tok = bot_token . tg_config
+            finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
+            handle upd = case callback_query upd of
                 Just dat -> processCbq dat
                 Nothing -> case message upd of
                     Nothing -> liftIO $ putStrLn "Failed to parse message"
@@ -71,17 +67,24 @@ server =
                                 Nothing -> pure () -- ignoring empty contents
                                 Just conts -> case interpretCmd conts of
                                     Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
-                                    Left err -> finishWith env cid err
+                                    Left err -> finishWith cid err
                                     Right action -> evalTgAct uid action cid >>= \case
-                                        Left err -> finishWith env cid err
+                                        Left err -> finishWith cid err
                                         Right r -> reply (tok env) cid r (postjobs env)
-
+        in  if EQ == compare secret (tok env)
+            then liftIO (try . runApp env . handle $ update) >>= \case
+                -- catching all leftover exceptions if any
+                Left (SomeException err) -> liftIO $ writeChan (postjobs env) $ 
+                    JobTgAlert $ "Exception thrown against handler: " `T.append` (T.pack . show $ err)
+                Right _ -> pure ()
+            else liftIO $ putStrLn "Secrets do not match."
+            
     staticSettings :: MonadIO m => ServerT Raw m
     staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
-    
+
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server
-
+    
 withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
 
@@ -99,10 +102,12 @@ makeConfig env =
     in do
     mvar <- newMVar HMS.empty
     chan <- newChan
-    conn <- setupRedis
+    conn <- setupRedis >>= \case
+        Left err -> throwIO . userError $ err
+        Right c -> putStrLn "Redis...OK" >> pure c
     (pipe, creds) <- setupMongo mongo_connection_string >>= \case
         Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
-        Right p -> pure p
+        Right p -> putStrLn "Mongo...OK" >> pure p
     pipe_ioref <- newIORef pipe
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
@@ -115,7 +120,7 @@ makeConfig env =
         connectors = (conn, pipe_ioref)
         }, port)
 
-initStart :: MonadIO m => App m ()
+initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
 initStart = do
     loadChats >> regenFeeds
     withCache CacheWarmup >>= \case

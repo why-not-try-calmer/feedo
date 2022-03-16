@@ -220,6 +220,7 @@ data UserAction
   | Search [T.Text]
   | SetChannelSettings ChatId [ParsingSettings]
   | SetChatSettings SettingsUpdater
+  | Start
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
   | UnSub [FeedRef]
@@ -269,6 +270,7 @@ data Replies = FromAdmin T.Text T.Text
     | FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
+    | FromCmds
     | FromFeedDetails Feed
     | FromFeedItems Feed
     | FromFeedLinkItems [(FeedLink, [Item])]
@@ -391,7 +393,6 @@ data CacheAction =
     CacheDeleteFeeds [T.Text] |
     CachePullFeed T.Text |
     CachePullFeeds [T.Text] |
-    CachePushFeed Feed |
     CachePushFeeds [Feed] |
     CacheRefresh |
     CacheWarmup |

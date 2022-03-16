@@ -12,7 +12,7 @@ import Control.Monad.Reader (MonadReader, ask)
 import Data.Aeson
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
-import Data.Foldable (foldl', traverse_)
+import Data.Foldable (foldl')
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Text as T
@@ -32,17 +32,16 @@ class (MonadReader AppConfig m) => HasCache m where
 instance MonadIO m => HasCache (App m) where
     withCache = withBroker
 
-writeOneFeed :: Feed -> Redis (TxResult Integer)
-writeOneFeed f = multiExec $ do
-    _ <- set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
-    sadd "feeds" [B.encodeUtf8 . f_link $ f]
-
-writeManyFeeds :: [Feed] -> Redis (TxResult Integer)
+writeManyFeeds :: [Feed] -> Redis (TxResult ([Status], Integer))
 writeManyFeeds fs =
     let write_to_keys f = set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
         write_to_sets = sadd "feeds" . map (B.encodeUtf8 . f_link) $ fs
-    in  multiExec $ traverse_ write_to_keys fs >> write_to_sets
-
+        action = do
+            q1 <- sequence <$> traverse write_to_keys fs
+            q2 <- write_to_sets
+            pure $ (,) <$> q1 <*> q2
+    in  multiExec action
+        
 deleteManyFeeds :: [T.Text] -> Redis (TxResult Integer)
 deleteManyFeeds fs = multiExec $ do
     _ <- del (map singleK fs)
@@ -67,6 +66,7 @@ feedsHmap :: [Feed] -> HMS.HashMap FeedLink Feed
 feedsHmap = HMS.fromList . map (\f -> (f_link f, f))
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
+withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
 withBroker (CacheDeleteFeeds flinks) = ask >>= \env ->
     let action = withRedis env $ deleteManyFeeds flinks
     in  action >>= \case
@@ -93,11 +93,12 @@ withBroker (CacheGetPage cid mid n) =
             in  pure . Right $ CachePage page' i' mb_page        
         refresh env = evalDb env (GetPages cid mid) >>= \case
             DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
-            _ -> pure $ Left "Error while trying to refresh after pulling anew from database."            
+            _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
+withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
 withBroker (CacheSetPages cid mid pages mb_link) = ask >>= \env ->
     let (lk, k) = pageKeys cid mid
         action = case mb_link of
-            Nothing -> withRedis env (lpush k $ map B.encodeUtf8 pages) >>= \case
+            Nothing -> withRedis env (lpush lk $ map B.encodeUtf8 pages) >>= \case
                 Right _ -> pure $ Right CacheOk
                 Left _ -> pure $ Left "Nothing"
             Just l -> withRedis env (multiExec $ do
@@ -115,6 +116,7 @@ withBroker (CachePullFeed flink) = do
         Right (Just doc) -> case decodeStrict' doc :: Maybe Feed of
             Nothing -> pure . Left $ "Unable to get this feed" `T.append` flink
             Just f -> pure . Right . CacheFeed $ f
+withBroker (CachePullFeeds []) = pure . Left $ "No feed to pull!"
 withBroker (CachePullFeeds flinks) = do
     env <- ask
     res <- withRedis env $ red_get_all_s flinks
@@ -134,18 +136,12 @@ withBroker (CachePullFeeds flinks) = do
         missing_from_cache feeds =
             if null feeds then flinks
             else filter (\fl -> fl `notElem` map f_link feeds) flinks
-withBroker (CachePushFeed f) = do
-    env <- ask
-    withRedis env $ writeOneFeed f >>= \case
-        TxSuccess _ -> pure $ Right CacheOk
-        _ -> pure $ Left "Failed to save this feed."
-withBroker (CachePushFeeds fs) = do
-    env <- ask
-    withRedis env $ writeManyFeeds fs >>= \case
+withBroker (CachePushFeeds []) = pure $ Left "No feed to push!"
+withBroker (CachePushFeeds fs) = let flinks = map f_link fs in
+    ask >>= \env ->
+    withRedis env (writeManyFeeds fs) >>= \case
         TxSuccess _ -> pure . Right $ CacheOk
         _ -> pure . Left $ "Unable to push these feeds: " `T.append` T.intercalate ", " flinks
-    where
-        flinks = map f_link fs
 withBroker CacheRefresh = do
     env <- ask
     (chats, now) <- (,) <$> liftIO (readMVar $ subs_state env) <*> liftIO getCurrentTime
@@ -185,8 +181,8 @@ withBroker CacheRefresh = do
                     let fresh_feeds = HMS.fromList . map (\f -> (f_link f, f)) $ succeeded
                         to_cache = HMS.union fresh_feeds old_feeds
                     in  withBroker (CachePushFeeds $ HMS.elems to_cache) >> pure (Right to_cache)
-withBroker CacheWarmup = do
-    env <- ask
+withBroker CacheWarmup = 
+    ask >>= \env ->
     evalDb env GetAllFeeds >>= \case
         DbFeeds fs -> withBroker $ CachePushFeeds fs
         _ -> pure . Left $ "Unable to warm the cache."

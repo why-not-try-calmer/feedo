@@ -20,7 +20,7 @@ import TgramOutJson (ChatId, InlineKeyboardButton (InlineKeyboardButton), Inline
 {- Interface -}
 
 class MonadIO m => TgReqM m where
-    runSend :: (FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
+    runSend :: FromJSON a => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
     runSend_ :: BotToken -> T.Text -> Outbound -> m (Either T.Text ())
 
 instance MonadIO m => TgReqM (App m) where
@@ -84,7 +84,11 @@ answer tok query = liftIO (try action) >>= \case
 
 mkKeyboard :: Int -> Int -> Maybe T.Text -> Maybe InlineKeyboardMarkup
 mkKeyboard tgt tot mb_url
-    | tot <= 1 || tot < tgt = Nothing
+    | tot < 1 || tgt > tot = Nothing
+    | tot == 1 =
+    case mb_url of
+        Nothing -> Nothing
+        Just url -> Just $ InlineKeyboardMarkup [[permalink url]]
     | tgt == 1 = Just $ InlineKeyboardMarkup $
     case mb_url of
         Nothing -> [[curr, next]]

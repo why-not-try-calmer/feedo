@@ -93,6 +93,7 @@ interpretCmd contents
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
             Nothing -> Left . BadInput $ "/fresh's argument must be a valid integer."
             Just i -> Right $ GetLastXDaysItems i
+    | cmd == "/help" = Right RenderCmds
     | cmd == "/items" || cmd == "/i" =
         if length args == 1 then case toFeedRef args of
             Left err -> Left err
@@ -157,7 +158,7 @@ interpretCmd contents
                 case parseSettings body of
                 Left err -> Left . BadInput $ err
                 Right settings -> Right $ SetChannelSettings n settings
-    | cmd == "/start" || cmd == "/help" = Right RenderCmds
+    | cmd == "/start" = Right Start
     | cmd == "/sub" || cmd == "/s" =
         if null args then Left . BadInput $ "/sub <optional: channel id> <mandatory: list of url feeds>" else
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
@@ -205,38 +206,44 @@ subFeed cid feeds_urls = do
     env <- ask
     -- check url scheme 
     case traverse eitherUrlScheme feeds_urls of
-        Left err -> pure . ServiceReply . renderUserError $ err
+        Left err -> respondWith . renderUserError $ err
         Right valid_urls ->
-                -- sort out already existent feeds to minimize network call
-                -- , and subscribe chat to them
+            -- sort out already existent feeds to minimize network call
+            -- , and subscribe chat to them
             getAllFeeds env >>= \case
-                Left _ -> pure . ServiceReply $ "Unable to acquire feeds."
+                Left _ -> respondWith "Unable to acquire feeds."
                 Right old_feeds ->
                     let urls = map renderUrl valid_urls
                         old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) old_feeds
                         new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
                     in do
                     unless (null old_keys) (void $ withChat (Sub old_keys) cid)
-                    if null new_url_schemes then pure . ServiceReply $ 
+                    if null new_url_schemes then respondWith $
                         "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
                     -- fetches feeds at remaining urls
                     else liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
                     -- add feeds
                         let (failed, built_feeds) = partitionEither r
                             all_links = old_keys ++ map f_link built_feeds
-                        in  evalDb env (UpsertFeeds built_feeds) >>= \case
+                        -- exiting early if no feed could be built
+                        in  if null built_feeds then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
+                            else evalDb env (UpsertFeeds built_feeds) >>= \case
                             -- subscribes chat to newly added feeds, returning result to caller
                             DbOk -> withCache (CachePushFeeds built_feeds) >>= \case
-                                Left err -> pure . ServiceReply $ err
+                                Left err -> respondWith err
                                 Right _ ->
-                                    let to_sub_to = map f_link built_feeds 
+                                    let to_sub_to = map f_link built_feeds
                                     in  withChat (Sub to_sub_to) cid >>= \case
-                                        Left err -> pure . ServiceReply $ renderUserError err
+                                        Left err -> respondWith $ renderUserError err
                                         Right _ ->
                                             let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
                                                 ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
-                                            in  pure . ServiceReply $ (if null failed then ok_text else T.append ok_text failed_text)
-                            _ -> pure . ServiceReply . renderUserError $ UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
+                                            in  respondWith (if null failed then ok_text else T.append ok_text failed_text)
+                            _ -> respondWith . renderUserError $
+                                    UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
+    where
+        respondWith err = pure $ ServiceReply err
+
 evalTgAct :: MonadIO m =>
     UserId ->
     UserAction ->
@@ -250,7 +257,7 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
             let subs = sort . S.toList . sub_feeds_links $ c
             in  if null subs then pure . Left $ NotSubscribed
                 else withCache (CachePullFeeds subs) >>= \case
-                Right (CacheFeeds fs) -> 
+                Right (CacheFeeds fs) ->
                     let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
                     in  case found of
                         Nothing -> pure . Left $ NotFoundFeed mempty
@@ -332,7 +339,7 @@ evalTgAct _ ListSubs cid = do
                     "Unable to find these feeds " `T.append` T.intercalate " " subs
                 Right fs -> case traverse (`HMS.lookup` fs) subs of
                     Nothing -> pure . Left . NotFoundFeed $
-                        "Unable to find these feeds " `T.append` T.intercalate " " subs 
+                        "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
 evalTgAct uid (ListSubsChannel chan_id) _ = evalTgAct uid ListSubs chan_id
 evalTgAct uid (Migrate to) cid = do
@@ -384,6 +391,14 @@ evalTgAct uid Purge cid = do
                 Left err -> pure . Right . ServiceReply $ "Unable to purge this chat"  `T.append` renderUserError err
                 Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
+evalTgAct _ Start cid = ask >>= \env ->
+    let existing_chat = liftIO $ readMVar (subs_state env) <&> HMS.lookup cid
+    in  existing_chat >>= \case Just c -> start_with_reload c; _ -> fresh_start
+    where
+        fresh_start = pure . Right . mkReply $ FromStart
+        start_with_reload c = pure . Right $ mkReply (FromChat c 
+            "Welcome back! This chat was already using this bot in the past;\
+            \ find the last settings below. Use /help is to display the list of commands.\n---\n")
 evalTgAct uid (Sub feeds_urls) cid = do
     env <- ask
     chats <- liftIO . readMVar $ subs_state env
@@ -397,7 +412,7 @@ evalTgAct uid (Sub feeds_urls) cid = do
             else subFeed cid feeds_urls <&> Right
     where
         exitTooMany = pure . Left . MaxFeedsAlready $ "As of now, chats are not allowed to subscribe to more than 25 feeds."
-evalTgAct _ RenderCmds _ = pure . Right $ mkReply FromStart
+evalTgAct _ RenderCmds _ = pure . Right $ mkReply FromCmds
 evalTgAct uid Reset cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
@@ -452,20 +467,27 @@ evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
 
 processCbq :: (MonadIO m, MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
-processCbq cbq = ask >>= \env -> send_answer env >> get_page env
+processCbq cbq = ask >>= \env ->
+    let send_result n (Right (CachePage p i mb_url)) =
+            let rep = EditReply mid p True (mkKeyboard n i mb_url)
+            in  reply (bot_token . tg_config $ env) cid rep (postjobs env)
+        send_result _ (Left err) = report err
+        send_result _ _ = pure ()
+        report err = liftIO $ writeChan (postjobs env) $ JobTgAlert err
+        send_answer = answer (bot_token . tg_config $ env) mkAnswer >>= \case
+            Left err -> report err
+            _ -> pure ()
+        get_page n = withCache $ CacheGetPage cid mid n
+    in  case cbq_data cbq >>=
+            readMaybe .
+            T.unpack :: Maybe Int of
+        Nothing -> pure ()
+        Just n ->
+            liftIO $
+            concurrently (runApp env $ get_page n) send_answer >>=
+            send_result n . fst
     where
         cid = chat_id . chat . fromJust . cbq_message $ cbq
         mid = message_id . fromJust . cbq_message $ cbq
-        answer_cbq = AnswerCallbackQuery (cbq_id cbq) Nothing Nothing Nothing Nothing
-        send_answer env = answer (bot_token . tg_config $ env) answer_cbq >>= \case
-            Left err -> report env err
-            Right _ -> pure ()
-        get_page env = case cbq_data cbq >>= readMaybe . T.unpack :: Maybe Int of
-            Nothing -> pure ()
-            Just n -> withCache (CacheGetPage cid mid n) >>= \case
-                Right (CachePage p i mb_url) ->
-                    let rep = EditReply mid p True (mkKeyboard n i mb_url)
-                    in  reply (bot_token . tg_config $ env) cid rep (postjobs env)
-                Left err -> report env err
-                _ -> pure ()
-        report env err = liftIO $ writeChan (postjobs env) $ JobTgAlert err
+        mkAnswer = AnswerCallbackQuery (cbq_id cbq) Nothing Nothing Nothing Nothing
+        
