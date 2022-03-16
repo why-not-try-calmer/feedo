@@ -2,21 +2,19 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module AppTypes where
-
 import Control.Concurrent (Chan, MVar)
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
+import Control.Monad.Reader (MonadReader, ReaderT (runReaderT), MonadIO)
 import Data.Aeson.TH (Options (fieldLabelModifier, omitNothingFields), defaultOptions, deriveJSON)
 import qualified Data.HashMap.Strict as HMS
+import Data.IORef (IORef)
 import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB (Host, ObjectId, Pipe, PortID)
-import Text.Read (readMaybe)
-import TgramOutJson (ChatId, UserId, InlineKeyboardMarkup)
 import Database.Redis (Connection)
-import Data.IORef (IORef)
+import Text.Read (readMaybe)
+import TgramOutJson (ChatId, InlineKeyboardMarkup, UserId)
 
 {- Replies -}
 
@@ -495,8 +493,16 @@ data AppConfig = AppConfig
 
 {- Application -}
 
-newtype App m a = App {getApp :: ReaderT AppConfig m a}
+newtype App m a = App { getApp :: ReaderT AppConfig m a }
   deriving (Functor, Applicative, Monad, MonadReader AppConfig, MonadIO)
 
 runApp :: AppConfig -> App m a -> m a
-runApp env = flip runReaderT env . getApp
+runApp env action = runReaderT (getApp action) env
+
+{-
+newtype App' e m a = App' { getApp' :: ExceptT e (ReaderT AppConfig m) a }
+  deriving (Functor, Applicative, Monad, MonadReader AppConfig, MonadError e, MonadIO)
+
+runApp' :: AppConfig -> App' e m a -> m (Either e a)
+runApp' env action = runReaderT (runExceptT $ getApp' action) env
+-}

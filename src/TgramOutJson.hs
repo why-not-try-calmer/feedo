@@ -37,6 +37,7 @@ data Outbound = OutboundMessage {
     out_message_id :: Int,
     out_text :: T.Text,
     out_parse_mode :: Maybe T.Text,
+    out_disable_web_page_preview :: Maybe Bool,
     out_reply_markup :: Maybe InlineKeyboardMarkup
     } | DeleteMessage {
     out_chat_id :: ChatId,

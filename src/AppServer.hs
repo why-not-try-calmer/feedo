@@ -121,14 +121,13 @@ makeConfig env =
         }, port)
 
 initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
-initStart = do
-    loadChats >> regenFeeds
-    withCache CacheWarmup >>= \case
-        Left msg -> liftIO $ do
-            print $ "Unable to warm up cache: " `T.append` msg
-            putStrLn "Proceededing nonetheless"
-        _ -> pure ()
-    procNotif >> postProcJobs
+initStart = loadChats >> regenFeeds >> refresh_cache >> postProcJobs >> procNotif
+    where
+        refresh_cache = withCache CacheWarmup >>= \case
+            Left msg -> liftIO $ do
+                print $ "Unable to warm up cache: " `T.append` msg
+                putStrLn "Proceededing nonetheless"
+            _ -> pure ()
 
 startApp :: IO ()
 startApp = do

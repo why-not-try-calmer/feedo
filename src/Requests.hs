@@ -145,26 +145,23 @@ reply tok cid rep chan =
                     out_chat_id = cid,
                     out_text = non_empty reply_contents,
                     out_parse_mode = if reply_markdown then Just "Markdown" else Nothing,
-                    out_disable_web_page_preview = if reply_disable_webview then Just True else Nothing,
+                    out_disable_web_page_preview = pure reply_disable_webview,
                     out_reply_markup = Nothing
                 }
             in
                 if not reply_pagination || isNothing (mkPagination reply_contents reply_permalink)
                 then base else let (pages, keyboard) = fromJust $ mkPagination reply_contents reply_permalink
-                in OutboundMessage {
-                    out_chat_id = cid,
-                    out_text = non_empty $ last pages,
-                    out_parse_mode = if reply_markdown then Just "Markdown" else Nothing,
-                    out_disable_web_page_preview = if reply_disable_webview then Just True else Nothing,
-                    out_reply_markup = Just keyboard
-                    }
+                in base { out_text = non_empty $ last pages, out_reply_markup = Just keyboard }
         fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True) Nothing
-        fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents (if markdown then Just "Markdown" else Nothing) keyboard
+        fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents has_markdown no_webview keyboard
+            where
+                no_webview = pure True
+                has_markdown = if markdown then Just "Markdown" else Nothing
         report err =
             let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
             in  liftIO . writeChan chan $ JobTgAlert err_msg
         non_empty txt = if T.null txt then "No result for this command." else txt
-        triage_replies msg@ChatReply{..} =
+        outbound msg@ChatReply{..} =
             let jobs mid = [
                     if reply_pin_on_send then Just $ JobPin cid mid else Nothing,
                     if reply_pagination && isJust (mkPagination reply_contents reply_permalink)
@@ -179,10 +176,10 @@ reply tok cid rep chan =
                     in  for_ (jobs mid) $ \case 
                             Just j -> liftIO $ writeChan chan j
                             Nothing -> pure ()
-        triage_replies msg@EditReply{} = runSend_ tok "editMessageText" (fromReply msg) >>= \case
+        outbound msg@EditReply{} = runSend_ tok "editMessageText" (fromReply msg) >>= \case
             Left err -> report err
             Right _ -> pure ()
-        triage_replies msg@ServiceReply{} = runSend_ tok "sendMessage" (fromReply msg) >>= \case
+        outbound msg@ServiceReply{} = runSend_ tok "sendMessage" (fromReply msg) >>= \case
             Left err -> report err
             Right _ ->  pure ()
-    in  triage_replies rep
+    in  outbound rep

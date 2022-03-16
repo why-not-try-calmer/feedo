@@ -260,11 +260,11 @@ mkReply FromStart =
         \ the subscribed chat with a summary of all the new items found since last time, so that you never miss out on any important news!\
         \ \n\nI suggest you start with `/sub https://<your favorite web feed>` (the bot will tell you if the address and the feed are valid).\
         \ Then review your settings with `/set`.\nYou can specify a time or a period of time for receiving messages. For example, to receive one post every day at 6pm and 18pm:\
-        \ \n```/set\ndigest_at: 06:00 18:00\n```\
-        \ By default the bot posts at least once a day every day.\
-        \ \nA ready-to-use list of settings can be [viewed at](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md)\
-        \ \nAll the settings and commands are [explained at](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md)\
-        \ \nHave fun and don't hesitate to [get in touch](tg://user?id=226151044) if you have questions or issues."
+        \ \n```/set <linebreak> digest_at: 06:00 18:00\n```\
+        \By default the bot posts at least once a day every day.\
+        \ \nA ready-to-use list of settings can be viewed [here](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).\
+        \ \nAll the settings and commands are explained [there](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).\
+        \ \nHave fun and don't hesitate to [get in touch](https://t.me/ad_himself) if you have questions or issues."
     in  (defaultReply txt) { reply_disable_webview = True }
 
 renderCmds :: T.Text
@@ -284,6 +284,7 @@ renderCmds = T.intercalate "\n"
         "/resume `<optional: channel id>`: resume updates to this chat or to that channel",
         "/search `<term1 term2...>`: search all items across all feeds for the given keywords",
         "/set `<optional: channel id> <optional: linebreak + key:value pairs>` view or edit this chat's or that channel's settings",
+        "/start: show again the starting message",
         "/sub `<optional: channel id> <url1 url2...>`: subscribe this chat or that channel to the target feed(s)",
         "/unsub `<optional: channel id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
@@ -303,6 +304,7 @@ reset - <optional: channel_id> set the chat/channel's settings to their default 
 resume - <optional: channel_id> resume updates to the chat/channel
 search - <term1 term2...> search all items across all feeds for the given keywords 
 set - <optional: channel_id> <optional: linebreak + key:value pairs> view or edit the chat/channel's settings
+start - show again the starting message
 sub - <optional: channel_id> <url1 url2...> subscribe the chat/channel to the target feed(s)
 unsub - <optional: channel_id> <url url2...> unsubscribe the chat/channel from the target feed(s)
 -}
