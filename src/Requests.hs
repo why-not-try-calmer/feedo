@@ -120,7 +120,7 @@ mkPagination orig_txt mb_url =
         go [] (l:ls) = go [l] ls
         go (p:ps) (l:ls) =
             let pl = T.intercalate "\n" [p, l] in
-            case T.compareLength pl 606 of
+            case T.compareLength pl 1290 of
             GT -> go (l:p:ps) ls
             _ -> go (pl:ps) ls
 
