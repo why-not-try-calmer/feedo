@@ -129,9 +129,7 @@ instance Renderable SubChat where
                             ("Digest title", settings_digest_title sub_settings),
                             ("Last digest", maybe "none" utcToYmdHMS sub_last_digest),
                             ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest),
-                            ("Follow", if settings_follow sub_settings then "true" else "false"),
-                            ("Pagination", if settings_pagination sub_settings then "true" else "false"),
-                            ("Display 'share link' button", if settings_share_link sub_settings then "true" else "false")
+                            ("Follow", if settings_follow sub_settings then "true" else "false")
                         ]
                     search_part = mapper
                         [
@@ -141,8 +139,10 @@ instance Renderable SubChat where
                         ]
                     telegram_part = mapper
                         [
-                            ("Webview", if settings_disable_web_view sub_settings then "false" else "true"),
-                            ("Pin new updates", if settings_pin sub_settings then "true" else "false")
+                            ("Display 'share link' button in digests", if settings_share_link sub_settings then "true" else "false"),
+                            ("Pagination in digests", if settings_pagination sub_settings then "true" else "false"),
+                            ("Pin new updates", if settings_pin sub_settings then "true" else "false"),
+                            ("Webview", if settings_disable_web_view sub_settings then "false" else "true") 
                         ]
                 in  status_part
                     `T.append` "\n--\n"
