@@ -29,6 +29,8 @@ evalDb' action = liftIO getCurrentTime >>= \now -> case action of
     UpsertFeeds _ -> pure DbOk
     View _ t1 t2 -> pure $ DbView [] t1 t2
     WriteDigest dig -> pure $ DbDigest dig
+    InsertPages cid _ _ _ -> pure DbOk
+    GetPages _ _ -> pure $ DbPages [] Nothing
 
 spec :: Spec
 spec = go >> go1
