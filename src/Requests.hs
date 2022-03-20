@@ -4,18 +4,18 @@
 
 module Requests where
 
-import AppTypes (App, BotToken, Job (JobPin, JobTgAlert, JobSetPagination), Reply (ChatReply, EditReply, ServiceReply, reply_contents, reply_disable_webview, reply_markdown, reply_pin_on_send, reply_pagination, reply_permalink))
+import AppTypes (App, BotToken, Job (JobPin, JobSetPagination, JobTgAlert), Reply (ChatReply, EditReply, ServiceReply, reply_contents, reply_disable_webview, reply_markdown, reply_pagination, reply_permalink, reply_pin_on_send))
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (FromJSON, Value)
 import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (for_)
-import Data.Maybe (fromJust, isNothing, isJust)
+import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), AnswerCallbackQuery)
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
 
 {- Interface -}
 
@@ -82,28 +82,33 @@ answer tok query = liftIO (try action) >>= \case
             let reqUrl = https "api.telegram.org" /: tok /: "answerCallbackQuery"
             in  req Network.HTTP.Req.POST reqUrl (ReqBodyJson query) jsonResponse mempty
 
+mkPermaLinkBtn :: T.Text -> InlineKeyboardButton
+mkPermaLinkBtn url = InlineKeyboardButton "Permalink" (Just url) Nothing
+
+mkPermLinkKeyboard :: T.Text -> InlineKeyboardMarkup
+mkPermLinkKeyboard txt = InlineKeyboardMarkup [[mkPermaLinkBtn txt]]
+
 mkKeyboard :: Int -> Int -> Maybe T.Text -> Maybe InlineKeyboardMarkup
 mkKeyboard tgt tot mb_url
     | tot < 1 || tgt > tot = Nothing
     | tot == 1 =
     case mb_url of
         Nothing -> Nothing
-        Just url -> Just $ InlineKeyboardMarkup [[permalink url]]
+        Just url -> Just $ InlineKeyboardMarkup [[mkPermaLinkBtn url]]
     | tgt == 1 = Just $ InlineKeyboardMarkup $
     case mb_url of
         Nothing -> [[curr, next]]
-        Just url -> [[curr, next], [permalink url]] 
+        Just url -> [[curr, next], [mkPermaLinkBtn url]] 
     | tgt == tot = Just $ InlineKeyboardMarkup $
     case mb_url of
         Nothing -> [[prev, curr], [reset]]
-        Just url -> [[prev, curr], [reset, permalink url]]
+        Just url -> [[prev, curr], [reset, mkPermaLinkBtn url]]
     | otherwise = Just $ InlineKeyboardMarkup $
     case mb_url of
         Nothing -> [[prev, curr, next], [reset]]
-        Just url -> [[prev, curr, next], [reset, permalink url]]
+        Just url -> [[prev, curr, next], [reset, mkPermaLinkBtn url]]
     where 
         out_of = (T.pack . show $ tgt) `T.append` "/" `T.append` (T.pack . show $ tot)
-        permalink url = InlineKeyboardButton "Permalink" (Just url) Nothing
         curr = InlineKeyboardButton out_of Nothing (Just "*")
         prev = InlineKeyboardButton "Prev." Nothing (Just . T.pack . show $ tgt - 1)
         next = InlineKeyboardButton "Next" Nothing (Just . T.pack . show $ tgt + 1)
@@ -130,11 +135,11 @@ mkDigestLinkButton link
     | otherwise = Just $ InlineKeyboardButton label (Just link) Nothing
     where label = "Permalink"
 
-reply :: TgReqM m => 
-    BotToken -> 
-    ChatId -> 
-    Reply -> 
-    Chan Job -> 
+reply :: TgReqM m =>
+    BotToken ->
+    ChatId ->
+    Reply ->
+    Chan Job ->
     m ()
 reply tok cid rep chan =
     let mid_from resp =
@@ -149,9 +154,10 @@ reply tok cid rep chan =
                     out_reply_markup = Nothing
                 }
             in
-                if not reply_pagination || isNothing (mkPagination reply_contents reply_permalink)
-                then base else let (pages, keyboard) = fromJust $ mkPagination reply_contents reply_permalink
+                if reply_pagination && isJust (mkPagination reply_contents reply_permalink)
+                    then let (pages, keyboard) = fromJust $ mkPagination reply_contents reply_permalink
                 in base { out_text = non_empty $ last pages, out_reply_markup = Just keyboard }
+                    else base { out_reply_markup = mkPermLinkKeyboard <$> reply_permalink } 
         fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True) Nothing
         fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents has_markdown no_webview keyboard
             where

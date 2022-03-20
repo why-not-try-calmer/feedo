@@ -237,8 +237,8 @@ mkReply (FromDigest fs mb_link s) =
         -- pagination preempting collapse when both are enabled and 
         -- collapsing would have occurred  
         collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s 
-        header = settings_digest_title s `T.append` "\n--" 
-        body = render (fitems, collapse) 
+        header = "-- " `T.append` settings_digest_title s `T.append` " --"
+        body = render (fitems, collapse)
         payload = header `T.append` body
     in  ChatReply {
             reply_contents = payload,
