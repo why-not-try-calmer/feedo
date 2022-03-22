@@ -168,7 +168,7 @@ instance Renderable ([(FeedLink, [Item])], Int) where
             into_list acc (!t, !i) = acc
                 `T.append` "\n*| "
                 `T.append` t
-                `T.append` "*:\n"
+                `T.append` "*\n"
                 `T.append` (render . take 30 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!t, !i) = acc
                 `T.append` "\n*| "
