@@ -84,7 +84,7 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
                         known_feeds = HMS.fromList $ map (\f -> (f_link f, f)) [f1, f2]
                         dg = DigestFeedLinks fl
                         word_b = WordMatches S.empty (S.fromList ["Target"]) (S.fromList ["https://hnrss.org/frontpage"])
-                        c = SubChat 0 Nothing Nothing (S.fromList fl) defaultChatSettings { 
+                        c = SubChat 0 Nothing Nothing (S.fromList fl) Nothing defaultChatSettings { 
                                 settings_word_matches = word_b
                             }
                         hmap = HMS.fromList [(0, (c, dg))] :: HMS.HashMap ChatId (SubChat, BatchRecipe)
