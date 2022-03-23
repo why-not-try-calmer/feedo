@@ -276,7 +276,7 @@ renderCmds = T.intercalate "\n"
         "/help: show these commands",
         "/items `<# or url>`: display all the items fetched from the referenced feed",
         "/list `<optional: channel id`: list all the feeds this chat or that channel is subscribed to",
-        "/link `<chat_id / channe_id>: allow the current chat to get the same permissions as the target chat or channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel",
+        "/link `<chat_id / channe_id>`: allow the current chat to get the same permissions as the target chat or channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel",
         "/migrate `<optional: chat_id of the origin> <chat_id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination.",
         "/pause `<optional: channel id>`: stop posting updates to this chat or to that channel",
         "/purge `<optional: channel id>`: delete all data about this chat or that channel",
