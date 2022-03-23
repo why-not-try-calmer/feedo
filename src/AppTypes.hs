@@ -197,6 +197,7 @@ data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (E
 
 data UserAction
   = About FeedRef
+  | Announce T.Text
   | AskForLogin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
@@ -267,6 +268,7 @@ data ChatRes =
 {- Replies -}
 
 data Replies = FromAdmin T.Text T.Text
+    | FromAnnounce T.Text
     | FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text

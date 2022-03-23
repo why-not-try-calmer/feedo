@@ -208,6 +208,7 @@ defaultReply payload = ChatReply {
 
 mkReply :: Replies -> Reply
 mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
+mkReply (FromAnnounce txt) = defaultReply txt
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedfarer"
 mkReply (FromChatFeeds _ feeds) =
     let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)

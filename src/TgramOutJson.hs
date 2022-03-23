@@ -51,7 +51,7 @@ data Outbound = OutboundMessage {
     out_ip_address :: Maybe T.Text,
     out_max_connections :: Maybe Int,
     out_allowed_updates :: Maybe [T.Text]
-    } | GetChatAdministrators {
+    } | GetChat {
     out_chat_id :: ChatId
     }
   deriving (Eq, Show)
@@ -67,4 +67,3 @@ data AnswerCallbackQuery = AnswerCallbackQuery {
 } deriving (Show)
 
 $(deriveJSON defaultOptions {fieldLabelModifier = drop 7, omitNothingFields = True} ''AnswerCallbackQuery)
-
