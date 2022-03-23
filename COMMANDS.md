@@ -79,6 +79,10 @@ follow: false
 only_search: undefined
     # list of feeds whose items should be ignored from notifications unless they match search
     # keywords
+pagination: false
+    # slices a message into many "pages" and adds button controls beneath them 
+    # allowing users to flip back and forth between pages
+    # if the paginated message is a digest, this setting overrides 'digest_collapse' 
 paused: false
     # not paused
 pin: false
@@ -86,7 +90,7 @@ pin: false
 search_notif: undefined
     # the list of keywords used for 'only_search'
 share_link: true
-    # append at the end of the digest (summary)
+    # always add a button linking a digest to its web rendered version
     # a link for sharing with non-Telegram users
 ```
 _Remarks_: 
@@ -179,6 +183,7 @@ response    | all the items available from the target feed
 
 - /changelog: Show the latest changelog
 - /pause `<optional: channel_id>`: Suspend notification to the chat or channel.
+- /link `<channel_id>`: allow the current chat to access all the data of the referenced channel with these commands: /feed, /fresh, /list and /search
 - /resume `<optional: channel_id>`:  Whether the bot is allowed to send notification messages to the chat or channel.
 - /migrate `<from: chat or channel_id> <to: chat or channel id>`: Copies the settings defined for the first chat or channel, to the second. Then runs '/purge' on the first.
 - /purge `<optional: channel_id>` (chat admins only): Make the database forget entirely about the chat or channel.

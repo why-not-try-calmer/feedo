@@ -104,6 +104,11 @@ interpretCmd contents
                 Left err -> Left err
                 Right single_ref -> Right . GetChannelItems channel_id . head $ single_ref
         else Left . BadInput $ "/items must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
+    | cmd == "/link" =
+        if length args /= 1 then Left . BadInput $ "/link takes exactly 1 argument, standing for a chat_id."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /purge could not be parsed into a valid chat_id."
+            Just n -> Right . Link $ n
     | cmd == "/list" =
         if null args then Right ListSubs
         else if length args > 1 then Left . BadInput $ "/list cannot take more than one (optional) argument (channel_id)."
@@ -254,7 +259,11 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
     case HMS.lookup cid chats_hmap of
         Nothing -> pure . Left $ NotFoundChat
         Just c ->
-            let subs = sort . S.toList . sub_feeds_links $ c
+            let subs = case sub_linked_to c of
+                    Nothing -> sort . S.toList . sub_feeds_links $ c
+                    Just cid' -> case HMS.lookup cid' chats_hmap of
+                        Nothing -> []
+                        Just c' -> sort . S.toList . sub_feeds_links $ c'
             in  if null subs then pure . Left $ NotSubscribed
                 else withCache (CachePullFeeds subs) >>= \case
                 Right (CacheFeeds fs) ->
@@ -314,7 +323,11 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
     case HMS.lookup cid chats_hmap of
         Nothing -> pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
         Just c ->
-            let subscribed = S.toList . sub_feeds_links $ c
+            let subscribed = case sub_linked_to c of
+                    Nothing -> S.toList . sub_feeds_links $ c
+                    Just cid' -> case HMS.lookup cid' chats_hmap of
+                        Nothing -> []
+                        Just c' -> S.toList . sub_feeds_links $ c'
             in  if null subscribed then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else withCache (CacheXDays subscribed n) >>= \case
                 Right (CacheLinkDigest feeds) -> do
@@ -332,7 +345,11 @@ evalTgAct _ ListSubs cid = do
     case HMS.lookup cid chats_hmap of
         Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
         Just c ->
-            let subs = sort . S.toList . sub_feeds_links $ c
+            let subs = case sub_linked_to c of
+                    Nothing -> sort . S.toList . sub_feeds_links $ c
+                    Just cid' -> case HMS.lookup cid' chats_hmap of
+                        Nothing -> []
+                        Just c' -> sort . S.toList . sub_feeds_links $ c'
             in  if null subs then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
                 else getAllFeeds env >>= \case
                 Left _ -> pure . Left . NotFoundFeed $
@@ -341,6 +358,18 @@ evalTgAct _ ListSubs cid = do
                     Nothing -> pure . Left . NotFoundFeed $
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
+evalTgAct uid (Link target_id) cid = do
+    env <- ask
+    verdict <- liftIO $ mapConcurrently (checkIfAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
+    case and <$> sequence verdict of
+        Nothing -> pure . Left $ TelegramErr
+        Just authorized -> 
+            if not authorized then exitNotAuth uid
+            else withChat (Link target_id) cid >>= \case
+                Left err -> pure . Right . ServiceReply . renderUserError $ err
+                Right _ -> pure . Right . ServiceReply $ succeeded
+    where
+        succeeded = "Successfully linked the two chats!"
 evalTgAct uid (ListSubsChannel chan_id) _ = evalTgAct uid ListSubs chan_id
 evalTgAct uid (Migrate to) cid = do
     env <- ask
@@ -396,7 +425,7 @@ evalTgAct _ Start cid = ask >>= \env ->
     in  existing_chat >>= \case Just c -> start_with_reload c; _ -> fresh_start
     where
         fresh_start = pure . Right . mkReply $ FromStart
-        start_with_reload c = pure . Right $ mkReply (FromChat c 
+        start_with_reload c = pure . Right $ mkReply (FromChat c
             "Welcome back! This chat was already using this bot in the past;\
             \ find the last settings below. Use /help is to display the list of commands.\n---\n")
 evalTgAct uid (Sub feeds_urls) cid = do
@@ -429,7 +458,11 @@ evalTgAct _ (Search keywords) cid = ask >>= \env ->
     in  get_chats >>= \hmap -> case HMS.lookup cid hmap of
         Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
         Just c ->
-            let scope = S.toList . sub_feeds_links $ c
+            let scope = case sub_linked_to c of
+                    Nothing -> S.toList . sub_feeds_links $ c
+                    Just cid' -> case HMS.lookup cid' hmap of
+                        Nothing -> []
+                        Just c' -> S.toList . sub_feeds_links $ c'
             in  if null scope
                 then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
                 else evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case

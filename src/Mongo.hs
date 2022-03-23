@@ -25,6 +25,7 @@ import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Text.Read (readMaybe)
 import Utils (defaultChatSettings)
+import TgramOutJson (ChatId)
 
 {- Interface -}
 
@@ -383,6 +384,7 @@ bsonToFeed doc =
 bsonToChat :: Document -> SubChat
 bsonToChat doc =
     let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
+        linked_to_chats = M.lookup "sub_linked_to_chats" doc :: Maybe ChatId
         settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
         feeds_settings_docs = Settings {
             settings_word_matches = WordMatches
@@ -420,11 +422,12 @@ bsonToChat doc =
             sub_last_digest = M.lookup "sub_last_digest" doc,
             sub_next_digest = M.lookup "sub_next_digest" doc,
             sub_feeds_links = S.fromList feeds_links,
+            sub_linked_to = linked_to_chats,
             sub_settings = feeds_settings_docs
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
+chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
     let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
         searchset = S.toList . match_searchset . settings_word_matches $ settings
         only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
@@ -454,6 +457,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks settings) =
             "sub_last_digest" =: last_digest,
             "sub_next_digest" =: next_digest,
             "sub_feeds_links" =: S.toList flinks,
+            "sub_linked_to_chats" =: linked_to,
             "sub_settings" =: settings' ++ with_secs ++ with_at
         ]
 
@@ -589,7 +593,7 @@ checkDbMapper = do
         digest_interval = DigestInterval (Just 0) (Just [(1,20)])
         word_matches = WordMatches S.empty S.empty (S.fromList ["1","2","3"])
         settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches
-        chat = SubChat 0 (Just now) (Just now) S.empty settings
+        chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0
         digest = Digest Nothing now [item] [mempty] [mempty]

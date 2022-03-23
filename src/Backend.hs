@@ -30,19 +30,36 @@ withChat action cid = do
         Right r -> pure . Right $ r
     where
     afterDb hmap env = case HMS.lookup cid hmap of
-        Nothing -> case action of
-            Sub links ->
-                let created_c = SubChat cid Nothing Nothing (S.fromList links) defaultChatSettings
-                in  getCurrentTime >>= \now ->
-                        let updated_c = created_c { sub_next_digest =
-                                Just $ findNextTime now (settings_digest_interval . sub_settings $ created_c)
-                            }
-                            inserted_m = HMS.insert cid updated_c hmap
-                        in  evalDb env (UpsertChat updated_c) >>= \case
-                            DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                            _ -> pure (inserted_m, Right ChatOk)
-            _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
+        Nothing ->
+            let initialized now flinks linked_to = SubChat {
+                    sub_chatid = cid,
+                    sub_last_digest = Nothing, 
+                    sub_next_digest = Just $ findNextTime now (settings_digest_interval defaultChatSettings),
+                    sub_linked_to = linked_to,
+                    sub_feeds_links = S.fromList flinks,
+                    sub_settings = defaultChatSettings
+                }
+                inserted c = HMS.insert cid c hmap
+                saveToDb c = evalDb env $ UpsertChat c
+            in  case action of
+                    Link target_id -> getCurrentTime >>= \now -> 
+                        let new_chat = initialized now [] (Just target_id)
+                        in  saveToDb new_chat >>= \case
+                            DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat: " `T.append` renderDbError err)
+                            _ -> pure (inserted new_chat, Right ChatOk)
+                    Sub links -> getCurrentTime >>= \now -> 
+                        let new_chat = initialized now links Nothing
+                        in  saveToDb new_chat >>= \case
+                                DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                                _ -> pure (inserted new_chat, Right ChatOk)
+                    _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
         Just c -> case action of
+            Link target_id ->
+                let updated_c = c { sub_linked_to = Just target_id }
+                    update_m = HMS.update(\_ -> Just updated_c) cid hmap
+                in  evalDb env (UpsertChat updated_c) >>= \case
+                        DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat to a new chat_id." `T.append` renderDbError err)
+                        _ -> pure (update_m, Right ChatOk) 
             Migrate to ->
                 let updated_c = c { sub_chatid = to }
                     update_m = HMS.update(\_ -> Just updated_c) cid hmap
