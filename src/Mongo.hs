@@ -24,7 +24,7 @@ import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Text.Read (readMaybe)
-import Utils (defaultChatSettings)
+import Utils (defaultChatSettings, reduceMaybeWith)
 import TgramOutJson (ChatId)
 
 {- Interface -}
@@ -254,6 +254,14 @@ evalMongo env GetAllChats =
         Right docs ->
             if null docs then pure DbNoChat
             else pure $ DbChats . map readDoc $ docs
+evalMongo env GetAllPages =
+    let action = find (select [] "pages")
+    in  withMongo env (action >>= rest) >>= \case
+        Left _ -> pure $ DbErr FailedToGetAllPages
+        Right docs -> 
+            let pages = reduceMaybeWith bsonToPage docs
+            in  if null pages then pure $ DbErr FailedToGetAllPages
+                else pure $ DbPagesOne pages  
 evalMongo env (GetFeed link) =
     let action = withMongo env $ findOne (select ["f_link" =: link] "feeds")
     in  action >>= \case
@@ -565,6 +573,18 @@ adminToBson AdminUser{..} = [
         "admin_token" =: admin_token,
         "admin_created" =: admin_created
     ]
+
+{- Pages -}
+
+bsonToPage :: Document -> Maybe PageOne
+bsonToPage doc =
+    let cid = M.lookup "chat_id" doc
+        mid = M.lookup "message_id" doc
+        pages = M.lookup "pages" doc
+        one = head <$> pages
+        n = length <$> pages
+        mb_url = M.lookup "url" doc
+    in  PageOne <$> one <*> cid <*> mid <*> n <*> mb_url
 
 {- Cleanup -}
 

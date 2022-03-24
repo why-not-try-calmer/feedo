@@ -277,7 +277,7 @@ renderCmds = T.intercalate "\n"
         "/help: show these commands",
         "/items `<# or url>`: display all the items fetched from the referenced feed",
         "/list `<optional: channel id`: list all the feeds this chat or that channel is subscribed to",
-        "/link `<chat_id / channe_id>`: allow the current chat to get the same permissions as the target chat or channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel",
+        "/link `<chat_id / channel_id>`: allow the current chat to get the same permissions as the target chat or channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel",
         "/migrate `<optional: chat_id of the origin> <chat_id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination.",
         "/pause `<optional: channel id>`: stop posting updates to this chat or to that channel",
         "/purge `<optional: channel id>`: delete all data about this chat or that channel",
@@ -291,14 +291,14 @@ renderCmds = T.intercalate "\n"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
-admin - manage your chat settings from the Web.
+admin - manage your chat settings from the Web
 changelog - recent changes to the bot
 feed - <# or url> info about the feed
 fresh - <n> n-old items, in number of days
 help - these commands
 items - <# or url> all the items fetched from the reference feed 
 list - <optional: channel_id> all the feeds the chat/channel is subscribed to
-link - <channel_id>: allow the current chat to access all the data of the referenced channel with these commands: /feed, /fresh, /list and /search       
+link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.      
 migrate - <optional: chat_id of the origin> <chat_id of the destination>: migrate this chat's settings, or the settings of the channel at the origin, to the destination.
 pause - <optional: channel_id> stop posting updates to the chat/channel
 purge - <optional: channel_id> erase the database from all data about the chat/channel

@@ -541,4 +541,3 @@ processCbq cbq = ask >>= \env ->
         cid = chat_id . chat . fromJust . cbq_message $ cbq
         mid = message_id . fromJust . cbq_message $ cbq
         mkAnswer = AnswerCallbackQuery (cbq_id cbq) Nothing Nothing Nothing Nothing
-        

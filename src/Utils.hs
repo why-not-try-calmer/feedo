@@ -25,6 +25,9 @@ partitionEither = foldl' step ([],[])
             Left l -> (ls++[l], rs)
             Right r -> (ls, rs++[r])
 
+reduceMaybeWith :: (a -> Maybe b) -> [a] -> [b]
+reduceMaybeWith f = foldl' (\acc val -> case f val of Just x -> x:acc; _ -> acc) []
+
 fromEither :: b -> Either a b -> b
 fromEither def (Left _) = def
 fromEither _ (Right v) = v
