@@ -13,7 +13,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
-import Data.List (find, sort)
+import Data.List (find, sort, foldl')
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -48,7 +48,7 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
                 chat_members = resp_cm_result res_cms :: [ChatMember]
             in  pure . Just $ if_admin chat_members
     where
-        getChatAdmins = runSend tok "getChatAdministrators" $ GetChatAdministrators cid
+        getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
@@ -65,7 +65,7 @@ checkIfPrivate tok cid = liftIO $ getChatType >>= \case
             c = resp_result chat_resp :: Chat
         in  pure . Just $ chat_type c == Private
     where
-        getChatType = runSend tok "getChat" $ GetChatAdministrators cid
+        getChatType = runSend tok "getChat" $ GetChat cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -77,6 +77,9 @@ interpretCmd contents
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
             Nothing -> Left . BadInput $ "The value passed to /admin could not be parsed into a valid chat_id."
             Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
+    | cmd == "/announce" =
+        if null args then Left . BadInput $ "/announce takes exactly 1 argument, the text to broadcast to all users."
+        else Right . Announce . T.concat $ args 
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
         if length args == 1 then case toFeedRef args of
@@ -274,6 +277,21 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                             Nothing -> pure . Left $ NotFoundFeed mempty
                             Just f -> pure . Right . mkReply $ FromFeedDetails f
                 _ -> pure . Left $ NotFoundFeed mempty
+evalTgAct uid (Announce txt) cid = ask >>= \env ->
+    let tok = bot_token . tg_config $ env
+        admin_id = alert_chat . tg_config $ env
+        look cid' = runSend tok "getChat" $ GetChat cid'
+        action = liftIO $ readMVar (subs_state env) >>= mapConcurrently look . HMS.keys
+    in  if admin_id /= cid then exitNotAuth uid
+        else action >>= \resp -> 
+            let (_, succeeded) = partitionEither resp
+                chat_ids = foldl' (\acc r ->
+                    let res_c = responseBody r :: TgGetChatResponse
+                        c = resp_result res_c
+                    in  if not $ resp_ok res_c then acc
+                        else case chat_type c of Channel -> acc; _ -> chat_id c:acc) [] succeeded
+            in  if null chat_ids then pure . Left $ TelegramErr 
+                else pure . Right . mkReply $ FromAnnounce txt
 evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
@@ -523,4 +541,3 @@ processCbq cbq = ask >>= \env ->
         cid = chat_id . chat . fromJust . cbq_message $ cbq
         mid = message_id . fromJust . cbq_message $ cbq
         mkAnswer = AnswerCallbackQuery (cbq_id cbq) Nothing Nothing Nothing Nothing
-        

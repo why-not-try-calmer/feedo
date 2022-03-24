@@ -2,8 +2,9 @@
 
 module Jobs where
 
-import AppTypes (AppConfig (..), DbAction (..), DbRes (..), Digest (Digest), Feed (f_link, f_title, f_items), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Reply (ServiceReply), ServerConfig (..), SubChat (..), Replies (..), renderDbError, runApp, FeedLink, Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), FromCache (CacheDigests))
+import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), PageOne (PageOne), Replies (..), Reply (EditReply, ServiceReply), ServerConfig (..), SubChat (..), renderDbError, runApp)
 import Backend (markNotified)
+import Broker (HasCache (withCache))
 import Control.Concurrent
   ( readChan,
     threadDelay,
@@ -13,21 +14,21 @@ import Control.Concurrent.Async (async, forConcurrently)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Reader (ask, MonadReader)
+import Control.Monad.Reader (MonadReader, ask)
+import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (addUTCTime, getCurrentTime)
+import Data.Time (addUTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Mongo (evalDb, saveToLog)
 import Replies
   ( mkDigestUrl,
     mkReply,
   )
-import Requests (reply, reqSend_)
+import Requests (mkKeyboard, reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
 import Utils (scanTimeSlices)
-import Broker (HasCache(withCache))
 
 {- Background tasks -}
 
@@ -63,6 +64,8 @@ procNotif = do
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
+            -- every six hours, concurrently flipping back all pages
+            when (maybe False (\t -> diffUTCTime now t > 3600) (last_worker_run env)) (writeChan (postjobs env) JobFlipPages)
             -- rebuilding feeds and collecting notifications
             res <- runApp (env { last_worker_run = Just now }) $ withCache CacheRefresh
             case res of
@@ -122,6 +125,16 @@ postProcJobs = ask >>= \env ->
                     _ -> pure ()
                 -- cleaning more than 1 month old archives
                 void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)
+            JobFlipPages -> fork $ do
+                -- flipping back all pages to page 1
+                res <- evalDb env GetAllPages
+                case res of
+                    DbPagesOne pages -> for_ pages $ 
+                        \(PageOne p cid mid n mb_url) ->
+                            let rep = EditReply mid p True (mkKeyboard 1 n mb_url)
+                            in  reply (bot_token . tg_config $ env) cid rep $ postjobs env
+                    DbErr err -> writeChan (postjobs env) $ JobTgAlert (renderDbError err)
+                    _ -> pure ()
             JobIncReadsJob links -> fork $ evalDb env (IncReads links)
             JobLog item -> fork $ saveToLog env item
             JobPin cid mid -> fork $ do
@@ -138,10 +151,6 @@ postProcJobs = ask >>= \env ->
                         Left _ -> writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
                             " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
                         Right _ -> pure ()
-            JobTgAlert contents -> fork $ do
-                let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
-                print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
-                reply tok (alert_chat . tg_config $ env) msg jobs
             JobSetPagination cid mid pages mb_link -> fork $
                 let to_db = evalDb env $ InsertPages cid mid pages mb_link
                     to_cache = withCache $ CacheSetPages cid mid pages mb_link
@@ -150,6 +159,10 @@ postProcJobs = ask >>= \env ->
                     _ ->
                         let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
                         in  writeChan (postjobs env) (JobTgAlert report)
+            JobTgAlert contents -> fork $ do
+                let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
+                print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
+                reply tok (alert_chat . tg_config $ env) msg jobs
         handler (SomeException e) = do
             let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
             writeChan (postjobs env) . JobTgAlert $ report

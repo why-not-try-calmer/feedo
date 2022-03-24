@@ -197,6 +197,7 @@ data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (E
 
 data UserAction
   = About FeedRef
+  | Announce T.Text
   | AskForLogin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
@@ -267,6 +268,7 @@ data ChatRes =
 {- Replies -}
 
 data Replies = FromAdmin T.Text T.Text
+    | FromAnnounce T.Text
     | FromChangelog
     | FromChatFeeds SubChat [Feed]
     | FromChat SubChat T.Text
@@ -331,6 +333,7 @@ data DbAction
   | DeleteChat ChatId
   | GetAllFeeds
   | GetAllChats
+  | GetAllPages
   | GetFeed FeedLink
   | GetPages ChatId Int
   | IncReads [FeedLink]
@@ -360,6 +363,7 @@ data DbRes = DbFeeds [Feed]
   | DbDigestId T.Text
   | DbNoPage ChatId Int
   | DbPages [T.Text] (Maybe T.Text)
+  | DbPagesOne [PageOne]
   deriving (Eq, Show)
 
 data DbError
@@ -373,6 +377,7 @@ data DbError
   | FailedToSaveDigest
   | FailedToProduceValidId
   | FailedToInsertPage
+  | FailedToGetAllPages
   deriving (Show, Eq)
 
 renderDbError :: DbError -> T.Text
@@ -386,6 +391,15 @@ renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt
 renderDbError FailedToSaveDigest = "Unable to save this digest. The database didn't return a valid identifier."
 renderDbError FailedToProduceValidId = "Db was unable to return a valid identifier"
 renderDbError FailedToInsertPage = "Db was unable to insert these pages."
+renderDbError FailedToGetAllPages = "Db was unable to retrieve all pages."
+
+data PageOne = PageOne {
+    page_one :: T.Text,
+    page_cid :: ChatId,
+    page_mid :: Int,
+    page_n :: Int,
+    page_url :: Maybe T.Text
+} deriving (Show, Eq)
 
 {- Cache -}
 
@@ -428,13 +442,14 @@ data LogItem = LogPerf
 {- Background tasks -}
 
 data Job =
+    JobArchive [Feed] UTCTime |
+    JobFlipPages |
     JobIncReadsJob [FeedLink] |
-    JobRemoveMsg ChatId Int Int |
     JobLog LogItem |
     JobPin ChatId Int |
-    JobTgAlert T.Text |
-    JobArchive [Feed] UTCTime |
-    JobSetPagination ChatId Int [T.Text] (Maybe T.Text)
+    JobRemoveMsg ChatId Int Int |
+    JobSetPagination ChatId Int [T.Text] (Maybe T.Text) |
+    JobTgAlert T.Text
     deriving (Eq, Show)
 
 {- Web responses -}
