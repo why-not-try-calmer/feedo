@@ -443,7 +443,7 @@ data LogItem = LogPerf
 
 data Job =
     JobArchive [Feed] UTCTime |
-    JobFlipPages |
+    -- JobFlipPages |
     JobIncReadsJob [FeedLink] |
     JobLog LogItem |
     JobPin ChatId Int |

@@ -7,7 +7,7 @@ import AppTypes
 import Backend (withChat)
 import Broker (HasCache (withCache), getAllFeeds)
 import Control.Concurrent (Chan, readMVar, writeChan)
-import Control.Concurrent.Async (concurrently, mapConcurrently)
+import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
@@ -18,7 +18,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Mongo (evalDb)
-import Network.HTTP.Req (renderUrl, responseBody)
+import Network.HTTP.Req (renderUrl, responseBody, JsonResponse)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
 import Replies (mkReply, render)
 import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook, answer)
@@ -277,21 +277,27 @@ evalTgAct _ (About ref) cid = ask >>= \env -> do
                             Nothing -> pure . Left $ NotFoundFeed mempty
                             Just f -> pure . Right . mkReply $ FromFeedDetails f
                 _ -> pure . Left $ NotFoundFeed mempty
-evalTgAct uid (Announce txt) cid = ask >>= \env ->
+evalTgAct uid (Announce txt) admin_chat = ask >>= \env ->
     let tok = bot_token . tg_config $ env
         admin_id = alert_chat . tg_config $ env
         look cid' = runSend tok "getChat" $ GetChat cid'
-        action = liftIO $ readMVar (subs_state env) >>= mapConcurrently look . HMS.keys
-    in  if admin_id /= cid then exitNotAuth uid
-        else action >>= \resp -> 
-            let (_, succeeded) = partitionEither resp
-                chat_ids = foldl' (\acc r ->
-                    let res_c = responseBody r :: TgGetChatResponse
-                        c = resp_result res_c
-                    in  if not $ resp_ok res_c then acc
-                        else case chat_type c of Channel -> acc; _ -> chat_id c:acc) [] succeeded
-            in  if null chat_ids then pure . Left $ TelegramErr 
-                else pure . Right . mkReply $ FromAnnounce txt
+        fetch_chat_types = liftIO $ readMVar (subs_state env) >>= mapConcurrently look . HMS.keys
+    in  if admin_id /= admin_chat then exitNotAuth uid
+        else fetch_chat_types >>= \resp -> do
+            let (failed, succeeded) = partitionEither resp
+                non_channels = are_non_channels succeeded
+            unless (null failed) (liftIO $ writeChan (postjobs env) (JobTgAlert $ "Telegram didn't told us the type of these chats: " `T.append` (T.pack . show $ failed)))
+            if null non_channels then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
+            else let rep = mkReply $ FromAnnounce txt in do
+                liftIO (mapConcurrently_ (\cid' -> reply (bot_token . tg_config $ env) cid' rep (postjobs env)) non_channels)
+                pure . Right $ ServiceReply  $ "Tried to broadcast an announce to " `T.append` (T.pack . show . length $ non_channels) `T.append` " chats."
+    where
+        are_non_channels :: [JsonResponse TgGetChatResponse]-> [ChatId]
+        are_non_channels succeeded = foldl' (\acc r ->
+            let res_c = responseBody r
+                c = resp_result res_c
+            in  if not $ resp_ok res_c then acc
+                else case chat_type c of Channel -> acc; _ -> chat_id c:acc) [] succeeded
 evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env

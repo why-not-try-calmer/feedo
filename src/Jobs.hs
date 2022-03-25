@@ -2,7 +2,7 @@
 
 module Jobs where
 
-import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), PageOne (PageOne), Replies (..), Reply (EditReply, ServiceReply), ServerConfig (..), SubChat (..), renderDbError, runApp)
+import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), renderDbError, runApp)
 import Backend (markNotified)
 import Broker (HasCache (withCache))
 import Control.Concurrent
@@ -15,18 +15,17 @@ import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
-import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (addUTCTime, diffUTCTime, getCurrentTime)
+import Data.Time (addUTCTime, getCurrentTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Mongo (evalDb, saveToLog)
 import Replies
   ( mkDigestUrl,
     mkReply,
   )
-import Requests (mkKeyboard, reply, reqSend_)
+import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
 import Utils (scanTimeSlices)
 
@@ -64,8 +63,10 @@ procNotif = do
         notify = do
             now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
+            {- 
             -- every six hours, concurrently flipping back all pages
             when (maybe False (\t -> diffUTCTime now t > 3600) (last_worker_run env)) (writeChan (postjobs env) JobFlipPages)
+            -}
             -- rebuilding feeds and collecting notifications
             res <- runApp (env { last_worker_run = Just now }) $ withCache CacheRefresh
             case res of
@@ -125,6 +126,7 @@ postProcJobs = ask >>= \env ->
                     _ -> pure ()
                 -- cleaning more than 1 month old archives
                 void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)
+            {-
             JobFlipPages -> fork $ do
                 -- flipping back all pages to page 1
                 res <- evalDb env GetAllPages
@@ -135,6 +137,7 @@ postProcJobs = ask >>= \env ->
                             in  reply (bot_token . tg_config $ env) cid rep $ postjobs env
                     DbErr err -> writeChan (postjobs env) $ JobTgAlert (renderDbError err)
                     _ -> pure ()
+            -}
             JobIncReadsJob links -> fork $ evalDb env (IncReads links)
             JobLog item -> fork $ saveToLog env item
             JobPin cid mid -> fork $ do
