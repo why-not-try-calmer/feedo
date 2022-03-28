@@ -333,7 +333,7 @@ data DbAction
   | DeleteChat ChatId
   | GetAllFeeds
   | GetAllChats
-  | GetAllPages
+  -- | GetAllPages
   | GetFeed FeedLink
   | GetPages ChatId Int
   | IncReads [FeedLink]
@@ -363,9 +363,10 @@ data DbRes = DbFeeds [Feed]
   | DbDigestId T.Text
   | DbNoPage ChatId Int
   | DbPages [T.Text] (Maybe T.Text)
-  | DbPagesOne [PageOne]
   deriving (Eq, Show)
-
+  
+-- | DbPagesOne [PageOne]
+  
 data DbError
   = PipeNotAcquired
   | FaultyToken

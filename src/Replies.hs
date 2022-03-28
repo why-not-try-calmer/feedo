@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Replies (defaultReply, mkdSingles, mkdDoubles, render, Reply(..), mkReply, Replies(..), mkViewUrl, mkDigestUrl) where
+module Replies (defaultReply, mkdSingles, mkdDoubles, renderCmds, render, Reply(..), mkReply, Replies(..), mkViewUrl, mkDigestUrl) where
 import AppTypes
 import Data.Foldable (foldl')
 import Data.List (sortOn)
