@@ -1,10 +1,10 @@
 [![GitHub Test suite](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml) [![Build and deploy container app to Azure Web App - feedfarer-master](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml)
 
-# feedfarer
+# feedo (formerly 'feedfarer')
 
-[@feedfarer](https://t.me/feedfarer_bot) is a fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
+[@feedo](https://t.me/feedo_the_bot) is a fast, efficient network app for subscribing Telegram chats to web feeds, using 0 "Telegram SDK-style" framework or dependency.
 
-Check out [our channel](https://t.me/feedfarer) for the latest updates & news.
+Check out [our channel](https://t.me/feedo_the_bot_channel) for the latest updates & news.
 
 ## Contents
 - [What this package provides](#what-this-package-provides)
