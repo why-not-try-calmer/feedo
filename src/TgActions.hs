@@ -213,7 +213,7 @@ subFeed :: MonadIO m => ChatId -> [FeedLink] -> App m Reply
 subFeed cid feeds_urls = do
     env <- ask
     -- check url scheme 
-    case traverse eitherUrlScheme feeds_urls of
+    case mapM eitherUrlScheme feeds_urls of
         Left err -> respondWith . renderUserError $ err
         Right valid_urls ->
             -- sort out already existent feeds to minimize network call
@@ -378,7 +378,7 @@ evalTgAct _ ListSubs cid = do
                 else getAllFeeds env >>= \case
                 Left _ -> pure . Left . NotFoundFeed $
                     "Unable to find these feeds " `T.append` T.intercalate " " subs
-                Right fs -> case traverse (`HMS.lookup` fs) subs of
+                Right fs -> case mapM (`HMS.lookup` fs) subs of
                     Nothing -> pure . Left . NotFoundFeed $
                         "Unable to find these feeds " `T.append` T.intercalate " " subs
                     Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)

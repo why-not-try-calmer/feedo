@@ -3,7 +3,7 @@ module TgActionsSpec where
 import AppServer (makeConfig)
 import AppTypes
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Foldable (traverse_)
+import Data.Foldable (mapM_)
 import qualified Data.Text as T
 import GHC.IO (evaluate)
 import System.Environment (getEnvironment)
@@ -25,7 +25,7 @@ spec = runIO getConns >>= \env -> go1 env where
             t1 = interpretCmd "/items 1" `shouldBe` Right (GetItems $ ById 1)
             t2 = interpretCmd "/set\ndigest_size: 1\nfollow: true" `shouldBe` (Right . SetChatSettings . Parsed $ [PFollow True, PDigestSize 1])
             t3 = interpretCmd "/unsub 1234 oh_shoot" `shouldBe` Left (BadRef "1234oh_shoot")
-        in  traverse_ (desc . as) [t1, t2, t3]
+        in  mapM_ (desc . as) [t1, t2, t3]
     go1 env =
         let desc as = describe "evalTgAct" as
             as func = it "evaluate a monadic action issued from Telegram" func

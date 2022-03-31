@@ -9,7 +9,7 @@ import Control.Monad (void, when, unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import qualified Data.ByteString.Char8 as B
-import Data.Foldable (Foldable (foldl'), traverse_)
+import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.List (sortOn)
@@ -232,7 +232,7 @@ evalMongo env (DbSearch keywords scope last_time) =
                 payload r =
                     if null scope then sort_limit r
                     else sort_limit . rescind $ r
-            in  case traverse mkSearchRes res of
+            in  case mapM mkSearchRes res of
                 Nothing -> pure $ DbSearchRes S.empty []
                 Just r -> pure . DbSearchRes keywords . payload $ r
 evalMongo env (DeleteChat cid) =
@@ -279,7 +279,7 @@ evalMongo env (GetPages cid mid) =
         _ -> pure $ DbNoPage cid mid
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
-    in  traverse_ action links >> pure DbOk
+    in  mapM_ action links >> pure DbOk
 evalMongo env (InsertPages cid mid pages mb_link) =
     let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
         payload = case mb_link of
@@ -593,7 +593,7 @@ bsonToPage doc =
 purgeCollections :: (HasMongo m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
 purgeCollections _ [] = pure . Left $ "Empty list of collection names!"
 purgeCollections env colls =
-    let action = withMongo env $ traverse (`deleteAll` [([],[])]) colls
+    let action = withMongo env $ mapM (`deleteAll` [([],[])]) colls
     in  action >>= \case
         Left _ -> pure . Left $ "Failed to purgeCollections."
         Right res ->

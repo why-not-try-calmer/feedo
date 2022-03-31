@@ -131,7 +131,7 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
         parsed = foldl' (\acc m -> case m of
             Nothing -> acc
             Just v -> acc ++ [mbTime . T.unpack $ v]) [] [Just fr, m_to]
-        flinks = case traverse (eitherUrlScheme . decodeText) $ T.splitOn "\\" flinks_txt of
+        flinks = case mapM (eitherUrlScheme . decodeText) $ T.splitOn "\\" flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
         abortWith msg = pure msg

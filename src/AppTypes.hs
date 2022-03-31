@@ -160,9 +160,9 @@ toFeedRef ss
     all_valid_urls = all (== "https://") (first8 ss)
     first8 = map (T.take 8)
     all_ints = maybe False (all (\n -> n >= 1 && n < 100)) maybeInts
-    maybeInts = traverse (readMaybe . T.unpack) ss :: Maybe [Int]
+    maybeInts = mapM (readMaybe . T.unpack) ss :: Maybe [Int]
     intoUrls = map ByUrl ss
-    intoIds = maybe [] (map ById) (traverse (readMaybe . T.unpack) ss)
+    intoIds = maybe [] (map ById) (mapM (readMaybe . T.unpack) ss)
 
 {- Admins -}
 

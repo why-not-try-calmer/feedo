@@ -37,7 +37,7 @@ writeManyFeeds fs =
     let write_to_keys f = set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
         write_to_sets = sadd "feeds" . map (B.encodeUtf8 . f_link) $ fs
         action = do
-            q1 <- sequence <$> traverse write_to_keys fs
+            q1 <- sequence <$> mapM write_to_keys fs
             q2 <- write_to_sets
             pure $ (,) <$> q1 <*> q2
     in  multiExec action
@@ -51,14 +51,14 @@ getAllFeeds :: (MonadIO m, HasRedis m) => AppConfig -> m (Either T.Text FeedsMap
 getAllFeeds env =
     let action = withRedis env $ smembers "feeds" >>= \case
             Left _ -> pure $ Left "Unable to find keys"
-            Right ks -> traverse (get . B.append "feeds:") ks >>= (\case
+            Right ks -> mapM (get . B.append "feeds:") ks >>= (\case
                 Left _ -> pure $ Left "Unable to find feeds"
                 Right xs -> pure $ Right xs) . sequence
     in  action >>= \case
         Left err -> pure $ Left err
         Right bs -> case sequence bs of
             Nothing -> pure $ Left "Unable to decode feeds"
-            Just bs' -> case traverse decodeStrict' bs' :: Maybe [Feed] of
+            Just bs' -> case mapM decodeStrict' bs' :: Maybe [Feed] of
                 Nothing -> pure $ Left "Unable to decode feeds"
                 Just feeds -> pure . Right . feedsHmap $ feeds
 
@@ -134,7 +134,7 @@ withBroker (CachePullFeeds flinks) = do
         in  pure . Left $ "Missing these feeds: " `T.append` T.intercalate "," misses
     where
         red_get_one_s f = get . singleK $ f
-        red_get_all_s fs = sequence . sequence <$> traverse red_get_one_s fs
+        red_get_all_s fs = sequence . sequence <$> mapM red_get_one_s fs
         missing_from_cache feeds =
             if null feeds then flinks
             else filter (\fl -> fl `notElem` map f_link feeds) flinks
