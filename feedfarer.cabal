@@ -29,6 +29,7 @@ library
       Backend
       Broker
       Jobs
+      MarkdownChecker
       Mongo
       Parsing
       Redis
@@ -118,6 +119,7 @@ test-suite feedfarer-test
   other-modules:
       BrokerSpec
       DatabaseSpec
+      MarkdownCheckerSpec
       ParsingSpec
       RequestsSpec
       TgActionsSpec
