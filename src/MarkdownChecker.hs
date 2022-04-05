@@ -1,11 +1,11 @@
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module MarkdownChecker where
 
-import qualified Data.Text as T
+import Data.Foldable (foldl')
 import Data.Maybe (fromMaybe)
+import qualified Data.Text as T
 
 {- Entities -}
 
@@ -104,22 +104,21 @@ parse = runParser . Parser $ \t -> runner . T.reverse $ t
         step c (Right (entity, count)) = Right (parsing entity c, count + 1)
 
 render :: Entity -> T.Text
-render entity = go entity mempty
+render (Root children) = foldl' step mempty children 
     where
-        go (Contents text) !res = res `T.append` text
-        go (Rep _ (ltags, _) children) !res = res `T.append` encloseWith ltags (T.concat (reversed noEscaping children))
-        go (NonRep _ tag children) !res = res `T.append` encloseWith [tag] (T.concat (reversed noEscaping children))
-        go (Root children) !res = res `T.append` T.concat (reversed withEscaping children)
-        go _ !res = res
-        noEscaping e = go e mempty
+        step res (Rep _ (ltags, _) cs) =  encloseWith ltags (foldMap noEscaping cs) `T.append` res 
+        step res (Contents text) = text `T.append` res 
+        step res (NonRep _ '[' cs) = encloseWith ['['] (foldMap withEscaping cs) `T.append` res 
+        step res (NonRep _ tag cs) = encloseWith [tag] (foldMap noEscaping cs) `T.append` res 
+        step res (Root cs) = foldMap withEscaping cs `T.append` res 
+        step res _ = res
+        noEscaping e = step mempty e
         withEscaping (Contents text) = noFalsePositives text
-        withEscaping (NonRep Closed '[' children) = encloseWith ['['] . T.concat . map withEscaping $ children
         withEscaping e = noEscaping e
-        reversed f = map f . reverse
-        noFalsePositives text = T.foldl' step mempty text where
-            step t c =
-                if c `elem` falsePositives then t `T.append` "\\" `T.append` T.singleton c
-                else t `T.append` T.singleton c
+        noFalsePositives = T.foldl' (\t c ->
+            if c `elem` falsePositives then t `T.append` "\\" `T.append` T.singleton c
+            else t `T.append` T.singleton c) mempty
+render _ = mempty
 
 parsing :: Entity -> Char -> Entity
 parsing (FailOn err) _ = FailOn err
