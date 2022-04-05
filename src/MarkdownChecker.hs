@@ -104,20 +104,21 @@ parse = runParser . Parser $ \t -> runner . T.reverse $ t
         step c (Right (entity, count)) = Right (parsing entity c, count + 1)
 
 render :: Entity -> T.Text
-render (Root children) = foldl' step mempty children 
+render (Root children) = foldl' step mempty children
     where
-        step res (Rep _ (ltags, _) cs) =  encloseWith ltags (foldMap noEscaping cs) `T.append` res 
-        step res (Contents text) = text `T.append` res 
-        step res (NonRep _ '[' cs) = encloseWith ['['] (foldMap withEscaping cs) `T.append` res 
-        step res (NonRep _ tag cs) = encloseWith [tag] (foldMap noEscaping cs) `T.append` res 
-        step res (Root cs) = foldMap withEscaping cs `T.append` res 
-        step res _ = res
-        noEscaping e = step mempty e
-        withEscaping (Contents text) = noFalsePositives text
-        withEscaping e = noEscaping e
-        noFalsePositives = T.foldl' (\t c ->
+        noFalsePositives text = T.foldl' (\t c ->
             if c `elem` falsePositives then t `T.append` "\\" `T.append` T.singleton c
-            else t `T.append` T.singleton c) mempty
+            else t `T.append` T.singleton c) mempty text
+        step res (NonRep _ '[' cs) = encloseWith ['['] (foldMap cont cs) `T.append` res
+        step res (NonRep _ tag cs) = encloseWith [tag] (foldMap skipDirect cs) `T.append` res
+        step res (Rep _ (ltags, _) cs) =
+            let middle = if head ltags == '`' then foldMap skipDirect cs else foldMap cont cs
+            in  encloseWith ltags middle `T.append` res
+        step res (Contents text) = noFalsePositives text `T.append` res
+        step res _ = res
+        cont e = step mempty e
+        skipDirect (Contents text) = text
+        skipDirect e = cont e
 render _ = mempty
 
 parsing :: Entity -> Char -> Entity
@@ -140,7 +141,20 @@ parsing tba@(TBD _) c = case detEntity tba c of
     Left err -> FailOn err
     Right e -> Up e
 parsing (Rep Closed _ _) _ = Back
+parsing (Rep Open (['`'], r) []) c = Up $ Rep Open (['`'], r) [Contents $ T.singleton c]
+parsing (Rep Open (['`'], r) (Contents text:children)) c
+    | c == '`' = Up $ Rep Closed (['`'], [c]) (Contents text:children)
+    | otherwise = Up $ Rep Open (['`'], r) (upped:children)
+    where upped = Contents $ text `T.append` T.singleton c
+parsing (Rep Open (['`','`','`'], r) []) c = Up $ Rep Open (['`','`','`'], r) [Contents $ T.singleton c]
 parsing (Rep Open tags []) c = Up $ Rep Open tags [mkEntity c]
+parsing (Rep Open (ltags@['`','`','`'], rtags) (Contents text:children)) c
+    | ltags == rtags' = Up $ Rep Closed (ltags, rtags') (Contents text:children)
+    | c == '`' = Up $ Rep Open (ltags, rtags') (Contents text:children)
+    | otherwise = Up $ Rep Open (ltags, rtags) (upped:children)
+    where
+        upped = Contents $ text `T.append` T.singleton c
+        rtags' = c:rtags
 parsing (Rep Open tags (Esc:(Contents text):children)) c =
     let escaped = Contents $ text `T.append` T.singleton c
     in  Up $ Rep Open tags (escaped:children)
