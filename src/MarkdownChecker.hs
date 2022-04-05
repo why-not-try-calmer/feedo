@@ -147,7 +147,6 @@ parsing (Rep Open (['`'], r) (Contents text:children)) c
     | otherwise = Up $ Rep Open (['`'], r) (upped:children)
     where upped = Contents $ text `T.append` T.singleton c
 parsing (Rep Open (['`','`','`'], r) []) c = Up $ Rep Open (['`','`','`'], r) [Contents $ T.singleton c]
-parsing (Rep Open tags []) c = Up $ Rep Open tags [mkEntity c]
 parsing (Rep Open (ltags@['`','`','`'], rtags) (Contents text:children)) c
     | ltags == rtags' = Up $ Rep Closed (ltags, rtags') (Contents text:children)
     | c == '`' = Up $ Rep Open (ltags, rtags') (Contents text:children)
@@ -155,6 +154,7 @@ parsing (Rep Open (ltags@['`','`','`'], rtags) (Contents text:children)) c
     where
         upped = Contents $ text `T.append` T.singleton c
         rtags' = c:rtags
+parsing (Rep Open tags []) c = Up $ Rep Open tags [mkEntity c]
 parsing (Rep Open tags (Esc:(Contents text):children)) c =
     let escaped = Contents $ text `T.append` T.singleton c
     in  Up $ Rep Open tags (escaped:children)
