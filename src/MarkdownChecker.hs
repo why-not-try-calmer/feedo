@@ -45,7 +45,7 @@ encloseWith [x, y] txt =
     in  xy `T.append` txt `T.append` xy
 encloseWith xs txt =
     let xs' = T.pack xs
-    in  "\n" `T.append` xs' `T.append` txt `T.append` xs' `T.append` "\n"
+    in  xs' `T.append` txt `T.append` xs'
 
 {- Entities -}
 
