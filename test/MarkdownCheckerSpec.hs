@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+
 module MarkdownCheckerSpec where
 
 import AppServer (makeConfig)
@@ -21,7 +22,7 @@ getConns = do
 
 spec :: Spec
 spec = go >> runIO getConns >>= go1 where
-    tester = "Hello _bea||utif||ully *nested* and_ my [world](https://beautiful.ugly.world)"
+    tester = "Hello _bea||utif||ully *nested* and_ my [.my-.humble.world](https://beautiful.ugly.world)"
     go =
         let desc as = describe "MarkdownChecker" as
             as func = it "check MarkdownV2 validity" func
@@ -36,11 +37,10 @@ spec = go >> runIO getConns >>= go1 where
                 case parse tester of
                     Left err -> print err >> undefined
                     Right (parsed, _) -> do
-                        config <- getConns
-                        let tok = bot_token . tg_config $ config
-                            cid = alert_chat . tg_config $ config
+                        let tok = bot_token . tg_config $ env
+                            cid = alert_chat . tg_config $ env
                         let payload = render parsed
-                        res <- runApp config $ action tok cid payload
+                        res <- runApp env $ action tok cid payload
                         case res of
                             Left err -> print err >> undefined
                             Right (resp :: JsonResponse TgGetMessageResponse) -> do

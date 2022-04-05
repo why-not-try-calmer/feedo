@@ -71,7 +71,11 @@ isEntity c
     | otherwise = Nothing
 
 mkEntity :: Char -> Entity
-mkEntity c = fromMaybe (Contents $ T.singleton c) $ isEntity c
+mkEntity c =
+    let t = T.singleton c
+    in  maybe (Contents t) (\e -> 
+        if c `notElem` falsePositives then e
+        else Contents t) $ isEntity c
 
 detEntity :: Entity -> Char -> Either T.Text Entity
 -- Either fails on an error or maybe return a new determined entity
@@ -103,12 +107,13 @@ render :: Entity -> T.Text
 render entity = go entity mempty
     where
         go (Contents text) !res = res `T.append` text
-        go (Root children) !res = res `T.append` T.concat (reversed withEscaping children)
         go (Rep _ (ltags, _) children) !res = res `T.append` encloseWith ltags (T.concat (reversed noEscaping children))
         go (NonRep _ tag children) !res = res `T.append` encloseWith [tag] (T.concat (reversed noEscaping children))
+        go (Root children) !res = res `T.append` T.concat (reversed withEscaping children)
         go _ !res = res
         noEscaping e = go e mempty
         withEscaping (Contents text) = noFalsePositives text
+        withEscaping (NonRep Closed '[' children) = encloseWith ['['] . T.concat . map withEscaping $ children
         withEscaping e = noEscaping e
         reversed f = map f . reverse
         noFalsePositives text = T.foldl' step mempty text where
