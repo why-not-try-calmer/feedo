@@ -22,7 +22,7 @@ getConns = do
 
 spec :: Spec
 spec = go >> runIO getConns >>= go1 where
-    tester = "Hello _bea||utif||ully *nested* and_ my [.my-.humble.world](https://beautiful.ugly.world)"
+    tester = "Hello _bea||utif||ully *nested* and_ my [.my.humble.world](https://beautiful.ugly.world)"
     go =
         let desc as = describe "MarkdownChecker" as
             as func = it "check MarkdownV2 validity" func
