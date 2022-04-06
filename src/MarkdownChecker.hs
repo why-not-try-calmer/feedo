@@ -112,18 +112,18 @@ parse = runParser . Parser $ \t -> runner . T.reverse $ t
 render :: Entity -> T.Text
 render (Root children) = foldl' step mempty children
     where
-        step res (NonRep _ '[' cs) = encloseWith ['['] (renderSkipping cs) `T.append` res
-        step res (NonRep _ tag cs) = encloseWith [tag] (renderChildren cs) `T.append` res
+        step res (NonRep _ '[' cs) = encloseWith ['['] (noEscape cs) `T.append` res
+        step res (NonRep _ tag cs) = encloseWith [tag] (escape cs) `T.append` res
         step res (Rep _ (ltags, _) cs) =
-            let middle = if head ltags == '`' then renderSkipping cs else renderChildren cs
+            let middle = if head ltags == '`' then noEscape cs else escape cs
             in  encloseWith ltags middle `T.append` res
         step res (Contents text) = noFalsePositives text `T.append` res
         step res _ = res
         noFalsePositives text = T.foldl' (\t c ->
             if c `elem` falsePositives then t `T.append` "\\" `T.append` T.singleton c
             else t `T.append` T.singleton c) mempty text
-        renderSkipping = T.concat . reverse . map skipDirect
-        renderChildren = T.concat . reverse . map (step mempty)
+        escape = T.concat . reverse . map skipDirect
+        noEscape = T.concat . reverse . map (step mempty)
         skipDirect (Contents text) = text
         skipDirect e = step mempty e
 render _ = mempty
