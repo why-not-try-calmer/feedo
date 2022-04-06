@@ -3,9 +3,9 @@
 
 module MarkdownChecker where
 
-import Data.Foldable (foldl')
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
+import Data.Maybe (fromMaybe)
+import Data.Foldable
 
 {- Entities -}
 
@@ -73,7 +73,7 @@ isEntity c
 mkEntity :: Char -> Entity
 mkEntity c =
     let t = T.singleton c
-    in  maybe (Contents t) (\e -> 
+    in  maybe (Contents t) (\e ->
         if c `notElem` falsePositives then e
         else Contents t) $ isEntity c
 
@@ -88,6 +88,12 @@ detEntity (TBD ['`']) c = Right $ Rep Open (['_'], []) [Contents $ T.singleton c
 detEntity (TBD ['`', '`']) '`' = Right $ Rep Open (['`', '`', '`'], []) []
 detEntity (TBD ['`', '`']) c = Left $ "'" `T.append` T.singleton c `T.append` "' should have been escaped"
 detEntity _ c = Left $ "Unable to determine anything from " `T.append` T.singleton c
+
+getChildren :: Entity -> [Entity]
+getChildren (Root cs) = cs
+getChildren (NonRep _ _ cs) = cs
+getChildren (Rep _ _ cs) = cs
+getChildren _ = mempty
 
 {- Parsing -}
 
@@ -106,19 +112,20 @@ parse = runParser . Parser $ \t -> runner . T.reverse $ t
 render :: Entity -> T.Text
 render (Root children) = foldl' step mempty children
     where
-        noFalsePositives text = T.foldl' (\t c ->
-            if c `elem` falsePositives then t `T.append` "\\" `T.append` T.singleton c
-            else t `T.append` T.singleton c) mempty text
-        step res (NonRep _ '[' cs) = encloseWith ['['] (foldMap cont cs) `T.append` res
-        step res (NonRep _ tag cs) = encloseWith [tag] (foldMap skipDirect cs) `T.append` res
+        step res (NonRep _ '[' cs) = encloseWith ['['] (renderSkipping cs) `T.append` res
+        step res (NonRep _ tag cs) = encloseWith [tag] (renderChildren cs) `T.append` res
         step res (Rep _ (ltags, _) cs) =
-            let middle = if head ltags == '`' then foldMap skipDirect cs else foldMap cont cs
+            let middle = if head ltags == '`' then renderSkipping cs else renderChildren cs
             in  encloseWith ltags middle `T.append` res
         step res (Contents text) = noFalsePositives text `T.append` res
         step res _ = res
-        cont e = step mempty e
+        noFalsePositives text = T.foldl' (\t c ->
+            if c `elem` falsePositives then t `T.append` "\\" `T.append` T.singleton c
+            else t `T.append` T.singleton c) mempty text
+        renderSkipping = T.concat . reverse . map skipDirect
+        renderChildren = T.concat . reverse . map (step mempty)
         skipDirect (Contents text) = text
-        skipDirect e = cont e
+        skipDirect e = step mempty e
 render _ = mempty
 
 parsing :: Entity -> Char -> Entity
