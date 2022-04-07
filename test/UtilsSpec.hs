@@ -41,7 +41,7 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
                 as func = it "parses a datestring" func
                 target = do
                     now <- getCurrentTime
-                    let t = fromJust $ mbTime "2021-09-17T13:19:00.002-04:00"
+                    let t = fromJust $ mbTime "2021-09-17T13:19:00"
                     t `shouldSatisfy` (< now)
             in  desc $ as target
         go5 =
