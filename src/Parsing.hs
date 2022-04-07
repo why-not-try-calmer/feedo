@@ -48,11 +48,11 @@ buildFeed ty url = do
                             -- link = T.concat $ child root >>= child >>= element "link" >>= child >>= content
                             get_date el = mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
                             make_item el = Item <$>
-                                    Just (T.concat $ child el >>= element "title" >>= child >>= content) <*>
-                                    Just (T.concat $ child el >>= element "description" >>= child >>= content) <*>
-                                    Just (T.concat $ child el >>= element "link" >>= child >>= content) <*>
-                                    Just (renderUrl url) <*>
-                                    get_date el
+                                Just (T.concat $ child el >>= element "title" >>= child >>= content) <*>
+                                Just (T.concat $ child el >>= element "description" >>= child >>= content) <*>
+                                Just (T.concat $ child el >>= element "link" >>= child >>= content) <*>
+                                Just (renderUrl url) <*>
+                                get_date el
                             mb_items = mapM make_item $ descendant root >>= element "item"
                             interval = (averageInterval . map i_pubdate) =<< mb_items
                             built_feed = Feed <$> 

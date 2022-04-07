@@ -37,7 +37,8 @@ const Defaults = {
     disable_web_view: false,
     pin: false,
     follow: false,
-    share_link: false
+    share_link: false,
+    pagination: false
 }
 
 function submit_listener(e) {
@@ -62,7 +63,8 @@ function submit_listener(e) {
         paused: false,
         follow: false,
         pin: false,
-        share_link: false
+        share_link: false,
+        pagination: false
     }
     mb_digest_start = `${form_entries.start_yyyy}-${form_entries.start_mm}-${form_entries.start_dd}`
     settings.digest_start = mb_digest_start.length > 3 ? mb_digest_start : null
@@ -107,6 +109,8 @@ function submit_listener(e) {
             case 'share_link':
                 settings.share_link = v === 'on' ? true : false
                 break
+            case 'pagination':
+                settings.pagination = v === 'on' ? true : false
         }
     }
     const preflight = { write_req_hash: Ctx.access_token, write_req_settings: settings }
@@ -169,7 +173,7 @@ function reset_field(n){
     const field_name = n === 'digest_every' ? 'digest_every_secs' : n
     const field = document.getElementById(field_name)
     const def = Defaults[field_name]
-    if (['share_link', 'disable_web_view', 'follow', 'pin'].includes(field_name)) {
+    if (['share_link', 'disable_web_view', 'follow', 'pin', 'pagination'].includes(field_name)) {
         field.checked = def
         return
     }
@@ -199,6 +203,7 @@ function asssign_from_Ctx() {
     document.getElementById('searchset').value = Ctx.settings.word_matches.searchset.join(' ')
     document.getElementById('only_search_results').value = Ctx.settings.word_matches.only_search_results.join(' ')
     
+    document.getElementById('pagination').checked = Ctx.settings.pagination
     document.getElementById('share_link').checked = Ctx.settings.share_link
     document.getElementById('disable_web_view').checked = Ctx.settings.disable_web_view
     document.getElementById('follow').checked = Ctx.settings.follow
