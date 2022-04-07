@@ -41,63 +41,45 @@ buildFeed ty url = do
                 (T.pack . show $ ex)
             Right doc ->
                 let root = fromDocument doc
-                in case ty of
-                    Rss ->
-                        let desc = T.concat $ child root >>= child >>= element "description" >>= child >>= content
-                            title = T.concat $ child root >>= child >>= element "title" >>= child >>= content
-                            -- link = T.concat $ child root >>= child >>= element "link" >>= child >>= content
-                            get_date el = mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
-                            make_item el = Item <$>
-                                Just (T.concat $ child el >>= element "title" >>= child >>= content) <*>
-                                Just (T.concat $ child el >>= element "description" >>= child >>= content) <*>
-                                Just (T.concat $ child el >>= element "link" >>= child >>= content) <*>
-                                Just (renderUrl url) <*>
-                                get_date el
-                            mb_items = mapM make_item $ descendant root >>= element "item"
-                            interval = (averageInterval . map i_pubdate) =<< mb_items
-                            built_feed = Feed <$> 
-                                Just Rss <*> 
-                                Just desc <*> 
-                                Just title <*> 
-                                Just (renderUrl url) <*> 
-                                mb_items <*> 
-                                Just interval <*> 
-                                Just (pure now) <*> 
-                                Just 0
-                        in  case built_feed of
-                                Nothing ->  pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
-                                Just f -> 
-                                    if faultyFeed f 
-                                    then pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
-                                    else pure . Right $ f
-                    Atom ->
-                        let desc = T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
-                            title = T.concat $ child root >>= laxElement "title" >>= child >>= content
-                            -- link = T.concat . attribute "href" . head $ child root >>= laxElement "link"
-                            get_date el = mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
-                            make_item el = Item <$>
-                                Just (T.concat $ child el >>= laxElement "title" >>= child >>= content) <*>
-                                Just (T.concat $ child el >>= laxElement "content" >>= child >>= content) <*>
-                                Just (T.concat . attribute "href" . head $ child el >>= laxElement "link") <*>
-                                Just (renderUrl url) <*>
-                                get_date el
-                            mb_items = mapM make_item $ descendant root >>= element "item"
-                            interval = (averageInterval . map i_pubdate) =<< mb_items
-                            built_feed = Feed <$> 
-                                Just Rss <*> 
-                                Just desc <*> 
-                                Just title <*> 
-                                Just (renderUrl url) <*> 
-                                mb_items <*> 
-                                Just interval <*> 
-                                Just (pure now) <*> 
-                                Just 0
-                        in  case built_feed of
-                                Nothing ->  pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
-                                Just f -> 
-                                    if faultyFeed f 
-                                    then pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
-                                    else pure . Right $ f
+                    desc = case ty of
+                        Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
+                        Atom -> T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
+                    title = case ty of
+                        Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
+                        Atom -> T.concat $ child root >>= laxElement "title" >>= child >>= content
+                    get_date el = case ty of
+                        Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
+                        Atom -> mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
+                    make_item el = case ty of
+                        Rss -> Item <$>
+                            Just (T.concat $ child el >>= element "title" >>= child >>= content) <*>
+                            Just (T.concat $ child el >>= element "description" >>= child >>= content) <*>
+                            Just (T.concat $ child el >>= element "link" >>= child >>= content) <*>
+                            Just (renderUrl url) <*>
+                            get_date el
+                        Atom -> Item <$>
+                            Just (T.concat $ child el >>= laxElement "title" >>= child >>= content) <*>
+                            Just (T.concat $ child el >>= laxElement "content" >>= child >>= content) <*>
+                            Just (T.concat . attribute "href" . head $ child el >>= laxElement "link") <*>
+                            Just (renderUrl url) <*>
+                            get_date el
+                    mb_items = mapM make_item $ descendant root >>= element "item"
+                    interval = (averageInterval . map i_pubdate) =<< mb_items
+                    built_feed = Feed <$> 
+                        Just Rss <*> 
+                        Just desc <*> 
+                        Just title <*> 
+                        Just (renderUrl url) <*> 
+                        mb_items <*> 
+                        Just interval <*> 
+                        Just (pure now) <*> 
+                        Just 0
+                in  case built_feed of
+                    Nothing ->  pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
+                    Just f -> 
+                        if faultyFeed f 
+                        then pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
+                        else pure . Right $ f
     where
         faultyFeed f =
             let predicates = [any T.null [f_desc f, f_title f, f_link f], null . f_items $ f]
@@ -126,21 +108,13 @@ getFeedFromUrlScheme scheme = buildFeed Rss scheme >>= \case
     where
         finish_successfully feed = pure . Right $ feed
 
-getFeedFromHref :: MonadIO m => T.Text -> m (Either T.Text Feed)
--- parses url and tries to fetch & build  a new feed to the 'store'
-getFeedFromHref url = case eitherUrlScheme url of
-    Left err -> pure . Left .  renderUserError $ err
-    Right urlScheme -> getFeedFromUrlScheme urlScheme
-
 rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
 -- updates one singular feed and returns the result to the caller
 rebuildFeed key = case eitherUrlScheme key of
     Left _ -> pure . Left $ key
     Right url -> buildFeed Rss url >>= \case
         Left _ -> buildFeed Atom url >>= \case
-            Left _ ->
-                let faulty_key = T.pack . show $ url
-                in pure $ Left faulty_key
+            Left _ -> pure . Left . renderUrl $ url 
             Right feed -> done feed
         Right feed -> done feed
   where done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed {f_last_refresh = Just now}

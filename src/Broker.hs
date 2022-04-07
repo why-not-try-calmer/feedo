@@ -172,7 +172,7 @@ withBroker CacheRefresh = do
                 let (not_rebuilt, succeeded) = partitionEither eitherUpdated
                 -- handling case of some feeds not rebuilding
                 unless (null not_rebuilt) (writeChan (postjobs env) . JobTgAlert $
-                    "Failed to update theses feeds: " `T.append` T.intercalate ", " not_rebuilt)
+                    "Failed to update these feeds: " `T.append` T.intercalate ", " not_rebuilt)
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 pure succeeded
