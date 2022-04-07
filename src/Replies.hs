@@ -117,11 +117,12 @@ instance Renderable SubChat where
                         [
                             ("Chat id", T.pack . show $ sub_chatid),
                             ("Status", if settings_paused sub_settings then "paused" else "active"),
-                            ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links)
+                            ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links),
+                            maybe mempty (\c -> ("Linked to", T.pack . show $ c)) sub_linked_to
                         ]
                     digest_part = mapper
                         [
-                            maybe (mempty,mempty) (\t -> ("First digest", utcToYmd t)) $ settings_digest_start sub_settings,
+                            maybe mempty (\t -> ("First digest", utcToYmd t)) $ settings_digest_start sub_settings,
                             ("Digest time(s)", if T.null at then "none" else at),
                             every_txt,
                             ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items"),

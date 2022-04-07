@@ -38,7 +38,7 @@ renderDbRes res = case res of
         in
         H.docTypeHtml $ do
         H.head $ do
-            H.title . toHtml $ "feedfarer_bot/digest/" `T.append` digest_id_txt digest_id
+            H.title . toHtml $ "feedo_the_bot/digest/" `T.append` digest_id_txt digest_id
             H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedo_the_bot"
         H.body $ do
             H.h2 . toHtml $ "digest id: " `T.append` digest_id_txt digest_id
@@ -49,13 +49,13 @@ renderDbRes res = case res of
                 H.p . toHtml $ (let fl = i_feed_link . head $ is in flt Map.! fl) `T.append` " (" `T.append` nbOf is `T.append` ") items"
                 H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
             H.p "To get your favorite web feeds posted to your Telegram account, start talking to "
-            H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
+            H.a ! Attr.href (textValue "https://t.me/feedo_the_bot") $ "https://t.me/feedo_the_bot"
     DbView [] _ _ -> "No item found for your query. Try using different values for the time and urls parameters."
     DbView items f t ->
         let (from, to) = (T.pack . show $ f, T.pack . show $ t) in H.docTypeHtml $ do
         H.head $ do
-            H.title "feedfarer_bot/view/"
-            H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
+            H.title "feedo_the_bot/view/"
+            H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedo_the_bot"
         H.body $ do
             H.h3 . toHtml $ "Feeds found (" `T.append` nbOfFlinks items `T.append` ")"
             H.ul $ forM_ (flinks items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
@@ -65,7 +65,7 @@ renderDbRes res = case res of
                 H.p . toHtml $ (i_feed_link . head $ is) `T.append` " (" `T.append` nbOf is `T.append` ") items"
                 H.ul $ go mempty 0 $ sortOn (Down . i_pubdate) is)
             H.p "To get your favorite web feeds posted to your Telegram account, start talking to "
-            H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot"
+            H.a ! Attr.href (textValue "https://t.me/feedo_the_bot") $ "https://t.me/feedo_the_bot"
     _ -> "Invalid operation."
     where
         digest_id_txt mid = case mid :: Maybe ObjectId of
@@ -91,8 +91,8 @@ renderDbRes res = case res of
 home :: MonadIO m => App m Markup
 home = pure . H.docTypeHtml $ do
     H.head $ do
-        H.title "feedfarer_bot/view/home"
-        H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
+        H.title "feedo_the_bot/view/home"
+        H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedo_the_bot"
     H.body $ do
         H.h3 "This might have been"
         H.p "...your query..."
@@ -104,7 +104,7 @@ home = pure . H.docTypeHtml $ do
             H.p "To start the day with something beautiful"
             H.ul $ H.li $ H.article i)
         H.p "But mostly useful, start talking to "
-            >> (H.a ! Attr.href (textValue "https://t.me/feedfarer_bot") $ "https://t.me/feedfarer_bot")
+            >> (H.a ! Attr.href (textValue "https://t.me/feedo_the_bot") $ "https://t.me/feedo_the_bot")
             >> H.p " and get your favorite web feeds posted to your Telegram account!"
 
 viewDigests :: MonadIO m => T.Text -> App m Markup
@@ -177,7 +177,8 @@ writeSettings (WriteReq hash new_settings Nothing) = do
                 diff (settings_pin s, settings_pin s'),
                 diff (settings_word_matches s, settings_word_matches s'),
                 diff (settings_share_link s, settings_share_link s'),
-                diff (settings_follow s, settings_follow s')
+                diff (settings_follow s, settings_follow s'),
+                diff (settings_pagination s, settings_pagination s')
             ]
 writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing
 writeSettings (WriteReq hash settings (Just True)) =
