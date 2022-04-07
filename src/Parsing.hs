@@ -13,7 +13,7 @@ import AppTypes
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
@@ -47,57 +47,63 @@ buildFeed ty url = do
                         let desc = T.concat $ child root >>= child >>= element "description" >>= child >>= content
                             title = T.concat $ child root >>= child >>= element "title" >>= child >>= content
                             -- link = T.concat $ child root >>= child >>= element "link" >>= child >>= content
-                            get_item_data el =
+                            get_date el = mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
+                            make_item el =
                                 Item
                                 (T.concat $ child el >>= element "title" >>= child >>= content)
                                 (T.concat $ child el >>= element "description" >>= child >>= content)
                                 (T.concat $ child el >>= element "link" >>= child >>= content)
                                 (renderUrl url)
-                                (fromMaybe now . mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content))
-                            items = map get_item_data $ descendant root >>= element "item"
-                            interval = averageInterval $ map i_pubdate items
+                                (fromJust $ get_date el)
+                            make_items = map make_item $ descendant root >>= element "item"
+                            interval = averageInterval $ map i_pubdate make_items
                             res = Feed
                                 {
                                     f_type = Rss,
                                     f_desc = desc,
                                     f_title = title,
                                     f_link = renderUrl url,
-                                    f_items = items,
+                                    f_items = make_items,
                                     f_avg_interval = interval,
                                     f_last_refresh = Just now,
                                     f_reads = 0
                                 }
-                        in  faultyOrValid url res
+                        in  liftIO (try $ pure res) >>= \case
+                            Left (SomeException err) -> pure . Left $ ParseError $ T.pack . show $ err
+                            Right f -> 
+                                if faultyFeed f then pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
+                                else pure . Right $ f 
                     Atom ->
                         let desc = T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
                             title = T.concat $ child root >>= laxElement "title" >>= child >>= content
                             -- link = T.concat . attribute "href" . head $ child root >>= laxElement "link"
-                            get_item_data el =
+                            get_date el = mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
+                            make_item el =
                                 Item
                                 (T.concat $ child el >>= laxElement "title" >>= child >>= content)
                                 (T.concat $ child el >>= laxElement "content" >>= child >>= content)
                                 (T.concat . attribute "href" . head $ child el >>= laxElement "link")
                                 (renderUrl url)
-                                (fromMaybe now . mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content))
-                            items = map get_item_data $ descendant root >>= laxElement "entry"
-                            interval = averageInterval $ map i_pubdate items
+                                (fromJust $ get_date el)
+                            make_items = map make_item $ descendant root >>= element "item"
+                            interval = averageInterval $ map i_pubdate make_items
                             res = Feed
                                 {
-                                    f_type = Atom,
+                                    f_type = Rss,
                                     f_desc = desc,
                                     f_title = title,
                                     f_link = renderUrl url,
-                                    f_items = items,
+                                    f_items = make_items,
                                     f_avg_interval = interval,
                                     f_last_refresh = Just now,
                                     f_reads = 0
                                 }
-                        in  faultyOrValid url res
+                        in  liftIO (try $ pure res) >>= \case
+                            Left (SomeException err) -> pure . Left $ ParseError $ T.pack . show $ err
+                            Right f -> 
+                                if faultyFeed f then pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
+                                else pure . Right $ f
     where
-        faultyOrValid u res =
-            if faultyFeed res
-            then pure . Left . ParseError $ T.pack . show . renderUrl $ u
-            else pure . Right $ res
         faultyFeed f =
             let predicates = [any T.null [f_desc f, f_title f, f_link f], null . f_items $ f]
             in  or predicates
