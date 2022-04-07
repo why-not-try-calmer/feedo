@@ -4,7 +4,8 @@ import AppTypes
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import Data.List (foldl', sort, sortOn)
-import Data.Maybe (isNothing)
+import Data.Maybe (fromMaybe)
+import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime (utctDayTime), addUTCTime, defaultTimeLocale, diffUTCTime, formatTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
@@ -14,8 +15,6 @@ import Data.Time.Clock.POSIX
   )
 import Data.Time.Format.ISO8601
 import TgramOutJson (ChatId)
-import Data.Ord (Down(Down))
-
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
@@ -66,9 +65,10 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
 {- Time -}
 
 mbTime :: String -> Maybe UTCTime
-mbTime s = if isNothing first_pass then iso8601ParseM s else first_pass
+mbTime s = fromMaybe second_pass first_pass
     where
-        first_pass = foldr step Nothing formats
+        first_pass = pure $ iso8601ParseM s
+        second_pass = foldr step Nothing formats
         step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
         formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 

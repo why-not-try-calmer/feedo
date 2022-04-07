@@ -35,7 +35,11 @@ buildFeed ty url = do
     fetchFeed url >>= \case
         Nothing -> pure. Left . BadFeedUrl $ renderUrl url
         Just feed -> case parseLBS def feed of
-            Left (SomeException _) -> pure . Left . ParseError $ "Unable to parse feed at " `T.append` (T.pack . show $ url)
+            Left (SomeException ex) -> pure . Left . ParseError $ 
+                "Unable to parse feed at " `T.append`
+                (T.pack . show $ url) `T.append`
+                ", bumped on this exception: " `T.append` 
+                (T.pack . show $ ex)
             Right doc ->
                 let root = fromDocument doc
                 in case ty of
