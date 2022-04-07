@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 
 module UtilsSpec where
 
@@ -95,3 +96,5 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
                             Follows fs' -> pure ("Follow", fs')
                     (label, val) `shouldSatisfy` (\(l, v) -> l == "Digests" && length v == 2)
             in  desc $ as target
+
+main = hspec spec

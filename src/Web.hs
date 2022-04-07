@@ -39,7 +39,7 @@ renderDbRes res = case res of
         H.docTypeHtml $ do
         H.head $ do
             H.title . toHtml $ "feedfarer_bot/digest/" `T.append` digest_id_txt digest_id
-            H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedfarer_bot"
+            H.address ! Attr.class_ (textValue "author") $ "https://t.me/feedo_the_bot"
         H.body $ do
             H.h2 . toHtml $ "digest id: " `T.append` digest_id_txt digest_id
             H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks digest_items `T.append` ")"
