@@ -23,6 +23,7 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
+import Data.Maybe (isNothing, fromMaybe)
 
 {- Feeds, Items -}
 
@@ -51,39 +52,40 @@ buildFeed ty url = do
                         Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
                         Atom -> mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
                     make_item el = case ty of
-                        Rss -> Item <$>
-                            Just (T.concat $ child el >>= element "title" >>= child >>= content) <*>
-                            Just (T.concat $ child el >>= element "description" >>= child >>= content) <*>
-                            Just (T.concat $ child el >>= element "link" >>= child >>= content) <*>
-                            Just (renderUrl url) <*>
-                            get_date el
-                        Atom -> Item <$>
-                            Just (T.concat $ child el >>= laxElement "title" >>= child >>= content) <*>
-                            Just (T.concat $ child el >>= laxElement "content" >>= child >>= content) <*>
-                            Just (T.concat . attribute "href" . head $ child el >>= laxElement "link") <*>
-                            Just (renderUrl url) <*>
-                            get_date el
-                    mb_items = mapM make_item $ descendant root >>= element "item"
-                    interval = (averageInterval . map i_pubdate) =<< mb_items
-                    built_feed = Feed <$> 
-                        Just Rss <*> 
-                        Just desc <*> 
-                        Just title <*> 
-                        Just (renderUrl url) <*> 
-                        mb_items <*> 
-                        Just interval <*> 
-                        Just (pure now) <*> 
-                        Just 0
-                in  case built_feed of
-                    Nothing ->  pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
-                    Just f -> 
-                        if faultyFeed f 
-                        then pure . Left $ ParseError "Unable to parse one or more XML tags, aborting."
-                        else pure . Right $ f
+                        Rss -> Item
+                            (T.concat $ child el >>= element "title" >>= child >>= content)
+                            (T.concat $ child el >>= element "description" >>= child >>= content)
+                            (T.concat $ child el >>= element "link" >>= child >>= content)
+                            (renderUrl url)
+                            (fromMaybe now $ get_date el)
+                        Atom -> Item
+                            (T.concat $ child el >>= laxElement "title" >>= child >>= content)
+                            (T.concat $ child el >>= laxElement "content" >>= child >>= content)
+                            (T.concat . attribute "href" . head $ child el >>= laxElement "link")
+                            (renderUrl url)
+                            (fromMaybe now $ get_date el)
+                    mb_items = case ty of
+                        Rss -> map make_item $ descendant root >>= element "item"
+                        Atom -> map make_item $ descendant root >>= laxElement "entry"
+                    interval = averageInterval . map i_pubdate $ mb_items
+                    built_feed = Feed
+                        Rss
+                        desc
+                        title
+                        (renderUrl url)
+                        mb_items
+                        interval
+                        (Just now)
+                        0
+                in  pure $ faultyFeed built_feed
     where
         faultyFeed f =
-            let predicates = [any T.null [f_desc f, f_title f, f_link f], null . f_items $ f]
-            in  or predicates
+            let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f, isNothing $ f_avg_interval f]
+                labels = ["desc", "title", "url", "items", "interval"] :: [T.Text]
+                missing = foldl' (\acc v -> if snd v then fst v:acc else acc) [] $ zip labels holes
+            in  if null missing then Right f
+                else let report = T.intercalate ", " missing in
+                Left $ ParseError ("The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` report)
 
 eitherUrlScheme :: T.Text -> Either UserError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
@@ -111,10 +113,12 @@ getFeedFromUrlScheme scheme = buildFeed Rss scheme >>= \case
 rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
 -- updates one singular feed and returns the result to the caller
 rebuildFeed key = case eitherUrlScheme key of
-    Left _ -> pure . Left $ key
+    Left err -> pure . Left $ key `T.append` " ran into this error: " `T.append` renderUserError err
     Right url -> buildFeed Rss url >>= \case
         Left _ -> buildFeed Atom url >>= \case
-            Left _ -> pure . Left . renderUrl $ url 
+            Left build_error -> pure . Left $
+                renderUrl url `T.append` " ran into this error: " `T.append`
+                renderUserError build_error
             Right feed -> done feed
         Right feed -> done feed
   where done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed {f_last_refresh = Just now}

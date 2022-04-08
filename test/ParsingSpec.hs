@@ -1,13 +1,17 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module ParsingSpec where
 
 import Test.Hspec
-import Parsing (parseSettings, eitherUrlScheme)
+import Parsing (parseSettings, eitherUrlScheme, rebuildFeed)
 import AppTypes (DigestInterval(DigestInterval), ParsingSettings (PDigestAt))
 import qualified Data.Text as T
 import Network.HTTP.Req (renderUrl)
+import Utils (partitionEither)
+import Control.Concurrent.Async (mapConcurrently)
 
 spec :: Spec
-spec = go >> go1
+spec = go >> go1 >> go2
     where
         go =
             let desc as = describe "parseSettings" as
@@ -22,4 +26,14 @@ spec = go >> go1
                     Right res -> 
                         let s = renderUrl res
                         in  s `shouldSatisfy` (not . T.null)
+            in  desc $ as target
+        go2 =
+            let desc as = describe "rebuildFeed" as
+                as func = it "fetches and parses the given web feeds" func
+                target = do
+                    let feeds = ["https://hnrss.org/frontpage", "https://planetpython.org/rss20.xml", "https://talkpython.fm/episodes/rss", "https://www.blog.pythonlibrary.org/feed"]
+                    res <- mapConcurrently rebuildFeed feeds
+                    let (failed, done) = partitionEither res
+                    print failed >> print done
+                    length done `shouldSatisfy` (> length failed)
             in  desc $ as target
