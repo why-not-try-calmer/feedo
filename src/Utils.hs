@@ -4,7 +4,6 @@ import AppTypes
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import Data.List (foldl', sort, sortOn)
-import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -21,8 +20,8 @@ partitionEither :: [Either a b] -> ([a], [b])
 partitionEither = foldl' step ([],[])
     where
         step (!ls, !rs) val = case val of
-            Left l -> (ls++[l], rs)
-            Right r -> (ls, rs++[r])
+            Left l -> (l:ls, rs)
+            Right r -> (ls, r:rs)
 
 reduceMaybeWith :: (a -> Maybe b) -> [a] -> [b]
 reduceMaybeWith f = foldl' (\acc val -> case f val of Just x -> x:acc; _ -> acc) []
@@ -65,9 +64,8 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
 {- Time -}
 
 mbTime :: String -> Maybe UTCTime
-mbTime s = fromMaybe second_pass first_pass
+mbTime s = maybe second_pass pure $ iso8601ParseM s
     where
-        first_pass = pure $ iso8601ParseM s
         second_pass = foldr step Nothing formats
         step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
         formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]

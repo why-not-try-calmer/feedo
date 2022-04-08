@@ -111,7 +111,7 @@ getFeedFromUrlScheme scheme = buildFeed Rss scheme >>= \case
         finish_successfully feed = pure . Right $ feed
 
 rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
--- updates one singular feed and returns the result to the caller
+-- updates one single feed
 rebuildFeed key = case eitherUrlScheme key of
     Left err -> pure . Left $ key `T.append` " ran into this error: " `T.append` renderUserError err
     Right url -> buildFeed Rss url >>= \case

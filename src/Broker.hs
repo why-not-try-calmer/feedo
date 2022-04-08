@@ -41,7 +41,7 @@ writeManyFeeds fs =
             q2 <- write_to_sets
             pure $ (,) <$> q1 <*> q2
     in  multiExec action
-        
+
 deleteManyFeeds :: [T.Text] -> Redis (TxResult Integer)
 deleteManyFeeds fs = multiExec $ do
     _ <- del (map singleK fs)
@@ -88,9 +88,9 @@ withBroker (CacheGetPage cid mid n) =
             l <- llen lk
             url <- get k
             pure $ (,,) <$> d <*> l <*> url
-        success p i mb_page = 
+        success p i mb_page =
             let (page', i') = (B.decodeUtf8 p, fromInteger i)
-            in  pure . Right $ CachePage page' i' mb_page        
+            in  pure . Right $ CachePage page' i' mb_page
         refresh env = evalDb env (GetPages cid mid) >>= \case
             DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
             _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
@@ -169,10 +169,10 @@ withBroker CacheRefresh = do
             succeeded <- liftIO $ do
                 -- rebuilding all feeds with any subscribers
                 eitherUpdated <- mapConcurrently rebuildFeed flinks
-                let (not_rebuilt, succeeded) = partitionEither eitherUpdated
+                let (failed, succeeded) = partitionEither eitherUpdated
                 -- handling case of some feeds not rebuilding
-                unless (null not_rebuilt) (writeChan (postjobs env) . JobTgAlert $
-                    "Failed to update these feeds: " `T.append` T.intercalate ", " not_rebuilt)
+                unless (null failed) (writeChan (postjobs env) . JobTgAlert $
+                    "Failed to update these feeds: " `T.append` T.intercalate ", " failed)
                 -- archiving
                 writeChan (postjobs env) $ JobArchive succeeded now
                 pure succeeded
@@ -183,7 +183,7 @@ withBroker CacheRefresh = do
                     let fresh_feeds = HMS.fromList . map (\f -> (f_link f, f)) $ succeeded
                         to_cache = HMS.union fresh_feeds old_feeds
                     in  withBroker (CachePushFeeds $ HMS.elems to_cache) >> pure (Right to_cache)
-withBroker CacheWarmup = 
+withBroker CacheWarmup =
     ask >>= \env ->
     evalDb env GetAllFeeds >>= \case
         DbFeeds fs -> withBroker $ CachePushFeeds fs
