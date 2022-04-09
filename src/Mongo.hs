@@ -2,10 +2,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Mongo where
+
 import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (void, when, unless)
+import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import qualified Data.ByteString.Char8 as B
@@ -24,8 +25,8 @@ import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Text.Read (readMaybe)
-import Utils (defaultChatSettings)
 import TgramOutJson (ChatId)
+import Utils (defaultChatSettings, mbTime)
 
 {- Interface -}
 
@@ -303,7 +304,7 @@ evalMongo env (ReadDigest _id) =
     in  case mkSelector of
         Left err -> pure $ DbErr err
         Right selector ->  withMongo env (action selector) >>= \case
-            Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
+            Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database"
             Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
@@ -353,11 +354,11 @@ itemToBson i = [
 
 bsonToItem :: Document -> Item
 bsonToItem doc = Item
-    (fromJust $ M.lookup "i_title" doc)
-    (fromJust $ M.lookup "i_desc" doc)
-    (fromJust $ M.lookup "i_link" doc)
-    (fromJust $ M.lookup "i_feed_link" doc)
-    (fromJust $ M.lookup "i_pubdate" doc)
+    (fromMaybe mempty $ M.lookup "i_title" doc)
+    (fromMaybe mempty $ M.lookup "i_desc" doc)
+    (fromMaybe mempty $ M.lookup "i_link" doc)
+    (fromMaybe mempty $ M.lookup "i_feed_link" doc)
+    (fromMaybe (fromJust . mbTime $ "2022-01-01") $ M.lookup "i_pubdate" doc)
 
 {- Feeds -}
 
@@ -475,10 +476,10 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
 
 bsonToDigest :: Document -> Digest
 bsonToDigest doc =
-    let items = map readDoc . fromJust $ M.lookup "digest_items" doc
-        created = fromJust $ M.lookup "digest_created" doc
+    let created = fromJust $ M.lookup "digest_created" doc
         _id = M.lookup "_id" doc :: Maybe ObjectId
-        flinks = fromJust $ M.lookup "digest_flinks" doc
+        items = maybe mempty (map readDoc) $ M.lookup "digest_items" doc
+        flinks = fromMaybe [] $ M.lookup "digest_flinks" doc
         ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
     in  Digest _id created items flinks ftitles
 
