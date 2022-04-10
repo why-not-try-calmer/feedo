@@ -30,7 +30,7 @@ import Mongo (HasMongo(evalDb))
 
 renderDbRes :: DbRes -> H.Html
 renderDbRes res = case res of
-    DbErr err -> H.toHtml $ renderDbError err
+    DbErr err -> H.toHtml . renderDbError $ err
     DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
     DbDigest Digest{..} ->
         let flt =
