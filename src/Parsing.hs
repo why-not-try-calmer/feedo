@@ -43,35 +43,33 @@ buildFeed ty url = do
             Right doc ->
                 let root = fromDocument doc
                     desc = case ty of
+                        Atom -> T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
                         Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
-                        Atom -> 
-                            let sub = T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
-                            in  if T.null sub then "No description or subtitle provided" else sub
                     title = case ty of
-                        Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
                         Atom -> T.concat $ child root >>= laxElement "title" >>= child >>= content
+                        Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
                     get_date el = case ty of
-                        Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
                         Atom -> mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
+                        Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
                     make_item el = case ty of
-                        Rss -> Item
-                            (T.concat $ child el >>= element "title" >>= child >>= content)
-                            (T.concat $ child el >>= element "description" >>= child >>= content)
-                            (T.concat $ child el >>= element "link" >>= child >>= content)
-                            (renderUrl url)
-                            (fromMaybe now $ get_date el)
                         Atom -> Item
                             (T.concat $ child el >>= laxElement "title" >>= child >>= content)
                             (T.concat $ child el >>= laxElement "content" >>= child >>= content)
                             (T.concat . attribute "href" . head $ child el >>= laxElement "link")
                             (renderUrl url)
                             (fromMaybe now $ get_date el)
+                        Rss -> Item
+                            (T.concat $ child el >>= element "title" >>= child >>= content)
+                            (T.concat $ child el >>= element "description" >>= child >>= content)
+                            (T.concat $ child el >>= element "link" >>= child >>= content)
+                            (renderUrl url)
+                            (fromMaybe now $ get_date el)
                     mb_items = case ty of
-                        Rss -> map make_item $ descendant root >>= element "item"
                         Atom -> map make_item $ descendant root >>= laxElement "entry"
+                        Rss -> map make_item $ descendant root >>= element "item"
                     interval = averageInterval . map i_pubdate $ mb_items
                     built_feed = Feed
-                        Rss
+                        ty
                         desc
                         title
                         (renderUrl url)
