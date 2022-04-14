@@ -50,5 +50,5 @@ spec = go >> go1
                     now <- getCurrentTime
                     let dig = DbDigest (Digest Nothing now [] [] [])
                     res <- evalDb' (ReadDigest mempty)
-                    res `shouldSatisfy` (\(DbDigest d) -> digest_created d > now)
+                    res `shouldSatisfy` (\(DbDigest d) -> digest_created d < now)
             in  desc $ as target
