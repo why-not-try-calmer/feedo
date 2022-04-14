@@ -44,7 +44,9 @@ buildFeed ty url = do
                 let root = fromDocument doc
                     desc = case ty of
                         Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
-                        Atom -> T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
+                        Atom -> 
+                            let sub = T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
+                            in  if T.null sub then "No description or subtitle provided" else sub
                     title = case ty of
                         Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
                         Atom -> T.concat $ child root >>= laxElement "title" >>= child >>= content
