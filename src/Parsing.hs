@@ -64,19 +64,20 @@ buildFeed ty url = do
                             (T.concat $ child el >>= element "link" >>= child >>= content)
                             (renderUrl url)
                             (fromMaybe now $ get_date el)
-                    mb_items = case ty of
+                    items = case ty of
                         Atom -> map make_item $ descendant root >>= laxElement "entry"
                         Rss -> map make_item $ descendant root >>= element "item"
-                    interval = averageInterval . map i_pubdate $ mb_items
-                    built_feed = Feed
-                        ty
-                        desc
-                        title
-                        (renderUrl url)
-                        mb_items
-                        interval
-                        (Just now)
-                        0
+                    interval = averageInterval . map i_pubdate $ items
+                    built_feed = Feed {
+                        f_type = ty,
+                        f_desc = if T.null desc then title else desc,
+                        f_title = title,
+                        f_link = renderUrl url,
+                        f_items = items,
+                        f_avg_interval = interval,
+                        f_last_refresh = Just now,
+                        f_reads = 0
+                    }
                 in  pure $ faultyFeed built_feed
     where
         faultyFeed f =
@@ -85,7 +86,8 @@ buildFeed ty url = do
                 missing = foldl' (\acc v -> if snd v then fst v:acc else acc) [] $ zip labels holes
             in  if null missing then Right f
                 else let report = T.intercalate ", " missing in
-                Left $ ParseError ("The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` report)
+                    Left . ParseError $ 
+                        "The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` report `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
 
 eitherUrlScheme :: T.Text -> Either UserError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
