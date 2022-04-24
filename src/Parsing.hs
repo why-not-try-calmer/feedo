@@ -13,6 +13,7 @@ import AppTypes
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
@@ -23,7 +24,6 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
-import Data.Maybe (isNothing, fromMaybe)
 
 {- Feeds, Items -}
 
@@ -81,7 +81,7 @@ buildFeed ty url = do
                 in  pure $ faultyFeed built_feed
     where
         faultyFeed f =
-            let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f, isNothing $ f_avg_interval f]
+            let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f]
                 labels = ["desc", "title", "url", "items", "interval"] :: [T.Text]
                 missing = foldl' (\acc v -> if snd v then fst v:acc else acc) [] $ zip labels holes
             in  if null missing then Right f
