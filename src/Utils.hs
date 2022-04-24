@@ -74,13 +74,8 @@ averageInterval :: [UTCTime] -> Maybe NominalDiffTime
 averageInterval [] = Nothing
 averageInterval (x:xs) = go [] x (sort xs)
     where
-        {-
-        nroot :: (Integral a, Floating b) => a -> b -> b 
-        n `nroot` x = x ** (1 / fromIntegral n)
-        geo_avg acc = realToFrac $ nroot (length acc) (realToFrac . product . map abs $ acc) :: NominalDiffTime
-        -}
         avg acc = realToFrac $ floor (sum $ map abs acc) `div` length acc :: NominalDiffTime
-        go !acc _ [] = Just $ avg acc
+        go !acc _ [] = if null acc then Nothing else Just $ avg acc
         go !acc tn (tm:ts) =
             let diffed = diffUTCTime tn tm
             in  go (diffed:acc) tm ts

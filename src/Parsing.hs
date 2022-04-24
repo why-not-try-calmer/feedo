@@ -87,7 +87,8 @@ buildFeed ty url = do
             in  if null missing then Right f
                 else let report = T.intercalate ", " missing in
                     Left . ParseError $ 
-                        "The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` report `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
+                        "The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` 
+                            report `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
 
 eitherUrlScheme :: T.Text -> Either UserError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
