@@ -537,7 +537,7 @@ evalTgAct uid TestDigest  cid = ask >>= \env ->
             let last_week = addUTCTime (-604800)
                 step fs feed =
                     let filtered = filter (\i -> i_pubdate i > last_week now) $ f_items feed
-                    in  if null filtered then fs else feed { f_items = filtered }:fs
+                    in  if null filtered then fs else feed { f_items = take 3 filtered }:fs
             in  foldl' step []
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
