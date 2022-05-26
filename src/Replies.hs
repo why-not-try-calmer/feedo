@@ -143,7 +143,7 @@ instance Renderable SubChat where
                             ("Display 'share link' button in digests", if settings_share_link sub_settings then "true" else "false"),
                             ("Pagination in digests", if settings_pagination sub_settings then "true" else "false"),
                             ("Pin new updates", if settings_pin sub_settings then "true" else "false"),
-                            ("Webview", if settings_disable_web_view sub_settings then "false" else "true") 
+                            ("Webview", if settings_disable_web_view sub_settings then "false" else "true")
                         ]
                 in  status_part
                     `T.append` "\n--\n"
@@ -160,7 +160,7 @@ instance Renderable [Item] where
 instance Renderable ([(FeedLink, [Item])], Int) where
     render (!f_items, !collapse_size) =
         let out_of i
-                | collapse_size < length i = 
+                | collapse_size < length i =
                     " (" `T.append` (T.pack . show $ collapse_size)
                     `T.append` " out of "
                     `T.append` (T.pack . show . length $ i)
@@ -212,12 +212,12 @@ mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
 mkReply (FromAnnounce txt) = defaultReply txt
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedo_the_bot_channel"
 mkReply (FromChatFeeds _ feeds) =
-    let start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
-        step = (\(!txt, !counter) f ->
+    let step (!txt, !counter) f =
             let link = f_link f
                 title = f_title f
                 rendered = toHrefEntities (Just counter) title link
-            in  (T.append txt rendered `T.append` "\n", counter + 1))
+            in  (T.append txt rendered `T.append` "\n", counter + 1)
+        start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
         payload = fst $ foldl' step start feeds
     in  defaultReply payload
 mkReply (FromChat chat confirmation) = ServiceReply $ confirmation `T.append` render chat
@@ -229,16 +229,16 @@ mkReply (FromFeedItems f) =
             sortOn (Down . i_pubdate) .
             f_items $ f
     in  defaultReply rendered_items
-mkReply (FromFollow fs _) = 
+mkReply (FromFollow fs _) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
-        payload = "New 'follow update'.\n--\n" 
-            `T.append` render (fitems, 0 :: Int)     
+        payload = "New 'follow update'.\n--\n"
+            `T.append` render (fitems, 0 :: Int)
     in  ChatReply payload True True False True Nothing
 mkReply (FromDigest fs mb_link s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         -- pagination preempting collapse when both are enabled and 
         -- collapsing would have occurred  
-        collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s 
+        collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s
         header = "-- " `T.append` settings_digest_title s `T.append` " --"
         body = render (fitems, collapse)
         payload = header `T.append` body
@@ -251,12 +251,12 @@ mkReply (FromDigest fs mb_link s) =
             reply_permalink = mb_link
             }
 mkReply (FromFeedLinkItems flinkitems) =
-    let step = ( \acc (!f, !items) -> acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items)
+    let step acc (!f, !items) = acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items
         payload = foldl' step mempty flinkitems
     in  defaultReply payload
 mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False True Nothing
 mkReply FromCmds = ChatReply renderCmds True True False False Nothing
-mkReply FromStart = 
+mkReply FromStart =
     let txt = "Hello there!\nThis bot allows you to subscribe to web feeds this or any chat\
         \ or channel _where you have admin permissions_ (it works in private chats too!). Then every now and then, the bot will send messages to\
         \ the subscribed chat with a summary of all the new items found since last time, so that you never miss out on any important news!\

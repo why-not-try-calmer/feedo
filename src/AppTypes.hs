@@ -224,6 +224,7 @@ data UserAction
   | Start
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
+  | TestDigest
   | UnSub [FeedRef]
   | UnSubChannel ChatId [FeedRef]
   deriving (Eq, Show)

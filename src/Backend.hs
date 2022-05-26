@@ -33,7 +33,7 @@ withChat action cid = do
         Nothing ->
             let initialized now flinks linked_to = SubChat {
                     sub_chatid = cid,
-                    sub_last_digest = Nothing, 
+                    sub_last_digest = Nothing,
                     sub_next_digest = Just $ findNextTime now (settings_digest_interval defaultChatSettings),
                     sub_linked_to = linked_to,
                     sub_feeds_links = S.fromList flinks,
@@ -42,12 +42,12 @@ withChat action cid = do
                 inserted c = HMS.insert cid c hmap
                 saveToDb c = evalDb env $ UpsertChat c
             in  case action of
-                    Link target_id -> getCurrentTime >>= \now -> 
+                    Link target_id -> getCurrentTime >>= \now ->
                         let new_chat = initialized now [] (Just target_id)
                         in  saveToDb new_chat >>= \case
                             DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat: " `T.append` renderDbError err)
                             _ -> pure (inserted new_chat, Right ChatOk)
-                    Sub links -> getCurrentTime >>= \now -> 
+                    Sub links -> getCurrentTime >>= \now ->
                         let new_chat = initialized now links Nothing
                         in  saveToDb new_chat >>= \case
                                 DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
@@ -59,7 +59,7 @@ withChat action cid = do
                     update_m = HMS.update(\_ -> Just updated_c) cid hmap
                 in  evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat to a new chat_id." `T.append` renderDbError err)
-                        _ -> pure (update_m, Right ChatOk) 
+                        _ -> pure (update_m, Right ChatOk)
             Migrate to ->
                 let updated_c = c { sub_chatid = to }
                     update_m = HMS.update(\_ -> Just updated_c) cid hmap
@@ -111,7 +111,7 @@ withChat action cid = do
                             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                         in  evalDb env (UpsertChat updated_c) >>= \case
                             DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
-                            _ -> pure (updated_cs, Right . ChatUpdated $ updated_c) 
+                            _ -> pure (updated_cs, Right . ChatUpdated $ updated_c)
             Pause pause_or_resume ->
                 let updated_sets = (sub_settings c) { settings_paused = pause_or_resume }
                     updated_c = c { sub_settings = updated_sets }
@@ -152,7 +152,7 @@ collectDue chats last_run now =
         in  if settings_paused sub_settings
             then hmap
             else case settings_digest_start sub_settings of
-                Nothing -> 
+                Nothing ->
                     if nextWasNow sub_next_digest sub_last_digest interval
                     -- 'digests' take priority over 'follow notifications'
                     then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
@@ -165,7 +165,7 @@ collectDue chats last_run now =
                                 else hmap
                         else hmap
                 Just new ->
-                    if new < now 
+                    if new < now
                     then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
                     else hmap
             ) HMS.empty chats
@@ -186,24 +186,19 @@ markNotified env notified_chats now = liftIO $ modifyMVar_ (subs_state env) $ \s
         DbOk -> pure updated_chats
         _ -> pure subs
     where
-        updated_notified_chats ::
-            [ChatId] ->
-            SubChats ->
-            HMS.HashMap ChatId SubChat
-        updated_notified_chats notified chats = HMS.mapWithKey (\cid c ->
+        updated_notified_chats notified = HMS.mapWithKey (\cid c ->
             if cid `elem` notified
             then
                 let next = Just . findNextTime now . settings_digest_interval . sub_settings $ c
                 in  -- updating last, next, and consuming 'settings_digest_start'
                     case settings_digest_start . sub_settings $ c of
                     Nothing -> c { sub_last_digest = Just now, sub_next_digest = next }
-                    Just _ -> c { 
+                    Just _ -> c {
                         sub_last_digest = Just now,
                         sub_next_digest = next,
                         sub_settings = (sub_settings c) { settings_digest_start = Nothing }
                         }
-            else c) chats
-
+            else c)
 regenFeeds :: (MonadIO m, MonadReader AppConfig m) => m ()
 regenFeeds = do
     env <- ask

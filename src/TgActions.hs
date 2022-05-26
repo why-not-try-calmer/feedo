@@ -19,13 +19,14 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Mongo (evalDb)
 import Network.HTTP.Req (renderUrl, responseBody, JsonResponse)
-import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
+import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Replies (mkReply, render)
 import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook, answer)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, tooManySubs)
+import Data.Time (addUTCTime, getCurrentTime)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -174,6 +175,7 @@ interpretCmd contents
             Just n ->
                 if null $ tail args then Left . BadInput $ "Cannot subscribe to an empty list urls..."
                 else Right . SubChannel n $ tail args
+    | cmd == "/testdigest" = Right TestDigest
     | cmd == "/unsub" =
         if null args then Left . BadInput $ "/unsub <optional: channel id> <mandatory: list of #s or url feeds>" else
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
@@ -513,6 +515,30 @@ evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->
             else testChannel tok chan_id jobs >>= \case
                 Left err -> pure . Left $ err
                 Right _ -> subFeed chan_id urls >>= \rep -> pure . Right $ rep
+evalTgAct uid TestDigest  cid = ask >>= \env ->
+    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+        Nothing -> pure . Right . ServiceReply $ "Unable to test the digest for this chat, as Telegram didn't let us check if you were an admin."
+        Just is_admin ->
+            if not is_admin then exitNotAuth uid
+            else liftIO (readMVar $ subs_state env) >>= \chats -> case HMS.lookup cid chats of
+                Nothing -> pure . Left $ NotFoundChat
+                Just c -> do
+                    let feeds = sub_feeds_links c
+                    (now, either_rebuilt) <- liftIO $ do
+                        now <- getCurrentTime
+                        rebuilt <- mapConcurrently rebuildFeed (S.toList feeds)
+                        pure (now, rebuilt)
+                    let (failed, succeeded) = partitionEither either_rebuilt
+                    if null failed then pure . Right . mkReply $
+                        FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
+                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " failed
+    where
+        new_since_last_week now =
+            let last_week = addUTCTime (-604800)
+                step fs feed =
+                    let filtered = filter (\i -> i_pubdate i > last_week now) $ f_items feed
+                    in  if null filtered then fs else feed { f_items = filtered }:fs
+            in  foldl' step []
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
