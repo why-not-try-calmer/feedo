@@ -49,11 +49,11 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
             in  pure . Just $ if_admin chat_members
     where
         getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
+        if_admin = foldr is_admin False
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
             | otherwise = False
-        if_admin chat_members = foldr is_admin False chat_members
 
 checkIfPrivate :: MonadIO m => BotToken -> ChatId -> m (Maybe Bool)
 checkIfPrivate tok cid = liftIO $ getChatType >>= \case
@@ -79,7 +79,7 @@ interpretCmd contents
             Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
     | cmd == "/announce" =
         if null args then Left . BadInput $ "/announce takes exactly 1 argument, the text to broadcast to all users."
-        else Right . Announce . T.concat $ args 
+        else Right . Announce . T.concat $ args
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
         if length args == 1 then case toFeedRef args of
@@ -293,11 +293,11 @@ evalTgAct uid (Announce txt) admin_chat = ask >>= \env ->
                 pure . Right $ ServiceReply  $ "Tried to broadcast an announce to " `T.append` (T.pack . show . length $ non_channels) `T.append` " chats."
     where
         are_non_channels :: [JsonResponse TgGetChatResponse]-> [ChatId]
-        are_non_channels succeeded = foldl' (\acc r ->
+        are_non_channels = foldl' (\acc r ->
             let res_c = responseBody r
                 c = resp_result res_c
             in  if not $ resp_ok res_c then acc
-                else case chat_type c of Channel -> acc; _ -> chat_id c:acc) [] succeeded
+                else case chat_type c of Channel -> acc; _ -> chat_id c:acc) []
 evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
@@ -387,7 +387,7 @@ evalTgAct uid (Link target_id) cid = do
     verdict <- liftIO $ mapConcurrently (checkIfAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
     case and <$> sequence verdict of
         Nothing -> pure . Left $ TelegramErr
-        Just authorized -> 
+        Just authorized ->
             if not authorized then exitNotAuth uid
             else withChat (Link target_id) cid >>= \case
                 Left err -> pure . Right . ServiceReply . renderUserError $ err

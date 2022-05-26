@@ -86,8 +86,8 @@ buildFeed ty url = do
                 missing = foldl' (\acc v -> if snd v then fst v:acc else acc) [] $ zip labels holes
             in  if null missing then Right f
                 else let report = T.intercalate ", " missing in
-                    Left . ParseError $ 
-                        "The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` 
+                    Left . ParseError $
+                        "The required feed could be constructed, but it's missing well-defined tags or items: " `T.append`
                             report `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
 
 eitherUrlScheme :: T.Text -> Either UserError (Url 'Https)
@@ -111,7 +111,7 @@ getFeedFromUrlScheme scheme = buildFeed Rss scheme >>= \case
         Right feed -> finish_successfully feed
     Right feed -> finish_successfully feed
     where
-        finish_successfully feed = pure . Right $ feed
+        finish_successfully = pure . Right
 
 rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
 -- updates one single feed

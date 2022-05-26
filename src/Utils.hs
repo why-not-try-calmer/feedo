@@ -224,6 +224,7 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
             in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
+        has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
         fresh_filtered c is =
             let bl = match_blacklist . settings_word_matches . sub_settings $ c
                 only_search_notif = match_only_search_results . settings_word_matches . sub_settings $ c
@@ -236,7 +237,6 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
                         else if and off_scope then i:acc else acc) [] is
         fresher_than _ Nothing = True
         fresher_than i (Just t) = t < i_pubdate i
-        has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i]) kws
         lacks_keywords i kws = not $ has_keywords i kws
 
 sortItems :: Feed -> Feed

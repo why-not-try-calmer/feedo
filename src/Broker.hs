@@ -133,7 +133,7 @@ withBroker (CachePullFeeds flinks) = do
         let misses = missing_from_cache feeds
         in  pure . Left $ "Missing these feeds: " `T.append` T.intercalate "," misses
     where
-        red_get_one_s f = get . singleK $ f
+        red_get_one_s = get . singleK
         red_get_all_s fs = sequence . sequence <$> mapM red_get_one_s fs
         missing_from_cache feeds =
             if null feeds then flinks
