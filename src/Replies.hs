@@ -309,5 +309,6 @@ search - <term1 term2...> search all items across all feeds for the given keywor
 set - <optional: channel_id> <optional: linebreak + key:value pairs> view or edit the chat/channel's settings
 start - show again the starting message
 sub - <optional: channel_id> <url1 url2...> subscribe the chat/channel to the target feed(s)
+testdigest - sends a 'dry run' digest so that you can see how it will look like when scheduled
 unsub - <optional: channel_id> <url url2...> unsubscribe the chat/channel from the target feed(s)
 -}
