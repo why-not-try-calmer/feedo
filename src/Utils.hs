@@ -221,7 +221,7 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
             let feeds_items =
                     let fresh = take (settings_digest_size . sub_settings $ c) . fresh_filtered c . f_items $ f
                     in  if f_link f `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
-            in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
+            in  if f_link f `notElem` flinks then fs else feeds_items) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
         has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
