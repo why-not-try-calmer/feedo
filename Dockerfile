@@ -1,4 +1,4 @@
-FROM haskell:8.10
+FROM haskell:9.0.2
 
 EXPOSE 80
 

@@ -19,13 +19,14 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Mongo (evalDb)
 import Network.HTTP.Req (renderUrl, responseBody, JsonResponse)
-import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings)
+import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Replies (mkReply, render)
 import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook, answer)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Utils (maybeUserIdx, partitionEither, tooManySubs)
+import Data.Time (addUTCTime, getCurrentTime)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -49,11 +50,11 @@ checkIfAdmin tok uid cid = checkIfPrivate tok cid >>= \case
             in  pure . Just $ if_admin chat_members
     where
         getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
+        if_admin = foldr is_admin False
         is_admin member acc
             | uid /= (user_id . cm_user $ member) = acc
             | "administrator" == cm_status member || "creator" == cm_status member = True
             | otherwise = False
-        if_admin chat_members = foldr is_admin False chat_members
 
 checkIfPrivate :: MonadIO m => BotToken -> ChatId -> m (Maybe Bool)
 checkIfPrivate tok cid = liftIO $ getChatType >>= \case
@@ -79,7 +80,7 @@ interpretCmd contents
             Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
     | cmd == "/announce" =
         if null args then Left . BadInput $ "/announce takes exactly 1 argument, the text to broadcast to all users."
-        else Right . Announce . T.concat $ args 
+        else Right . Announce . T.concat $ args
     | cmd == "/changelog" = Right Changelog
     | cmd == "/feed" || cmd == "/f" =
         if length args == 1 then case toFeedRef args of
@@ -174,6 +175,7 @@ interpretCmd contents
             Just n ->
                 if null $ tail args then Left . BadInput $ "Cannot subscribe to an empty list urls..."
                 else Right . SubChannel n $ tail args
+    | cmd == "/testdigest" = Right TestDigest
     | cmd == "/unsub" =
         if null args then Left . BadInput $ "/unsub <optional: channel id> <mandatory: list of #s or url feeds>" else
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
@@ -293,11 +295,11 @@ evalTgAct uid (Announce txt) admin_chat = ask >>= \env ->
                 pure . Right $ ServiceReply  $ "Tried to broadcast an announce to " `T.append` (T.pack . show . length $ non_channels) `T.append` " chats."
     where
         are_non_channels :: [JsonResponse TgGetChatResponse]-> [ChatId]
-        are_non_channels succeeded = foldl' (\acc r ->
+        are_non_channels = foldl' (\acc r ->
             let res_c = responseBody r
                 c = resp_result res_c
             in  if not $ resp_ok res_c then acc
-                else case chat_type c of Channel -> acc; _ -> chat_id c:acc) [] succeeded
+                else case chat_type c of Channel -> acc; _ -> chat_id c:acc) []
 evalTgAct uid (AskForLogin target_id) cid = do
     env <- ask
     let tok = bot_token . tg_config $ env
@@ -387,7 +389,7 @@ evalTgAct uid (Link target_id) cid = do
     verdict <- liftIO $ mapConcurrently (checkIfAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
     case and <$> sequence verdict of
         Nothing -> pure . Left $ TelegramErr
-        Just authorized -> 
+        Just authorized ->
             if not authorized then exitNotAuth uid
             else withChat (Link target_id) cid >>= \case
                 Left err -> pure . Right . ServiceReply . renderUserError $ err
@@ -513,6 +515,30 @@ evalTgAct uid (SubChannel chan_id urls) _ = ask >>= \env ->
             else testChannel tok chan_id jobs >>= \case
                 Left err -> pure . Left $ err
                 Right _ -> subFeed chan_id urls >>= \rep -> pure . Right $ rep
+evalTgAct uid TestDigest  cid = ask >>= \env ->
+    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
+        Nothing -> pure . Right . ServiceReply $ "Unable to test the digest for this chat, as Telegram didn't let us check if you were an admin."
+        Just is_admin ->
+            if not is_admin then exitNotAuth uid
+            else liftIO (readMVar $ subs_state env) >>= \chats -> case HMS.lookup cid chats of
+                Nothing -> pure . Left $ NotFoundChat
+                Just c -> do
+                    let feeds = sub_feeds_links c
+                    (now, either_rebuilt) <- liftIO $ do
+                        now <- getCurrentTime
+                        rebuilt <- mapConcurrently rebuildFeed (S.toList feeds)
+                        pure (now, rebuilt)
+                    let (failed, succeeded) = partitionEither either_rebuilt
+                    if null failed then pure . Right . mkReply $
+                        FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
+                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " failed
+    where
+        new_since_last_week now =
+            let last_week = addUTCTime (-604800)
+                step fs feed =
+                    let filtered = filter (\i -> i_pubdate i > last_week now) $ f_items feed
+                    in  if null filtered then fs else feed { f_items = take 3 filtered }:fs
+            in  foldl' step []
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."

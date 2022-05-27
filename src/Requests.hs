@@ -4,7 +4,7 @@
 
 module Requests where
 
-import AppTypes (App, BotToken, Job (JobPin, JobSetPagination, JobTgAlert), Reply (ChatReply, EditReply, ServiceReply, reply_contents, reply_disable_webview, reply_markdown, reply_pagination, reply_permalink, reply_pin_on_send))
+import AppTypes (App, BotToken, Job (JobPin, JobSetPagination, JobTgAlert, JobPurge), Reply (ChatReply, EditReply, ServiceReply, reply_contents, reply_disable_webview, reply_markdown, reply_pagination, reply_permalink, reply_pin_on_send))
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -58,8 +58,8 @@ fetchFeed url = liftIO (try action :: IO (Either SomeException LbsResponse)) >>=
 reqSend :: (MonadIO m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
 reqSend tok postMeth encodedMsg = liftIO (try action) >>= \case
     Left (SomeException err) ->
-        let msg = "Tried to send a request, but failed for this reason: " ++ show err ++ " Please try again the very action you were doing"
-        in  pure . Left . T.pack $ msg
+        let msg = "Tried to send a request, but failed for this reason: " `T.append` (T.pack . show $ err)
+        in  pure . Left $ msg
     Right resp -> pure . Right $ resp
     where
         action = withReqManager $ runReq defaultHttpConfig . pure request
@@ -176,7 +176,14 @@ reply tok cid rep chan =
                     else Nothing
                     ]
             in  runSend tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> report err
+                Left err -> 
+                    let forbidden = "Forbidden: bot was blocked by the user" `T.isInfixOf` err
+                    in  if not forbidden then report err else
+                        do
+                        liftIO $ writeChan chan . JobPurge $ cid
+                        report $ 
+                            "Bot blocked in private chat " `T.append` (T.pack . show $ cid) 
+                            `T.append` "Chat purged."
                 Right resp ->
                     let mid = mid_from resp
                     in  for_ (jobs mid) $ \case 

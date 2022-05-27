@@ -74,13 +74,8 @@ averageInterval :: [UTCTime] -> Maybe NominalDiffTime
 averageInterval [] = Nothing
 averageInterval (x:xs) = go [] x (sort xs)
     where
-        {-
-        nroot :: (Integral a, Floating b) => a -> b -> b 
-        n `nroot` x = x ** (1 / fromIntegral n)
-        geo_avg acc = realToFrac $ nroot (length acc) (realToFrac . product . map abs $ acc) :: NominalDiffTime
-        -}
         avg acc = realToFrac $ floor (sum $ map abs acc) `div` length acc :: NominalDiffTime
-        go !acc _ [] = Just $ avg acc
+        go !acc _ [] = if null acc then Nothing else Just $ avg acc
         go !acc tn (tm:ts) =
             let diffed = diffUTCTime tn tm
             in  go (diffed:acc) tm ts
@@ -226,9 +221,10 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
             let feeds_items =
                     let fresh = take (settings_digest_size . sub_settings $ c) . fresh_filtered c . f_items $ f
                     in  if f_link f `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
-            in  if f_link f `elem` flinks then feeds_items else fs) [] feeds_map
+            in  if f_link f `notElem` flinks then fs else feeds_items) [] feeds_map
     in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
+        has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
         fresh_filtered c is =
             let bl = match_blacklist . settings_word_matches . sub_settings $ c
                 only_search_notif = match_only_search_results . settings_word_matches . sub_settings $ c
@@ -241,7 +237,6 @@ notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
                         else if and off_scope then i:acc else acc) [] is
         fresher_than _ Nothing = True
         fresher_than i (Just t) = t < i_pubdate i
-        has_keywords i kws = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i]) kws
         lacks_keywords i kws = not $ has_keywords i kws
 
 sortItems :: Feed -> Feed

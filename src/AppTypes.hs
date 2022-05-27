@@ -224,6 +224,7 @@ data UserAction
   | Start
   | Sub [T.Text]
   | SubChannel ChatId [T.Text]
+  | TestDigest
   | UnSub [FeedRef]
   | UnSubChannel ChatId [FeedRef]
   deriving (Eq, Show)
@@ -448,6 +449,7 @@ data Job =
     JobIncReadsJob [FeedLink] |
     JobLog LogItem |
     JobPin ChatId Int |
+    JobPurge ChatId |
     JobRemoveMsg ChatId Int Int |
     JobSetPagination ChatId Int [T.Text] (Maybe T.Text) |
     JobTgAlert T.Text

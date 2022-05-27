@@ -13,6 +13,7 @@ import AppTypes
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
@@ -43,49 +44,52 @@ buildFeed ty url = do
             Right doc ->
                 let root = fromDocument doc
                     desc = case ty of
-                        Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
                         Atom -> T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
+                        Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
                     title = case ty of
-                        Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
                         Atom -> T.concat $ child root >>= laxElement "title" >>= child >>= content
+                        Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
                     get_date el = case ty of
-                        Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
                         Atom -> mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
+                        Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
                     make_item el = case ty of
-                        Rss -> Item
-                            (T.concat $ child el >>= element "title" >>= child >>= content)
-                            (T.concat $ child el >>= element "description" >>= child >>= content)
-                            (T.concat $ child el >>= element "link" >>= child >>= content)
-                            (renderUrl url)
-                            (fromMaybe now $ get_date el)
                         Atom -> Item
                             (T.concat $ child el >>= laxElement "title" >>= child >>= content)
                             (T.concat $ child el >>= laxElement "content" >>= child >>= content)
                             (T.concat . attribute "href" . head $ child el >>= laxElement "link")
                             (renderUrl url)
                             (fromMaybe now $ get_date el)
-                    mb_items = case ty of
-                        Rss -> map make_item $ descendant root >>= element "item"
+                        Rss -> Item
+                            (T.concat $ child el >>= element "title" >>= child >>= content)
+                            (T.concat $ child el >>= element "description" >>= child >>= content)
+                            (T.concat $ child el >>= element "link" >>= child >>= content)
+                            (renderUrl url)
+                            (fromMaybe now $ get_date el)
+                    items = case ty of
                         Atom -> map make_item $ descendant root >>= laxElement "entry"
-                    interval = averageInterval . map i_pubdate $ mb_items
-                    built_feed = Feed
-                        Rss
-                        desc
-                        title
-                        (renderUrl url)
-                        mb_items
-                        interval
-                        (Just now)
-                        0
+                        Rss -> map make_item $ descendant root >>= element "item"
+                    interval = averageInterval . map i_pubdate $ items
+                    built_feed = Feed {
+                        f_type = ty,
+                        f_desc = if T.null desc then title else desc,
+                        f_title = title,
+                        f_link = renderUrl url,
+                        f_items = items,
+                        f_avg_interval = interval,
+                        f_last_refresh = Just now,
+                        f_reads = 0
+                    }
                 in  pure $ faultyFeed built_feed
     where
         faultyFeed f =
-            let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f, isNothing $ f_avg_interval f]
+            let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f]
                 labels = ["desc", "title", "url", "items", "interval"] :: [T.Text]
                 missing = foldl' (\acc v -> if snd v then fst v:acc else acc) [] $ zip labels holes
             in  if null missing then Right f
                 else let report = T.intercalate ", " missing in
-                Left $ ParseError ("The required feed could be constructed, but it's missing well-defined tags or items: " `T.append` report)
+                    Left . ParseError $
+                        "The required feed could be constructed, but it's missing well-defined tags or items: " `T.append`
+                            report `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
 
 eitherUrlScheme :: T.Text -> Either UserError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
@@ -108,7 +112,7 @@ getFeedFromUrlScheme scheme = buildFeed Rss scheme >>= \case
         Right feed -> finish_successfully feed
     Right feed -> finish_successfully feed
     where
-        finish_successfully feed = pure . Right $ feed
+        finish_successfully = pure . Right
 
 rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
 -- updates one single feed
