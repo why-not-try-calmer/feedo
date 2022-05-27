@@ -13,7 +13,7 @@ import AppTypes
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
-import Data.Maybe (fromMaybe)
+import Data.Maybe ( fromMaybe, fromMaybe )
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
@@ -24,7 +24,6 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
-import Data.Maybe (isNothing, fromMaybe)
 
 {- Feeds, Items -}
 

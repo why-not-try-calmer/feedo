@@ -73,7 +73,7 @@ renderDbRes res = case res of
             Nothing -> "_id could not be determined"
             Just oid -> T.pack . show $ oid
         nbOf = T.pack . show . length
-        nbOfFlinks items = nbOf . flinks $ items
+        nbOfFlinks = nbOf . flinks
         flinks items = S.toList . S.fromList $ map i_feed_link items
         go m _ [] = m
         go m d (i:is) =
@@ -83,11 +83,11 @@ renderDbRes res = case res of
                 date_p = H.p $ toHtml date
                 item_li = H.li $ H.article $ H.a ! Attr.href (textValue $ i_link i) $ toHtml (i_title i)
             in  if d == d' then go (m >> item_li) d' is else go (m >> date_p >> item_li) d' is
-        ordered_items items = foldl' (\acc i ->
+        ordered_items = foldl' (\acc i ->
             let flink = i_feed_link i
             in  case Map.lookup flink acc of
                 Nothing -> Map.insert flink [i] acc
-                Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty items
+                Just _ -> Map.update (\vs -> Just $ i:vs) flink acc) Map.empty
 
 home :: MonadIO m => App m Markup
 home = pure . H.docTypeHtml $ do
@@ -135,7 +135,7 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
         flinks = case mapM (eitherUrlScheme . decodeText) $ T.splitOn "\\" flinks_txt of
             Left _ -> []
             Right lks -> map renderUrl lks
-        abortWith msg = pure msg
+        abortWith = pure
 
 readSettings :: MonadIO m => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
