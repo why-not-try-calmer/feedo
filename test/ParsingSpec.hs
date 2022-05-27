@@ -58,5 +58,3 @@ spec = go >> go1 >> go2 >> go3
                     print only_feeds
                     notifs `shouldSatisfy` (not . null . HMS.toList)
             in  desc $ as target
-
-main = hspec spec
