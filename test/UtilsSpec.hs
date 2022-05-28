@@ -91,7 +91,7 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
                                 settings_word_matches = word_b
                             }
                         hmap = HMS.fromList [(0, (c, dg))] :: HMS.HashMap ChatId (SubChat, BatchRecipe)
-                    (label, val) <- case HMS.lookup 0 (notifFrom fl known_feeds hmap) of 
+                    (label, val) <- case HMS.lookup 0 (notifFrom (Just now) fl known_feeds hmap) of 
                         Nothing -> undefined
                         Just (_, b) -> case b of 
                             Digests fs -> pure ("Digests", fs)

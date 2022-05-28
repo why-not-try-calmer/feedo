@@ -12,6 +12,7 @@ import Network.HTTP.Req (renderUrl)
 import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
 import Test.Hspec
 import Utils (notifFrom, partitionEither)
+import Data.Time (getCurrentTime)
 
 spec :: Spec
 spec = go >> go1 >> go2 >> go3
@@ -48,8 +49,9 @@ spec = go >> go1 >> go2 >> go3
                         chat = SubChat 123 Nothing Nothing (S.fromList feedlinks) Nothing settings
                         chats_recipes = HMS.singleton 123 (chat, DigestFeedLinks feedlinks)
                     (failed, done) <- mapConcurrently rebuildFeed feedlinks <&> partitionEither
+                    now <- getCurrentTime
                     let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
-                        notifs = notifFrom feedlinks feedsmap chats_recipes
+                        notifs = notifFrom (Just now) feedlinks feedsmap chats_recipes
                         only_feeds = HMS.map (\(_, Digests ds) -> foldMap (\f -> [
                             f_title f,
                             f_link f, 
