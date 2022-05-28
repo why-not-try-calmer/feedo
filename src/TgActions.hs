@@ -234,21 +234,25 @@ subFeed cid feeds_urls = do
                     else liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
                     -- add feeds
                         let (failed, built_feeds) = partitionEither r
-                            all_links = old_keys ++ map f_link built_feeds
+                            (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f:fs, w:ws)) ([], []) built_feeds
+                            all_links = old_keys ++ map f_link feeds
                         -- exiting early if no feed could be built
                         in  if null built_feeds then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
-                            else evalDb env (UpsertFeeds built_feeds) >>= \case
+                            else evalDb env (UpsertFeeds feeds) >>= \case
                             -- subscribes chat to newly added feeds, returning result to caller
-                            DbOk -> withCache (CachePushFeeds built_feeds) >>= \case
+                            DbOk -> withCache (CachePushFeeds feeds) >>= \case
                                 Left err -> respondWith err
                                 Right _ ->
-                                    let to_sub_to = map f_link built_feeds
+                                    let to_sub_to = map f_link feeds
                                     in  withChat (Sub to_sub_to) cid >>= \case
                                         Left err -> respondWith $ renderUserError err
                                         Right _ ->
                                             let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
                                                 ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
-                                            in  respondWith (if null failed then ok_text else T.append ok_text failed_text)
+                                                warnings_text = case sequenceA warnings of
+                                                    Nothing -> mempty
+                                                    Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
+                                            in  respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
                             _ -> respondWith . renderUserError $
                                     UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
     where
