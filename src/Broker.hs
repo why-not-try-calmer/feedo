@@ -159,7 +159,7 @@ withBroker CacheRefresh = do
         Left err -> pure $ Left err
         Right rebuilt -> do
             -- creating update notification payload
-            let digests = notifFrom flinks_to_rebuild rebuilt due
+            let digests = notifFrom last_run flinks_to_rebuild rebuilt due
                 has_digest = HMS.keys digests
                 no_digest = HMS.foldl' (\acc (!c, _) ->
                     let cid = sub_chatid  c in

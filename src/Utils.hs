@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module Utils where
 
 import AppTypes
@@ -211,26 +213,29 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
             PPagination v -> o { settings_pagination = v }
 
 notifFrom ::
+    Maybe UTCTime ->
     [FeedLink] ->
     FeedsMap ->
     HMS.HashMap ChatId (SubChat, BatchRecipe) ->
     HMS.HashMap ChatId (SubChat, Batch)
-notifFrom flinks feeds_map = foldl' (\hmap (!c, !batch) ->
-    let recipes = readBatchRecipe batch
-        collected = foldl' (\fs f ->
-            let feeds_items =
-                    let fresh = take (settings_digest_size . sub_settings $ c) . fresh_filtered c . f_items $ f
-                    in  if f_link f `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
-            in  if f_link f `notElem` flinks then fs else feeds_items) [] feeds_map
-    in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
+notifFrom last_run flinks feeds_map = foldl' (\hmap (!c, !batch) -> 
+    let (recipes, time_ref) = case batch of 
+            DigestFeedLinks fs -> (fs, sub_last_digest c)
+            FollowFeedLinks fs -> (fs, last_run)
+    in  let collected = foldl' (\fs f ->
+                let feeds_items =
+                        let fresh = take (settings_digest_size . sub_settings $ c) $ fresh_filtered c (f_items f) time_ref
+                        in  if f_link f `notElem` recipes || null fresh then fs else f { f_items = fresh }:fs
+                in  if f_link f `notElem` flinks then fs else feeds_items) [] feeds_map
+        in  if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap) HMS.empty
     where
         has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
-        fresh_filtered c is =
+        fresh_filtered c is time_ref =
             let bl = match_blacklist . settings_word_matches . sub_settings $ c
                 only_search_notif = match_only_search_results . settings_word_matches . sub_settings $ c
                 search_notif = match_searchset . settings_word_matches . sub_settings $ c
             in  foldl' (\acc i ->
-                    let off_scope = [fresher_than i (sub_last_digest c), i `lacks_keywords` bl]
+                    let off_scope = [fresher_than i (time_ref), i `lacks_keywords` bl]
                         in_scope = off_scope ++ [i `has_keywords` search_notif]
                     in  if i_feed_link i `S.member` only_search_notif then
                             if and in_scope then i:acc else acc
