@@ -109,11 +109,12 @@ makeConfig env =
         Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
         Right p -> putStrLn "Mongo...OK" >> pure p
     pipe_ioref <- newIORef pipe
+    last_run_ioref <- newIORef Nothing
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         base_url = base,
         mongo_creds = creds,
-        last_worker_run = Nothing,
+        last_worker_run = last_run_ioref,
         subs_state = mvar,
         postjobs = chan,
         worker_interval = interval,

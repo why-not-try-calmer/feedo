@@ -501,7 +501,7 @@ data ServerConfig = ServerConfig
 type FeedsMap = HMS.HashMap T.Text Feed
 
 data AppConfig = AppConfig
-  { last_worker_run :: Maybe UTCTime,
+  { last_worker_run :: IORef (Maybe UTCTime),
     mongo_creds :: MongoCreds,
     connectors :: Connectors,
     tg_config :: ServerConfig,

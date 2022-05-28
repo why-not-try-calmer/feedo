@@ -2,7 +2,7 @@
 
 module Jobs where
 
-import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), renderDbError, runApp, UserAction (Purge))
+import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), renderDbError, runApp)
 import Backend (markNotified, withChat)
 import Broker (HasCache (withCache))
 import Control.Concurrent
@@ -16,6 +16,7 @@ import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.HashMap.Strict as HMS
+import Data.IORef (modifyIORef')
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
@@ -44,31 +45,33 @@ procNotif = do
             writeChan (postjobs env) . JobTgAlert $ report
         -- sending digests + follows
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
-            \(cid, (c, batch)) -> let sets = sub_settings c in case batch of
-                Follows fs -> do
-                    reply tok cid (mkReply (FromFollow fs sets)) (postjobs env)
-                    pure (cid, map f_link fs)
-                Digests ds -> do
-                    let (ftitles, flinks, fitems) = foldr (\f (one, two, three) ->
-                            (f_title f:one, f_link f:two, three ++ f_items f)) ([],[],[]) ds
-                        ftitles' = S.toList . S.fromList $ ftitles
-                        flinks' = S.toList . S.fromList $ flinks
-                        digest = Digest Nothing now fitems flinks' ftitles'
-                    res <- evalDb env $ WriteDigest digest
-                    let mb_digest_link r = case r of
-                            DbDigestId _id -> Just $ mkDigestUrl (base_url env) _id
-                            _ -> Nothing
-                    reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
-                    pure (cid, map f_link ds)
+            \(cid, (c, batch)) -> 
+                let sets = sub_settings c
+                in case batch of
+                    Follows fs -> do
+                        reply tok cid (mkReply (FromFollow fs sets)) (postjobs env)
+                        pure (cid, map f_link fs)
+                    Digests ds -> do
+                        let (ftitles, flinks, fitems) = foldr (\f (one, two, three) ->
+                                (f_title f:one, f_link f:two, three ++ f_items f)) ([],[],[]) ds
+                            ftitles' = S.toList . S.fromList $ ftitles
+                            flinks' = S.toList . S.fromList $ flinks
+                            digest = Digest Nothing now fitems flinks' ftitles'
+                        res <- evalDb env $ WriteDigest digest
+                        let mb_digest_link r = case r of
+                                DbDigestId _id -> Just $ mkDigestUrl (base_url env) _id
+                                _ -> Nothing
+                        reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
+                        pure (cid, map f_link ds)
         notify = do
-            now <- getCurrentTime
             t1 <- systemSeconds <$> getSystemTime
             -- rebuilding feeds and collecting notifications
-            res <- runApp (env { last_worker_run = Just now }) $ withCache CacheRefresh
+            res <- runApp env $ withCache CacheRefresh
             case res of
                 Right (CacheDigests notif_hmap) -> do
                     t2 <- systemSeconds <$> getSystemTime
                     -- sending digests, follows & search notifications
+                    now <- getCurrentTime
                     notified_chats_feeds <- send_tg_notif notif_hmap now
                     t3 <- systemSeconds <$> getSystemTime
                     -- confirming notifications against locally stored + database chats
@@ -96,6 +99,8 @@ procNotif = do
                             }
                         -- sending logs
                         writeChan (postjobs env) $ JobLog item
+                        -- updating run
+                        modifyIORef' (last_worker_run env) $ \_ -> Just now
                 Left err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \
                         \ failed to acquire notification package and got this error: "

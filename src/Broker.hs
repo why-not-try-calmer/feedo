@@ -15,6 +15,7 @@ import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (foldl')
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
+import Data.IORef (readIORef)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
 import Data.Time (getCurrentTime)
@@ -146,9 +147,12 @@ withBroker (CachePushFeeds fs) = let flinks = map f_link fs in
         _ -> pure . Left $ "Unable to push these feeds: " `T.append` T.intercalate ", " flinks
 withBroker CacheRefresh = do
     env <- ask
-    (chats, now) <- (,) <$> liftIO (readMVar $ subs_state env) <*> liftIO getCurrentTime
-    let last_run = last_worker_run env
-        due = collectDue chats last_run now
+    (chats, now, last_run) <- liftIO $ do
+        chats <- readMVar $ subs_state env 
+        now <- getCurrentTime
+        last_run <- readIORef $ last_worker_run env
+        pure (chats, now, last_run)
+    let due = collectDue chats last_run now
         flinks_to_rebuild = foldMap (readBatchRecipe . snd) due
     if  HMS.null due then pure $ Right CacheOk
     else rebuild_update flinks_to_rebuild now env >>= \case
