@@ -25,7 +25,7 @@ import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
-import Utils (mbTime)
+import Utils (mbTime, renderDbError, renderUserError)
 import Mongo (HasMongo(evalDb))
 
 renderDbRes :: DbRes -> H.Html

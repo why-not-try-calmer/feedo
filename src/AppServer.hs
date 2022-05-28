@@ -6,9 +6,9 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Broker (withCache, HasCache)
+import Broker (HasCache, withCache)
 import Control.Concurrent (newChan, newMVar, writeChan)
-import Control.Exception (throwIO, SomeException (SomeException), try)
+import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
@@ -26,6 +26,7 @@ import System.Environment (getEnvironment)
 import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (callback_query, message), User (user_id), chat_id)
+import Utils (renderUserError)
 import Web
 
 type BotAPI =
@@ -109,11 +110,12 @@ makeConfig env =
         Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
         Right p -> putStrLn "Mongo...OK" >> pure p
     pipe_ioref <- newIORef pipe
+    last_run_ioref <- newIORef Nothing
     pure (AppConfig {
         tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
         base_url = base,
         mongo_creds = creds,
-        last_worker_run = Nothing,
+        last_worker_run = last_run_ioref,
         subs_state = mvar,
         postjobs = chan,
         worker_interval = interval,

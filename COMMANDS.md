@@ -147,6 +147,19 @@ example      | /feed 1, /feed https://www.phoronix.com/rss.php
 response     | information about the target feed              
 -------------+------------------------------------------------
 ```
+### Previewing (dry-run) a chat's or channel's next digest
+
+```
+command      | argument
+-------------+------------------------------------------------
+/testdigest  | <optional: channel id>           
+-------------+------------------------------------------------
+example      | /testdigest, /testdigest -102333565
+-------------+------------------------------------------------
+response     | the chat's or channel's next digest            
+-------------+------------------------------------------------
+```
+
 ### Fetching fresh items
 
 _Only in non-channels_.

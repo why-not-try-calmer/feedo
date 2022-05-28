@@ -273,13 +273,13 @@ renderCmds = T.intercalate "\n"
     [
         "/admin: manage the chat settings from the comfort of a web browser",
         "/changelog: link to the changelog",
-        "/feed `<# or url>`: show info about the subscribed to feed",
+        "/feed `<optional: channel id> <# or url>`: show info about the subscribed to feed",
         "/fresh `<n>`: display n-old items, in number of days",
         "/help: show these commands",
-        "/items `<# or url>`: display all the items fetched from the referenced feed",
+        "/items `<optional: channel id> <# or url>`: display all the items fetched from the referenced feed",
         "/list `<optional: channel id`: list all the feeds this chat or that channel is subscribed to",
-        "/link `<chat_id / channel_id>`: allow the current chat to get the same permissions as the target chat or channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel",
-        "/migrate `<optional: chat_id of the origin> <chat_id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination.",
+        "/link `<channel id>`: allow the current chat to get the same permissions as the target channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel",
+        "/migrate `<optional: id of the origin> <id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination.",
         "/pause `<optional: channel id>`: stop posting updates to this chat or to that channel",
         "/purge `<optional: channel id>`: delete all data about this chat or that channel",
         "/reset `<optional: channel id>`: set this chat's (or that channels') settings to their default values",
@@ -288,27 +288,28 @@ renderCmds = T.intercalate "\n"
         "/set `<optional: channel id> <optional: linebreak + key:value pairs>` view or edit this chat's or that channel's settings",
         "/start: show again the starting message",
         "/sub `<optional: channel id> <url1 url2...>`: subscribe this chat or that channel to the target feed(s)",
+        "/testdigest `<optional: channel id>`: preview a digest for the current or target chat / channel",
         "/unsub `<optional: channel id> <url url2...>`: unsubscribe this chat or that channel from the target feed(s)"
     ] `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
-admin - manage your chat settings from the Web
-changelog - recent changes to the bot
-feed - <# or url> info about the feed
-fresh - <n> n-old items, in number of days
-help - these commands
-items - <# or url> all the items fetched from the reference feed 
-list - <optional: channel_id> all the feeds the chat/channel is subscribed to
-link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.      
-migrate - <optional: chat_id of the origin> <chat_id of the destination>: migrate this chat's settings, or the settings of the channel at the origin, to the destination.
-pause - <optional: channel_id> stop posting updates to the chat/channel
-purge - <optional: channel_id> erase the database from all data about the chat/channel
-reset - <optional: channel_id> set the chat/channel's settings to their default values
-resume - <optional: channel_id> resume updates to the chat/channel
-search - <term1 term2...> search all items across all feeds for the given keywords 
-set - <optional: channel_id> <optional: linebreak + key:value pairs> view or edit the chat/channel's settings
+admin - manage the chat settings from the comfort of a web browser
+changelog - link to the changelog
+feed - show info about the subscribed to feeds, for the current chat or target channel_id
+fresh - <n> display <n> old items, in number of days
+help - show these commands
+items - <optional: channel_id> <# or url> display all the items fetched from the referenced feed
+list - <optional: channel_id> list all the feeds this chat or that channel is subscribed to
+link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.
+migrate - <optional: chat_id of the origin> <chat_id of the destination> migrate this chat's settings, or the settings of the channel at the origin, to the destination
+pause - <optional: channel_id> stop posting updates to this chat or to that channel
+purge - <optional: channel_id> delete all data about this chat or that channel
+reset - <optional: channel_id> set this chat's (or that channels') settings to their default values
+resume - <optional: channel_id> resume updates to this chat or to that channel
+search - <term1 term2...> search all items across all feeds for the given keywords
+set - <optional: channel_id> <optional: linebreak + key:value pairs> view or edit this chat's or that channel's settings
 start - show again the starting message
-sub - <optional: channel_id> <url1 url2...> subscribe the chat/channel to the target feed(s)
-testdigest - sends a 'dry run' digest so that you can see how it will look like when scheduled
-unsub - <optional: channel_id> <url url2...> unsubscribe the chat/channel from the target feed(s)
+sub - <optional: channel_id> <url1 url2...> subscribe this chat or that channel to the target feed(s)
+testdigest - <optional: channel_id> sends a 'dry run' digest for the current chat or target channel
+unsub - <optional: channel_id> <url url2...> unsubscribe this chat or that channel from the target feed(s)
 -}

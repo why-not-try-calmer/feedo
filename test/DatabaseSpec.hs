@@ -7,10 +7,10 @@ import Control.Exception
 import Control.Monad.IO.Class
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
-import System.Environment (getEnvironment)
-import Test.Hspec
 import Mongo
 import Redis
+import System.Environment (getEnvironment)
+import Test.Hspec
 
 evalDb' action = liftIO getCurrentTime >>= \now -> case action of
     DbAskForLogin _ _ -> pure $ DbToken mempty
@@ -19,7 +19,6 @@ evalDb' action = liftIO getCurrentTime >>= \now -> case action of
     DeleteChat _ -> pure DbOk
     GetAllFeeds -> pure $ DbFeeds []
     GetAllChats -> pure $ DbChats []
-    GetFeed _ -> pure $ DbFeeds []
     IncReads _ -> pure DbOk
     DbSearch key _ _ -> pure $ DbSearchRes key []
     PruneOld _ -> pure DbOk
@@ -36,16 +35,16 @@ spec :: Spec
 spec = go >> go1
     where
         go =
-            let desc as = describe "checkDbMapper" as
-                as func = it "make sure the ORM matches the application values" func
+            let desc = describe "checkDbMapper"
+                as = it "make sure the ORM matches the application values"
                 target = do
                     has <- checkDbMapper >> pure "ok"
                     let wants = "ok" :: T.Text
                     has `shouldBe` wants
             in  desc $ as target
         go1 =
-            let desc as = describe "evalDb" as
-                as func = it "evaluate database actions" func
+            let desc = describe "evalDb"
+                as = it "evaluate database actions"
                 target = do
                     now <- getCurrentTime
                     let dig = DbDigest (Digest Nothing now [] [] [])

@@ -1,14 +1,16 @@
-FROM haskell:9.0.2
-
-EXPOSE 80
-
-WORKDIR /opt/app
-RUN stack upgrade
-
-COPY ./feedfarer.cabal ./stack.yaml /opt/app/
-RUN stack build --only-dependencies --no-library-profiling
-
-COPY . /opt/app/
+# build dependencies
+FROM haskell:9.0.2 as builder
+WORKDIR /opt/app/
+COPY ./feedfarer.cabal ./stack.yaml ./
+# dependencies layer
+RUN stack upgrade && stack build --only-dependencies --no-library-profiling
+# main binary layer, reusing cache
+COPY . .
 RUN stack build
-
+# inject build artifacts from previous step into fresh image to minimize size
+FROM haskell:9.0.2-slim-buster as runner
+EXPOSE 80
+WORKDIR /opt/app/
+COPY --from=builder /opt/app/.stack-work ./.stack-work
+COPY . .
 COPY /static /var/www/feedfarer-webui

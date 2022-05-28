@@ -1,15 +1,21 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module RequestsSpec where
 
-import AppTypes
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Requests
-    ( TgReqM(runSend, runSend_), mkPagination, mkKeyboard, reply )
 import AppServer (makeConfig)
+import AppTypes
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Maybe (fromJust)
+import qualified Data.Text as T
+import Requests
+  ( TgReqM (runSend, runSend_),
+    mkKeyboard,
+    mkPagination,
+    reply,
+  )
 import System.Environment
 import Test.Hspec
-import qualified Data.Text as T
-import Data.Maybe (fromJust)
 import TgramOutJson
 
 getConns :: IO AppConfig
@@ -21,15 +27,15 @@ getConns = do
 spec :: Spec
 spec = go >> go1 >> go2 where
     go =
-        let desc as = describe "mkKeyboard" as
-            as func = it "makes a keyboard adjusted for pagination" func
+        let desc = describe "mkKeyboard"
+            as = it "makes a keyboard adjusted for pagination"
             target = case mkKeyboard 1 2 Nothing of
                 Nothing -> undefined
                 Just (InlineKeyboardMarkup keyboard) -> length keyboard `shouldBe` 1
         in  desc $ as target
     go1 =
-        let desc as = describe "pagination" as
-            as func = it "splits a text into many sub-texts no longer than 606 bytes" func
+        let desc = describe "pagination"
+            as = it "splits a text into many sub-texts no longer than 606 bytes"
             target = case mkPagination lorec Nothing of
                 Nothing -> undefined
                 Just (texts, InlineKeyboardMarkup keyboard) -> do
@@ -40,8 +46,8 @@ spec = go >> go1 >> go2 where
                     filter T.null texts `shouldBe` []
         in  desc $ as target
     go2 =
-        let desc as = describe "pagination live test" as
-            as func = it "sends a Telegram message with pagination" func
+        let desc = describe "pagination live test"
+            as = it "sends a Telegram message with pagination"
             target = do
                 let (texts, keyboard) = fromJust $ mkPagination lorec Nothing
                     rep = ChatReply lorec False False False True Nothing
@@ -49,6 +55,23 @@ spec = go >> go1 >> go2 where
                 res <- runApp env $ reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) rep (postjobs env)
                 res `shouldBe` ()
         in  desc $ as target
+    {-
+    go3 =
+        let desc = describe "slicing replies to avoid running into Telegram's upper bound"
+            as = it "slices up messages to keep all of them under 4096 characters"
+            target = do
+                let lorecs = [lorec, lorec, lorec]
+                    lorecs_txt = T.concat lorecs
+                    reply = ChatReply lorecs_txt False False False False Nothing
+                    sliced = sliceReplies reply
+                    sliced_txts = map (T.length . reply_contents) sliced
+                    total_length = sum sliced_txts
+                print total_length
+                print sliced_txts
+                print sliced
+                sliced `shouldSatisfy` all (\r -> (T.length . reply_contents $ r) < 4096)
+        in  desc $ as target
+    -}
 
 lorec :: T.Text
 lorec = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur tincidunt et urna a aliquam. Pellentesque sit amet aliquet dolor. In egestas vitae mi non viverra. Integer venenatis bibendum interdum. Cras metus leo, efficitur a nibh ac, congue cursus purus. Etiam id dolor sed lorem vestibulum aliquam posuere quis enim. Vivamus sapien turpis, pretium sit amet ligula id, scelerisque vehicula urna. Nam vulputate magna vitae hendrerit hendrerit. Nunc ultrices feugiat est consequat convallis. Pellentesque tellus tortor, luctus et turpis ut, aliquam facilisis est. \
@@ -57,3 +80,4 @@ lorec = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur tinc
     \In hendrerit lacus feugiat sodales egestas. Maecenas sed lectus velit. Donec nulla urna, maximus ut blandit ut, sagittis vitae tortor. Nulla dictum porttitor justo sit amet gravida. Suspendisse vestibulum elit lectus, sed mattis quam viverra a. Quisque eu dolor lacus. Aliquam a accumsan tortor. Sed vitae leo neque. Phasellus placerat consectetur erat quis faucibus.\
     \Vestibulum magna justo, fringilla vel massa volutpat, dictum interdum enim. Duis pellentesque sollicitudin odio, ut luctus ligula lacinia sit amet. Aenean neque augue, finibus vel arcu a, porttitor placerat mi. Vestibulum sapien nunc, suscipit auctor congue in, mattis nec est. Quisque nec tincidunt magna, sed sodales dolor. Pellentesque pellentesque enim quis metus pretium mollis. Donec et turpis a erat mollis rhoncus. Vestibulum at dolor sollicitudin, rutrum nibh dictum, tristique mauris. Suspendisse ullamcorper magna ac nibh aliquet, eget fermentum nisl maximus. Quisque viverra tincidunt ornare. Curabitur auctor tellus nec mollis ullamcorper. Ut id mi sem.\n\
     \Mauris id congue nisl, id posuere arcu. Maecenas id mattis purus. Proin varius volutpat scelerisque. Suspendisse porttitor diam sit amet maximus mattis. Cras feugiat mattis sapien quis efficitur. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Vivamus id sagittis arcu. Nulla non tellus ut tellus rhoncus blandit. Donec rhoncus accumsan."
+    
