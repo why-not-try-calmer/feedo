@@ -148,7 +148,7 @@ withBroker (CachePushFeeds fs) = let flinks = map f_link fs in
 withBroker CacheRefresh = do
     env <- ask
     (chats, now, last_run) <- liftIO $ do
-        chats <- readMVar $ subs_state env 
+        chats <- readMVar $ subs_state env
         now <- getCurrentTime
         last_run <- readIORef $ last_worker_run env
         pure (chats, now, last_run)
@@ -158,14 +158,22 @@ withBroker CacheRefresh = do
     else rebuild_update flinks_to_rebuild now env >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
+            -- sometimes a digest would contain items with the same timestamps, but
+            -- we can filter them out through a simple comparison
+            compared_feeds <- withBroker (CachePullFeeds $ HMS.keys rebuilt) >>= \case
+                Left err -> do
+                    liftIO . writeChan (postjobs env) $ JobTgAlert err
+                    pure rebuilt
+                Right (CacheFeeds fs) -> pure $ keep_new rebuilt fs
+                Right _ -> pure rebuilt
             -- creating update notification payload
-            let digests = notifFrom last_run flinks_to_rebuild rebuilt due
+            let digests = notifFrom last_run flinks_to_rebuild compared_feeds due
                 has_digest = HMS.keys digests
                 no_digest = HMS.foldl' (\acc (!c, _) ->
                     let cid = sub_chatid  c in
                     if cid `notElem` has_digest then cid:acc else acc) [] due
             -- marking chats with no digest as notified
-                -- returning payload to the ones to notify
+            -- returning payload to the ones to notify
             liftIO $ unless (null no_digest) (markNotified env no_digest now)
             pure . Right $ CacheDigests digests
     where
@@ -187,6 +195,26 @@ withBroker CacheRefresh = do
                     let fresh_feeds = HMS.fromList . map (\f -> (f_link f, f)) $ succeeded
                         to_cache = HMS.union fresh_feeds old_feeds
                     in  withBroker (CachePushFeeds $ HMS.elems to_cache) >> pure (Right to_cache)
+        keep_new = foldl' step
+            where
+                delKey f = HMS.delete (f_link f)
+                step :: HMS.HashMap T.Text Feed -> Feed -> HMS.HashMap T.Text Feed
+                -- filters out duplicate items from rebuilt feeds kept
+                step new_feeds_hmap old_f = case HMS.lookup (f_link old_f) new_feeds_hmap of
+                    Nothing -> new_feeds_hmap
+                    Just new_f ->
+                        let new_items = f_items new_f
+                            old_items = f_items old_f
+                            maybe_first_last = if null new_items then Nothing else Just (head new_items, last new_items)
+                            diff_on_first_20 t1 t2 = T.take 20 t1 /= T.take 20 t2
+                            diffed = filter (\new_item -> all (diff_on_first_20 (i_desc new_item) . i_desc) old_items) new_items
+                        in  if null diffed then delKey new_f new_feeds_hmap else
+                            case maybe_first_last of
+                                Nothing -> delKey new_f new_feeds_hmap
+                                Just (fi, la) ->
+                                    if i_pubdate fi /= i_pubdate la then new_feeds_hmap
+                                    else HMS.update (\f -> Just $ f { f_items = diffed } ) (f_link new_f) new_feeds_hmap
+
 withBroker CacheWarmup =
     ask >>= \env ->
     evalDb env GetAllFeeds >>= \case

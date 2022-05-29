@@ -99,8 +99,8 @@ procNotif = do
                             }
                         -- sending logs
                         writeChan (postjobs env) $ JobLog item
-                        -- updating run
-                        modifyIORef' (last_worker_run env) $ \_ -> Just now
+                    -- updating run
+                    modifyIORef' (last_worker_run env) $ \_ -> Just now
                 Left err ->
                     writeChan (postjobs env) $ JobTgAlert $ "notifier: \
                         \ failed to acquire notification package and got this error: "
