@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Redundant bracket" #-}
+
 module Utils where
 
 import AppTypes
@@ -16,6 +16,7 @@ import Data.Time.Clock.POSIX
   )
 import Data.Time.Format.ISO8601
 import TgramOutJson (ChatId)
+
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
@@ -235,7 +236,7 @@ notifFrom last_run flinks feeds_map = foldl' (\hmap (!c, !batch) ->
                 only_search_notif = match_only_search_results . settings_word_matches . sub_settings $ c
                 search_notif = match_searchset . settings_word_matches . sub_settings $ c
             in  foldl' (\acc i ->
-                    let off_scope = [fresher_than i (time_ref), i `lacks_keywords` bl]
+                    let off_scope = [fresher_than i time_ref, i `lacks_keywords` bl]
                         in_scope = off_scope ++ [i `has_keywords` search_notif]
                     in  if i_feed_link i `S.member` only_search_notif then
                             if and in_scope then i:acc else acc
@@ -246,3 +247,23 @@ notifFrom last_run flinks feeds_map = foldl' (\hmap (!c, !batch) ->
 
 sortItems :: Feed -> Feed
 sortItems f = f { f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f }
+
+keepNew :: HMS.HashMap T.Text Feed -> [Feed] -> HMS.HashMap T.Text Feed
+-- filters out duplicate items from rebuilt feeds kept
+keepNew =
+    let delKey f = HMS.delete (f_link f)
+        step new_feeds_hmap old_f = 
+            case HMS.lookup (f_link old_f) new_feeds_hmap of
+            Nothing -> new_feeds_hmap
+            Just new_f ->
+                let new_items = f_items new_f
+                    old_items = f_items old_f
+                    maybe_first_last = if null new_items then Nothing else Just (head new_items, last new_items)
+                    diffed = filter (\new_item -> all (\old_item -> i_link new_item /= i_link old_item) old_items) new_items
+                in  if null diffed then delKey new_f new_feeds_hmap else
+                    case maybe_first_last of
+                    Nothing -> delKey new_f new_feeds_hmap
+                    Just (fi, la) ->
+                        if i_pubdate fi /= i_pubdate la then new_feeds_hmap
+                        else HMS.update (\f -> Just $ f { f_items = diffed } ) (f_link new_f) new_feeds_hmap
+    in  foldl' step
