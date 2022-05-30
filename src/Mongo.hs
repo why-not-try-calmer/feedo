@@ -530,7 +530,7 @@ cleanLogs env = do
             if not $ null found then pure . Left . show $ found else
             pure $ Right ()
     where
-        one_week_from now = addUTCTime (-604800) now
+        one_week_from = addUTCTime (-604800)
 
 collectLogStats :: (HasMongo m, MonadIO m) => AppConfig -> m T.Text
 collectLogStats env = do

@@ -16,7 +16,7 @@ import Utils
 import qualified Data.Text as T
 import Data.Int (Int64)
 import Data.Time (getCurrentTime, readTime, diffUTCTime, UTCTime)
-import AppTypes (DigestInterval(DigestInterval), Item (Item, i_link, i_title, i_feed_link), i_desc, Feed (f_link, Feed), BatchRecipe (DigestFeedLinks), FeedType (Rss), SubChat (SubChat), Batch (Digests, Follows), Settings (settings_word_matches), WordMatches (WordMatches))
+import AppTypes (DigestInterval(DigestInterval), Item (Item, i_link, i_title, i_feed_link), i_desc, Feed (f_link, Feed, f_items), BatchRecipe (DigestFeedLinks), FeedType (Rss), SubChat (SubChat), Batch (Digests, Follows), Settings (settings_word_matches), WordMatches (WordMatches))
 import Data.Maybe
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
@@ -114,16 +114,15 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8]
             in  desc $ as target
         go8 =
             let desc = describe "keepNew"
-                as = it "makes sure that only genuinely new items are posted even when i_pubdate could not be set"
+                as = it "ensures that only genuinely new items are posted even when i_pubdate could not be set"
                 target = do
                     now <- getCurrentTime
                     let (_, new_feeds, chats) = mockFeedsChats now
                         duplicate_i = Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
-                        duplicate_f = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" [duplicate_i] Nothing Nothing 0
-                        compared = keepNew new_feeds [duplicate_f]
-                        expected_compared = HMS.delete "https://hnrss.org/frontpage" compared
+                        new_i = Item "Python item" "Until dawn we won't know what happened" "new url" "new url" now
+                        feed_with_duplicate = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" [duplicate_i] Nothing Nothing 0
+                        updated_new_feeds = HMS.update (\f -> Just $ f { f_items = f_items f ++ [new_i]}) "https://python.org" new_feeds
+                        (_, compared) = keepNew updated_new_feeds [feed_with_duplicate]
+                        expected_compared = HMS.delete "https://hnrss.org/frontpage" updated_new_feeds
                     compared `shouldBe` expected_compared
             in  desc $ as target
-
-main :: IO ()
-main = hspec spec

@@ -248,22 +248,25 @@ notifFrom last_run flinks feeds_map = foldl' (\hmap (!c, !batch) ->
 sortItems :: Feed -> Feed
 sortItems f = f { f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f }
 
-keepNew :: HMS.HashMap T.Text Feed -> [Feed] -> HMS.HashMap T.Text Feed
+keepNew :: HMS.HashMap T.Text Feed -> [Feed] -> ([T.Text], HMS.HashMap T.Text Feed)
 -- filters out duplicate items from rebuilt feeds kept
-keepNew =
+keepNew feeds_map feeds =
     let delKey f = HMS.delete (f_link f)
-        step new_feeds_hmap old_f = 
-            case HMS.lookup (f_link old_f) new_feeds_hmap of
-            Nothing -> new_feeds_hmap
+        step (discarded, new_feeds_hmap) old_f = case HMS.lookup (f_link old_f) new_feeds_hmap of
+            Nothing -> (discarded, new_feeds_hmap)
             Just new_f ->
                 let new_items = f_items new_f
                     old_items = f_items old_f
                     maybe_first_last = if null new_items then Nothing else Just (head new_items, last new_items)
                     diffed = filter (\new_item -> all (\old_item -> i_link new_item /= i_link old_item) old_items) new_items
-                in  if null diffed then delKey new_f new_feeds_hmap else
-                    case maybe_first_last of
-                    Nothing -> delKey new_f new_feeds_hmap
-                    Just (fi, la) ->
-                        if i_pubdate fi /= i_pubdate la then new_feeds_hmap
-                        else HMS.update (\f -> Just $ f { f_items = diffed } ) (f_link new_f) new_feeds_hmap
-    in  foldl' step
+                    discarded' = discarded ++ map i_link new_items
+                in  if null diffed
+                    then (discarded', delKey old_f new_feeds_hmap)
+                    else case maybe_first_last of
+                        Nothing -> (discarded, delKey old_f new_feeds_hmap)
+                        Just (fi, la) ->
+                            if i_pubdate fi /= i_pubdate la then (discarded, new_feeds_hmap)
+                            else 
+                                let updated = HMS.update (\f -> Just $ f { f_items = diffed } ) (f_link old_f) new_feeds_hmap
+                                in  (discarded', updated)
+    in  foldl' step ([], feeds_map) feeds

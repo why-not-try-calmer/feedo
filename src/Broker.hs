@@ -164,7 +164,11 @@ withBroker CacheRefresh = do
                 Left err -> do
                     liftIO . writeChan (postjobs env) $ JobTgAlert err
                     pure rebuilt
-                Right (CacheFeeds fs) -> pure $ keepNew rebuilt fs
+                Right (CacheFeeds fs) -> 
+                    let (discarded, rebuilt_new) = keepNew rebuilt fs
+                        report = "Discarded these duplicate item links: " `T.append` T.intercalate ", " discarded
+                        -- reporting and returning filtered out old item links
+                    in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_new
                 Right _ -> pure rebuilt
             -- creating update notification payload
             let digests = notifFrom last_run flinks_to_rebuild compared_feeds due
