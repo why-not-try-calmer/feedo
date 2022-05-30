@@ -1,4 +1,4 @@
-[![GitHub Test suite](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml) [![Build and deploy container app to Azure Web App - feedfarer-master](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml)
+[![GitHub Test suite](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/test.yml) [![Build and deploy container app to Azure Web App - feedfarer-master](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml/badge.svg?branch=master)](https://github.com/why-not-try-calmer/feedfarer2/actions/workflows/build-then-push.yml) [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=why-not-try-calmer_feedo&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=why-not-try-calmer_feedo)
 
 # feedo (formerly 'feedfarer')
 
