@@ -16,6 +16,7 @@ import qualified Data.Text as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
+import Control.Concurrent.Async (mapConcurrently_)
 
 {- Interface -}
 
@@ -98,7 +99,7 @@ mkKeyboard tgt tot mb_url
     | tgt == 1 = Just $ InlineKeyboardMarkup $
     case mb_url of
         Nothing -> [[curr, next]]
-        Just url -> [[curr, next], [mkPermaLinkBtn url]] 
+        Just url -> [[curr, next], [mkPermaLinkBtn url]]
     | tgt == tot = Just $ InlineKeyboardMarkup $
     case mb_url of
         Nothing -> [[prev, curr], [reset]]
@@ -107,7 +108,7 @@ mkKeyboard tgt tot mb_url
     case mb_url of
         Nothing -> [[prev, curr, next], [reset]]
         Just url -> [[prev, curr, next], [reset, mkPermaLinkBtn url]]
-    where 
+    where
         out_of = (T.pack . show $ tgt) `T.append` "/" `T.append` (T.pack . show $ tot)
         curr = InlineKeyboardButton out_of Nothing (Just "*")
         prev = InlineKeyboardButton "Prev." Nothing (Just . T.pack . show $ tgt - 1)
@@ -135,6 +136,24 @@ mkDigestLinkButton link
     | otherwise = Just $ InlineKeyboardButton label (Just link) Nothing
     where label = "Permalink"
 
+sliceReplies :: Reply -> [Reply]
+sliceReplies rep@ChatReply{..} 
+    | under reply_contents = [rep]
+    | otherwise = 
+        let replies = go [] . T.lines $ reply_contents
+        in  map (\r -> rep { reply_contents = r }) replies 
+    where
+        upper_bound = 4096
+        under txt = T.length txt < upper_bound 
+        go acc [] = acc
+        go [] (l:ls) = go [l] ls
+        go (p:ps) (l:ls) =
+            let pl = T.intercalate "\n" [p, l]
+            in case T.compareLength pl upper_bound of
+                GT -> go (l:p:ps) ls
+                _ -> go (pl:ps) ls
+sliceReplies _ = []
+
 reply :: TgReqM m =>
     BotToken ->
     ChatId ->
@@ -157,7 +176,7 @@ reply tok cid rep chan =
                 if reply_pagination && isJust (mkPagination reply_contents reply_permalink)
                     then let (pages, keyboard) = fromJust $ mkPagination reply_contents reply_permalink
                 in base { out_text = non_empty $ last pages, out_reply_markup = Just keyboard }
-                    else base { out_reply_markup = mkPermLinkKeyboard <$> reply_permalink } 
+                    else base { out_reply_markup = mkPermLinkKeyboard <$> reply_permalink }
         fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True) Nothing
         fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents has_markdown no_webview keyboard
             where
@@ -171,22 +190,22 @@ reply tok cid rep chan =
             let jobs mid = [
                     if reply_pin_on_send then Just $ JobPin cid mid else Nothing,
                     if reply_pagination && isJust (mkPagination reply_contents reply_permalink)
-                    then let (pages, _) = fromJust $ mkPagination reply_contents reply_permalink in 
+                    then let (pages, _) = fromJust $ mkPagination reply_contents reply_permalink in
                         Just $ JobSetPagination cid mid pages reply_permalink
                     else Nothing
                     ]
             in  runSend tok "sendMessage" (fromReply msg) >>= \case
-                Left err -> 
+                Left err ->
                     let forbidden = "Forbidden: bot was blocked by the user" `T.isInfixOf` err
                     in  if not forbidden then report err else
                         do
                         liftIO $ writeChan chan . JobPurge $ cid
-                        report $ 
-                            "Bot blocked in private chat " `T.append` (T.pack . show $ cid) 
+                        report $
+                            "Bot blocked in private chat " `T.append` (T.pack . show $ cid)
                             `T.append` "Chat purged."
                 Right resp ->
                     let mid = mid_from resp
-                    in  for_ (jobs mid) $ \case 
+                    in  for_ (jobs mid) $ \case
                             Just j -> liftIO $ writeChan chan j
                             Nothing -> pure ()
         outbound msg@EditReply{} = runSend_ tok "editMessageText" (fromReply msg) >>= \case
@@ -195,4 +214,5 @@ reply tok cid rep chan =
         outbound msg@ServiceReply{} = runSend_ tok "sendMessage" (fromReply msg) >>= \case
             Left err -> report err
             Right _ ->  pure ()
-    in  outbound rep
+        sliced = sliceReplies rep
+    in  liftIO $ mapConcurrently_ outbound sliced
