@@ -152,7 +152,7 @@ sliceReplies rep@ChatReply{..}
             in case T.compareLength pl upper_bound of
                 GT -> go (l:p:ps) ls
                 _ -> go (pl:ps) ls
-sliceReplies _ = []
+sliceReplies rep = [rep]
 
 reply :: TgReqM m =>
     BotToken ->
