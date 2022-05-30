@@ -166,7 +166,7 @@ withBroker CacheRefresh = do
                     pure rebuilt
                 Right (CacheFeeds fs) -> 
                     let (discarded, rebuilt_new) = keepNew rebuilt fs
-                        report = "Discarded these duplicate item links: " `T.append` T.intercalate ", " discarded
+                        report = "Discarded this number of duplicate links: " `T.append` (T.pack . show . length $ discarded)
                         -- reporting and returning filtered out old item links
                     in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_new
                 Right _ -> pure rebuilt
