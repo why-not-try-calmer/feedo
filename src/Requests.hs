@@ -16,7 +16,6 @@ import qualified Data.Text as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
-import Control.Concurrent.Async (mapConcurrently_)
 
 {- Interface -}
 
@@ -136,6 +135,7 @@ mkDigestLinkButton link
     | otherwise = Just $ InlineKeyboardButton label (Just link) Nothing
     where label = "Permalink"
 
+{-
 sliceReplies :: Reply -> [Reply]
 sliceReplies rep@ChatReply{..} 
     | under reply_contents = [rep]
@@ -153,6 +153,7 @@ sliceReplies rep@ChatReply{..}
                 GT -> go (l:p:ps) ls
                 _ -> go (pl:ps) ls
 sliceReplies rep = [rep]
+-}
 
 reply :: TgReqM m =>
     BotToken ->
@@ -214,5 +215,4 @@ reply tok cid rep chan =
         outbound msg@ServiceReply{} = runSend_ tok "sendMessage" (fromReply msg) >>= \case
             Left err -> report err
             Right _ ->  pure ()
-        sliced = sliceReplies rep
-    in  liftIO $ mapConcurrently_ outbound sliced
+    in  outbound rep
