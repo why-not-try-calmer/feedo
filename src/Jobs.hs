@@ -3,7 +3,7 @@
 module Jobs where
 
 import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), renderDbError, runApp)
-import Backend (markNotified, withChat)
+import Backend (withChat)
 import Broker (HasCache (withCache))
 import Control.Concurrent
   ( readChan,
@@ -22,6 +22,7 @@ import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Mongo (evalDb, saveToLog)
+import Notifications(markNotified)
 import Replies
   ( mkDigestUrl,
     mkReply,

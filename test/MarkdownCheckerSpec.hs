@@ -24,15 +24,15 @@ spec :: Spec
 spec = go >> runIO getConns >>= go1 where
     tester = "Hello _bea||utif||ully *nested* and_ my [.my.humble.world](https://beautiful.ugly.world)"
     go =
-        let desc as = describe "MarkdownChecker" as
-            as func = it "check MarkdownV2 validity" func
+        let desc = describe "MarkdownChecker"
+            as = it "check MarkdownV2 validity"
             target = case parse tester of
                 Left err -> print err >> undefined
-                Right (parsed, _) -> parsed `shouldSatisfy` (not . T.null . render)
+                Right (parsed, _) -> parsed `shouldSatisfy` not . T.null . render
         in  desc $ as target
     go1 env =
-        let desc as = describe "tries to send a message validated with MarkdownChecker as a Telegram Message" as
-            as func = it "ensures Telegram agrees with the validation for this message" func
+        let desc = describe "tries to send a message validated with MarkdownChecker as a Telegram Message"
+            as = it "ensures Telegram agrees with the validation for this message"
             target = do
                 case parse tester of
                     Left err -> print err >> undefined
@@ -44,7 +44,7 @@ spec = go >> runIO getConns >>= go1 where
                         case res of
                             Left err -> print err >> undefined
                             Right (resp :: JsonResponse TgGetMessageResponse) -> do
-                                resp `shouldSatisfy` (resp_msg_ok . responseBody)
+                                resp `shouldSatisfy` resp_msg_ok . responseBody
                                 print resp
         in  desc $ as target
         where

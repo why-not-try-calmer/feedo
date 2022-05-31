@@ -3,7 +3,6 @@
 module Broker where
 
 import AppTypes hiding (Reply)
-import Backend (collectDue, markNotified)
 import Control.Concurrent (readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, (>=>))
@@ -21,9 +20,10 @@ import qualified Data.Text.Encoding as B
 import Data.Time (getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
+import Notifications (collectDue, markNotified, notifFrom, feedlinksWithMissingPubdates, keepNew)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
-import Utils (freshLastXDays, notifFrom, partitionEither, sortItems)
+import Utils (freshLastXDays, partitionEither, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -152,40 +152,41 @@ withBroker CacheRefresh = do
         now <- getCurrentTime
         last_run <- readIORef $ last_worker_run env
         pure (chats, now, last_run)
+    -- checking due chats
     let due = collectDue chats last_run now
         flinks_to_rebuild = foldMap (readBatchRecipe . snd) due
-    if  HMS.null due then pure $ Right CacheOk
-    else rebuild_update flinks_to_rebuild now env >>= \case
-        Left err -> pure $ Left err
-        Right rebuilt -> do
-            liftIO $ writeChan (postjobs env) $ JobTgAlert $ "Rebuilding now these feeds "
-                `T.append` T.intercalate ", " flinks_to_rebuild
-                `T.append` "for these chats: " 
-                `T.append` T.intercalate ", " (map (T.pack . show) $ HMS.keys due) 
-            {-
-            -- sometimes a digest would contain items with the same timestamps, but
-            -- we can filter them out through a simple comparison
-            compared_feeds <- withBroker (CachePullFeeds $ HMS.keys rebuilt) >>= \case
-                Left err -> do
-                    liftIO . writeChan (postjobs env) $ JobTgAlert err
-                    pure rebuilt
-                Right (CacheFeeds fs) -> 
-                    let (discarded, rebuilt_new) = keepNew rebuilt fs
-                        report = "Discarded this number of duplicate links: " `T.append` (T.pack . show . length $ discarded)
-                        -- reporting and returning filtered out old item links
-                    in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_new
-                Right _ -> pure rebuilt
-            -}
-            -- creating update notification payload
-            let digests = notifFrom last_run flinks_to_rebuild rebuilt due
-                has_digest = HMS.keys digests
-                no_digest = HMS.foldl' (\acc (!c, _) ->
-                    let cid = sub_chatid  c in
-                    if cid `notElem` has_digest then cid:acc else acc) [] due
-            -- marking chats with no digest as notified
-            -- returning payload to the ones to notify
-            liftIO $ unless (null no_digest) (markNotified env no_digest now)
-            pure . Right $ CacheDigests digests
+    -- handling due chats
+    if  HMS.null due then pure $ Right CacheOk else rebuild_update flinks_to_rebuild now env >>= \case
+            Left err -> pure $ Left err
+            Right rebuilt -> do
+                -- sometimes a digest would contain items with the same timestamps, but
+                -- we can filter them out through a simple comparison
+                let missing = feedlinksWithMissingPubdates rebuilt
+                rebuilt_replaced <- withBroker (CachePullFeeds missing) >>= \case
+                    Left err -> do
+                        liftIO . writeChan (postjobs env) $ JobTgAlert err
+                        pure rebuilt
+                    Right (CacheFeeds fs) -> 
+                        -- monitoring when that happens
+                        let (discarded, rebuilt_replaced) = keepNew rebuilt fs
+                            report = 
+                                "These feeds had items with missing pubdates: " `T.append` 
+                                    T.intercalate ", " missing `T.append`
+                                "Discarded: " `T.append` T.intercalate ", " discarded `T.append`
+                                "Added: " `T.append` T.intercalate ", " (HMS.keys rebuilt_replaced)
+                            -- reporting and returning filtered out old item links
+                        in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_replaced
+                    Right _ -> pure rebuilt
+                -- creating update notification payload
+                let notifications_template = HMS.union rebuilt_replaced rebuilt
+                    digests = notifFrom last_run flinks_to_rebuild notifications_template due
+                    has_digest = HMS.keys digests
+                    no_digest = HMS.foldl' (\acc (!c, _) ->
+                        let cid = sub_chatid  c in
+                        if cid `notElem` has_digest then cid:acc else acc) [] due
+                -- marking chats with no digest as notified, returning payload to the ones to notify
+                liftIO $ unless (null no_digest) (markNotified env no_digest now)
+                pure . Right $ CacheDigests digests
     where
         rebuild_update flinks now env = do
             succeeded <- liftIO $ do

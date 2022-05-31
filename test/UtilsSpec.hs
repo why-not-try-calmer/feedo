@@ -2,25 +2,24 @@
 
 module UtilsSpec where
 
-import Test.Hspec
-import Utils
-    ( partitionEither,
-      fromEither,
-      maybeUserIdx,
-      scanTimeSlices,
-      findNextTime,
-      mbTime,
-      defaultChatSettings,
-      notifFrom,
-      keepNew )
-import qualified Data.Text as T
-import Data.Int (Int64)
-import Data.Time (getCurrentTime, readTime, diffUTCTime, UTCTime)
-import AppTypes (DigestInterval(DigestInterval), Item (Item, i_link, i_title, i_feed_link), i_desc, Feed (f_link, Feed, f_items), BatchRecipe (DigestFeedLinks), FeedType (Rss), SubChat (SubChat), Batch (Digests, Follows), Settings (settings_word_matches), WordMatches (WordMatches))
-import Data.Maybe
+import AppTypes (Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
 import qualified Data.HashMap.Strict as HMS
+import Data.Int (Int64)
+import Data.Maybe
 import qualified Data.Set as S
+import qualified Data.Text as T
+import Data.Time (UTCTime, diffUTCTime, getCurrentTime, readTime)
+import Notifications
+import Test.Hspec
 import TgramOutJson (ChatId)
+import Utils
+  ( defaultChatSettings,
+    fromEither,
+    maybeUserIdx,
+    mbTime,
+    partitionEither,
+    scanTimeSlices,
+  )
 
 mockFeedsChats :: UTCTime -> ([T.Text], HMS.HashMap T.Text Feed, HMS.HashMap ChatId (SubChat, BatchRecipe))
 mockFeedsChats now =

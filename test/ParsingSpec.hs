@@ -9,9 +9,10 @@ import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Network.HTTP.Req (renderUrl)
+import Notifications (notifFrom)
 import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
 import Test.Hspec
-import Utils (notifFrom, partitionEither)
+import Utils (partitionEither)
 import Data.Time (getCurrentTime)
 
 spec :: Spec

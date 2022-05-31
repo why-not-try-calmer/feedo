@@ -1,6 +1,5 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Backend where
@@ -13,12 +12,12 @@ import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (UTCTime, addUTCTime)
 import Data.Time.Clock.POSIX
 import Mongo (HasMongo (evalDb), evalDb)
+import Notifications
 import Parsing (rebuildFeed)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, findNextTime, removeByUserIdx, sortItems, updateSettings)
+import Utils (defaultChatSettings, removeByUserIdx, sortItems, updateSettings)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
 withChat action cid = do
@@ -139,66 +138,6 @@ loadChats = ask >>= \env -> liftIO $ modifyMVar_ (subs_state env) $
                 c' = c { sub_next_digest = Just t }
             in  (sub_chatid c, c')) chats
 
-collectDue ::
-    SubChats ->
-    Maybe UTCTime ->
-    UTCTime ->
-    HMS.HashMap ChatId (SubChat, BatchRecipe)
--- Peeling off conditions for notifications:
--- new start or new digest or new follow
-collectDue chats last_run now =
-    foldl' (\hmap c@SubChat{..} ->
-        let interval = settings_digest_interval sub_settings
-        in  if settings_paused sub_settings
-            then hmap
-            else case settings_digest_start sub_settings of
-                Nothing ->
-                    if nextWasNow sub_next_digest sub_last_digest interval
-                    -- 'digests' take priority over 'follow notifications'
-                    then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-                    else
-                        if settings_follow sub_settings then case last_run of
-                            Nothing -> HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
-                            Just t ->
-                                if addUTCTime 1200 t < now
-                                then HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
-                                else hmap
-                        else hmap
-                Just new ->
-                    if new < now
-                    then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-                    else hmap
-            ) HMS.empty chats
-    where
-        nextWasNow Nothing Nothing _ = True
-        nextWasNow (Just next_t) _ _ = next_t < now
-        nextWasNow Nothing (Just last_t) i = findNextTime last_t i < now
-
-markNotified :: (MonadIO m, HasMongo IO) => AppConfig -> [ChatId] -> UTCTime -> m ()
--- marking input chats as notified 
-markNotified env notified_chats now = liftIO $ modifyMVar_ (subs_state env) $ \subs ->
-    let updated_chats = updated_notified_chats notified_chats subs
-    in  evalDb env (UpsertChats updated_chats) >>= \case
-        DbErr err -> do
-            writeChan (postjobs env) $ JobTgAlert $ "notifier: failed to \
-                \ save updated chats to db because of this error" `T.append` renderDbError err
-            pure subs
-        DbOk -> pure updated_chats
-        _ -> pure subs
-    where
-        updated_notified_chats notified = HMS.mapWithKey (\cid c ->
-            if cid `elem` notified
-            then
-                let next = Just . findNextTime now . settings_digest_interval . sub_settings $ c
-                in  -- updating last, next, and consuming 'settings_digest_start'
-                    case settings_digest_start . sub_settings $ c of
-                    Nothing -> c { sub_last_digest = Just now, sub_next_digest = next }
-                    Just _ -> c {
-                        sub_last_digest = Just now,
-                        sub_next_digest = next,
-                        sub_settings = (sub_settings c) { settings_digest_start = Nothing }
-                        }
-            else c)
 regenFeeds :: (MonadIO m, MonadReader AppConfig m) => m ()
 regenFeeds = do
     env <- ask

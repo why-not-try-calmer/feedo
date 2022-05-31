@@ -6,7 +6,7 @@ module RequestsSpec where
 import AppTypes
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Requests
-    ( TgReqM(runSend, runSend_), mkPagination, mkKeyboard, reply, sliceReplies )
+    ( TgReqM(runSend, runSend_), mkPagination, mkKeyboard, reply)
 import AppServer (makeConfig)
 import System.Environment
 import Test.Hspec
@@ -21,7 +21,7 @@ getConns = do
     pure config
 
 spec :: Spec
-spec = go >> go1 >> go2 >> go3 where
+spec = go >> go1 >> go2 where
     go =
         let desc = describe "mkKeyboard"
             as = it "makes a keyboard adjusted for pagination"
@@ -51,6 +51,7 @@ spec = go >> go1 >> go2 >> go3 where
                 res <- runApp env $ reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) rep (postjobs env)
                 res `shouldBe` ()
         in  desc $ as target
+    {-
     go3 =
         let desc = describe "slicing replies to avoid running into Telegram's upper bound"
             as = it "slices up messages to keep all of them under 4096 characters"
@@ -66,6 +67,7 @@ spec = go >> go1 >> go2 >> go3 where
                 print sliced
                 sliced `shouldSatisfy` all (\r -> (T.length . reply_contents $ r) < 4096)
         in  desc $ as target
+    -}
 
 lorec :: T.Text
 lorec = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur tincidunt et urna a aliquam. Pellentesque sit amet aliquet dolor. In egestas vitae mi non viverra. Integer venenatis bibendum interdum. Cras metus leo, efficitur a nibh ac, congue cursus purus. Etiam id dolor sed lorem vestibulum aliquam posuere quis enim. Vivamus sapien turpis, pretium sit amet ligula id, scelerisque vehicula urna. Nam vulputate magna vitae hendrerit hendrerit. Nunc ultrices feugiat est consequat convallis. Pellentesque tellus tortor, luctus et turpis ut, aliquam facilisis est. \
