@@ -23,7 +23,7 @@ import Database.Redis
 import Mongo (HasMongo (evalDb))
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
-import Utils (freshLastXDays, notifFrom, partitionEither, sortItems, keepNew)
+import Utils (freshLastXDays, notifFrom, partitionEither, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -158,6 +158,7 @@ withBroker CacheRefresh = do
     else rebuild_update flinks_to_rebuild now env >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
+            {-
             -- sometimes a digest would contain items with the same timestamps, but
             -- we can filter them out through a simple comparison
             compared_feeds <- withBroker (CachePullFeeds $ HMS.keys rebuilt) >>= \case
@@ -170,8 +171,9 @@ withBroker CacheRefresh = do
                         -- reporting and returning filtered out old item links
                     in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_new
                 Right _ -> pure rebuilt
+            -}
             -- creating update notification payload
-            let digests = notifFrom last_run flinks_to_rebuild compared_feeds due
+            let digests = notifFrom last_run flinks_to_rebuild rebuilt due
                 has_digest = HMS.keys digests
                 no_digest = HMS.foldl' (\acc (!c, _) ->
                     let cid = sub_chatid  c in
