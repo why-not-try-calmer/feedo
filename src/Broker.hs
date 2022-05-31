@@ -172,8 +172,8 @@ withBroker CacheRefresh = do
                             report = 
                                 "These feeds had items with missing pubdates: " `T.append` 
                                     T.intercalate ", " missing `T.append`
-                                "Discarded: " `T.append` T.intercalate ", " discarded `T.append`
-                                "Added: " `T.append` T.intercalate ", " (HMS.keys rebuilt_replaced)
+                                "Discarded: " `T.append` (T.pack . show . length $ discarded) `T.append`
+                                " items. Added: " `T.append` T.intercalate ", " (HMS.keys rebuilt_replaced)
                             -- reporting and returning filtered out old item links
                         in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_replaced
                     Right _ -> pure rebuilt
