@@ -158,6 +158,10 @@ withBroker CacheRefresh = do
     else rebuild_update flinks_to_rebuild now env >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
+            liftIO $ writeChan (postjobs env) $ JobTgAlert $ "Rebuilding now these feeds "
+                `T.append` T.intercalate ", " flinks_to_rebuild
+                `T.append` "for these chats: " 
+                `T.append` T.intercalate ", " (map (T.pack . show) $ HMS.keys due) 
             {-
             -- sometimes a digest would contain items with the same timestamps, but
             -- we can filter them out through a simple comparison
