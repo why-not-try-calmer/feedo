@@ -38,7 +38,7 @@ mockFeedsChats now =
     in  (fl, feeds, chats)
 
 spec :: Spec
-spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8]
+spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8, go9]
     where
         go =
             let desc = describe "partitionEither"
@@ -124,4 +124,14 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8]
                         (_, compared) = keepNew updated_new_feeds [feed_with_duplicate]
                         expected_compared = HMS.delete "https://hnrss.org/frontpage" updated_new_feeds
                     compared `shouldBe` expected_compared
+            in  desc $ as target
+        go9 = 
+            let desc = describe "findNext time #2"
+                as = it "map the given date to the next determined by the given time interval"
+                target = do
+                    let datestring = "2022-06-04T00:01:00Z" :: String
+                        t0 = fromJust $ mbTime datestring
+                        interval = DigestInterval (Just 172800) (Just [(0, 1)])
+                        t1 = findNextTime t0 interval
+                    t1 `shouldSatisfy` (\t -> diffUTCTime t t0 >= 172800)
             in  desc $ as target
