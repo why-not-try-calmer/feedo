@@ -438,6 +438,10 @@ data LogItem = LogPerf
     log_sending_notif :: Int64,
     log_updating :: Int64,
     log_total :: Int64
+  } | 
+  LogMessage {
+    log_message :: T.Text,
+    log_at :: UTCTime
   }
   deriving (Eq, Show)
 

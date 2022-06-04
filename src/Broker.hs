@@ -166,16 +166,15 @@ withBroker CacheRefresh = do
                     Left err -> do
                         liftIO . writeChan (postjobs env) $ JobTgAlert err
                         pure rebuilt
-                    Right (CacheFeeds fs) -> 
+                    Right (CacheFeeds fs) ->
                         -- monitoring when that happens
                         let (discarded, rebuilt_replaced) = keepNew rebuilt fs
-                            report = 
-                                "These feeds had items with missing pubdates: " `T.append` 
-                                    T.intercalate ", " missing `T.append`
-                                "Discarded: " `T.append` (T.pack . show . length $ discarded) `T.append`
+                            missing_str =  "These feeds had items with missing pubdates: " `T.append` T.intercalate ", " missing
+                            discarded_str =  "Discarded: " `T.append` (T.pack . show . length $ discarded) `T.append`
                                 " items. Added: " `T.append` T.intercalate ", " (HMS.keys rebuilt_replaced)
                             -- reporting and returning filtered out old item links
-                        in  liftIO (writeChan (postjobs env) $ JobTgAlert report) >> pure rebuilt_replaced
+                        in  liftIO (writeChan (postjobs env) $ JobLog $ LogMessage (missing_str `T.append` discarded_str) now)
+                                >> pure rebuilt_replaced
                     Right _ -> pure rebuilt
                 -- creating update notification payload
                 let notifications_template = HMS.union rebuilt_replaced rebuilt
