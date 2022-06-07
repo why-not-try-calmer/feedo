@@ -5,7 +5,7 @@ module Mongo where
 import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (void, when, unless)
+import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import qualified Data.ByteString.Char8 as B
@@ -24,8 +24,8 @@ import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Text.Read (readMaybe)
-import Utils (defaultChatSettings)
 import TgramOutJson (ChatId)
+import Utils (defaultChatSettings)
 
 {- Interface -}
 
@@ -493,13 +493,18 @@ digestToBson Digest{..} = [
 {- Logs -}
 
 bsonToLog :: Document -> LogItem
-bsonToLog doc = LogPerf {
-    log_message = fromMaybe mempty $ M.lookup "log_message" doc,
-    log_at = fromMaybe undefined $ M.lookup "log_at" doc,
-    log_refresh = fromMaybe 0 $ M.lookup "log_refresh" doc,
-    log_sending_notif = fromMaybe 0 $ M.lookup "log_sending_notif" doc,
-    log_updating = fromMaybe 0 $ M.lookup "log_update" doc,
-    log_total = fromMaybe 0 $ M.lookup "log_total" doc
+bsonToLog doc = case M.lookup "log_refresh" doc of
+    Just log_refresh -> LogPerf {
+        log_refresh = fromMaybe 0 log_refresh,
+        log_message = fromMaybe mempty $ M.lookup "log_message" doc,
+        log_at = fromMaybe undefined $ M.lookup "log_at" doc,
+        log_sending_notif = fromMaybe 0 $ M.lookup "log_sending_notif" doc,
+        log_updating = fromMaybe 0 $ M.lookup "log_update" doc,
+        log_total = fromMaybe 0 $ M.lookup "log_total" doc
+    }
+    Nothing -> LogMessage {
+        log_message = fromMaybe mempty $ M.lookup "log_message" doc,
+        log_at = fromMaybe undefined $ M.lookup "log_at" doc
     }
 
 logToBson :: LogItem -> Document
@@ -510,6 +515,10 @@ logToBson LogPerf{..} = [
     "log_sending_notif" =: log_sending_notif,
     "log_update" =: log_updating,
     "log_total" =: log_total
+    ]
+logToBson (LogMessage txt t) = [
+    "log_message" =: txt,
+    "log_at" =: t
     ]
 
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
