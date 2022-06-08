@@ -48,7 +48,7 @@ deleteManyFeeds fs = multiExec $ do
     _ <- del (map singleK fs)
     srem "feeds" $ map B.encodeUtf8 fs
 
-getAllFeeds :: (MonadIO m, HasRedis m) => AppConfig -> m (Either T.Text FeedsMap)
+getAllFeeds :: HasRedis m => AppConfig -> m (Either T.Text FeedsMap)
 getAllFeeds env =
     let action = withRedis env $ smembers "feeds" >>= \case
             Left _ -> pure $ Left "Unable to find keys"

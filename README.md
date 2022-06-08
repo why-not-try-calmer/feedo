@@ -46,7 +46,7 @@ __Preview__:
 ## Usage
 
 ### As a service
-The bot is offered as a service to any Telegram user; just summon up [@feedfarer_bot](https://t.me/feedfarer_bot).
+The bot is offered as a service to any Telegram user; just summon up [@feedo](https://t.me/feedo_the_bot).
 
 __Getting started__:
 
