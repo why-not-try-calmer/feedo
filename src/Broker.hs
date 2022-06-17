@@ -23,7 +23,7 @@ import Mongo (HasMongo (evalDb))
 import Notifications (collectDue, markNotified, notifFrom, feedlinksWithMissingPubdates, keepNew)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
-import Utils (freshLastXDays, partitionEither, sortItems)
+import Utils (freshLastXDays, partitionEither, sortItems, readBatchRecipe)
 
 type CacheRes = Either T.Text FromCache
 

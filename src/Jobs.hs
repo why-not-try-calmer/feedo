@@ -2,7 +2,7 @@
 
 module Jobs where
 
-import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), renderDbError, runApp)
+import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
 import Backend (withChat)
 import Broker (HasCache (withCache))
 import Control.Concurrent
@@ -29,7 +29,7 @@ import Replies
   )
 import Requests (reply, reqSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Utils (scanTimeSlices)
+import Utils (scanTimeSlices, renderDbError)
 
 {- Background tasks -}
 

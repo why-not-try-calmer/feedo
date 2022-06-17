@@ -25,7 +25,7 @@ import Requests (TgReqM (runSend), mkKeyboard, reply, runSend, setWebhook, answe
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
-import Utils (maybeUserIdx, partitionEither, tooManySubs)
+import Utils (maybeUserIdx, partitionEither, tooManySubs, toFeedRef, renderUserError, unFeedRefs)
 import Data.Time (addUTCTime, getCurrentTime)
 
 registerWebhook :: AppConfig -> IO ()
