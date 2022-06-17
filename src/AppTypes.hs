@@ -13,7 +13,6 @@ import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Database.Redis (Connection)
-import Text.Read (readMaybe)
 import TgramOutJson (ChatId, InlineKeyboardMarkup, UserId)
 
 {- Replies -}
@@ -144,26 +143,6 @@ type SubChats = (HMS.HashMap ChatId SubChat)
 
 data FeedRef = ByUrl T.Text | ById Int deriving (Eq, Show)
 
-unFeedRef :: FeedRef -> T.Text
-unFeedRef (ByUrl s) = s
-unFeedRef (ById s) = T.pack $ show s
-
-unFeedRefs :: [FeedRef] -> [T.Text]
-unFeedRefs = map unFeedRef
-
-toFeedRef :: [T.Text] -> Either UserError [FeedRef]
-toFeedRef ss
-  | all_valid_urls = Right intoUrls
-  | all_ints = Right intoIds
-  | otherwise = Left . BadRef . T.concat $ ss
-  where
-    all_valid_urls = all (== "https://") (first8 ss)
-    first8 = map (T.take 8)
-    all_ints = maybe False (all (\n -> n >= 1 && n < 100)) maybeInts
-    maybeInts = mapM (readMaybe . T.unpack) ss :: Maybe [Int]
-    intoUrls = map ByUrl ss
-    intoIds = maybe [] (map ById) (mapM (readMaybe . T.unpack) ss)
-
 {- Admins -}
 
 data AdminUser = AdminUser {
@@ -246,22 +225,6 @@ data UserError
   | UserNotAdmin
   deriving (Eq, Show)
 
-renderUserError :: UserError -> T.Text
-renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
-renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t
-renderUserError (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
-renderUserError (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
-renderUserError (ParseError input) = T.append "Parsing this input failed: " input
-renderUserError (UpdateError err) = T.append "Unable to update, because of this error: " err
-renderUserError (NotFoundFeed feed) = T.append "The feed you were looking for does not exist: " feed
-renderUserError NotFoundChat = "The chat you called from is not subscribed to any feed yet."
-renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
-renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
-renderUserError TelegramErr = "Telegram responded with an error. Are you sure you're using the right chat_id?"
-renderUserError (Ignore input) = "Ignoring " `T.append` input
-renderUserError ChatNotPrivate = "Unwilling to share authentication credentials in a non-private chat. Please use this command in a private conversation with to the bot."
-renderUserError UserNotAdmin = "Only admins can change settings."
-
 data ChatRes =
     ChatUpdated SubChat |
     ChatOk
@@ -292,14 +255,6 @@ data Batch =
     Follows [Feed] |
     Digests [Feed]
     deriving (Show, Eq)
-
-readBatchRecipe :: BatchRecipe -> [FeedLink]
-readBatchRecipe (FollowFeedLinks ls) = ls
-readBatchRecipe (DigestFeedLinks ls) = ls
-
-mkBatch :: BatchRecipe -> [Feed] -> Batch
-mkBatch (FollowFeedLinks _) ls = Follows ls
-mkBatch (DigestFeedLinks _) ls = Digests ls
 
 {- Database actions, errors -}
 
@@ -334,8 +289,6 @@ data DbAction
   | DeleteChat ChatId
   | GetAllFeeds
   | GetAllChats
-  -- | GetAllPages
-  | GetFeed FeedLink
   | GetPages ChatId Int
   | IncReads [FeedLink]
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
@@ -366,8 +319,6 @@ data DbRes = DbFeeds [Feed]
   | DbPages [T.Text] (Maybe T.Text)
   deriving (Eq, Show)
   
--- | DbPagesOne [PageOne]
-  
 data DbError
   = PipeNotAcquired
   | FaultyToken
@@ -381,19 +332,6 @@ data DbError
   | FailedToInsertPage
   | FailedToGetAllPages
   deriving (Show, Eq)
-
-renderDbError :: DbError -> T.Text
-renderDbError PipeNotAcquired = "Failed to open a connection against the database."
-renderDbError FaultyToken = "Login failed. This token is not valid, and perhaps never was."
-renderDbError (FailedToUpdate items reason) = "Unable to update the following items :" `T.append` items `T.append` ". Reason: " `T.append` reason
-renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
-renderDbError FailedToLog = "Failed to log."
-renderDbError FailedToLoadFeeds = "Failed to load feeds!"
-renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt
-renderDbError FailedToSaveDigest = "Unable to save this digest. The database didn't return a valid identifier."
-renderDbError FailedToProduceValidId = "Db was unable to return a valid identifier"
-renderDbError FailedToInsertPage = "Db was unable to insert these pages."
-renderDbError FailedToGetAllPages = "Db was unable to retrieve all pages."
 
 data PageOne = PageOne {
     page_one :: T.Text,
@@ -449,7 +387,6 @@ data LogItem = LogPerf
 
 data Job =
     JobArchive [Feed] UTCTime |
-    -- JobFlipPages |
     JobIncReadsJob [FeedLink] |
     JobLog LogItem |
     JobPin ChatId Int |
@@ -522,11 +459,3 @@ newtype App m a = App { getApp :: ReaderT AppConfig m a }
 
 runApp :: AppConfig -> App m a -> m a
 runApp env action = runReaderT (getApp action) env
-
-{-
-newtype App' e m a = App' { getApp' :: ExceptT e (ReaderT AppConfig m) a }
-  deriving (Functor, Applicative, Monad, MonadReader AppConfig, MonadError e, MonadIO)
-
-runApp' :: AppConfig -> App' e m a -> m (Either e a)
-runApp' env action = runReaderT (runExceptT $ getApp' action) env
--}

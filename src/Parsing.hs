@@ -8,7 +8,6 @@ import AppTypes ( Feed (..),
     ParsingSettings (..),
     Settings (settings_digest_title),
     UserError (BadFeedUrl, BadInput, ParseError),
-    renderUserError,
     )
 import Control.Exception
 import Control.Monad.IO.Class
@@ -23,7 +22,7 @@ import Requests (fetchFeed)
 import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
-import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
+import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs, renderUserError)
 
 {- Feeds, Items -}
 

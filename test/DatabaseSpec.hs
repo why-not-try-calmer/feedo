@@ -7,10 +7,10 @@ import Control.Exception
 import Control.Monad.IO.Class
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
-import System.Environment (getEnvironment)
-import Test.Hspec
 import Mongo
 import Redis
+import System.Environment (getEnvironment)
+import Test.Hspec
 
 evalDb' action = liftIO getCurrentTime >>= \now -> case action of
     DbAskForLogin _ _ -> pure $ DbToken mempty
@@ -19,7 +19,6 @@ evalDb' action = liftIO getCurrentTime >>= \now -> case action of
     DeleteChat _ -> pure DbOk
     GetAllFeeds -> pure $ DbFeeds []
     GetAllChats -> pure $ DbChats []
-    GetFeed _ -> pure $ DbFeeds []
     IncReads _ -> pure DbOk
     DbSearch key _ _ -> pure $ DbSearchRes key []
     PruneOld _ -> pure DbOk

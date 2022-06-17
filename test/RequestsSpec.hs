@@ -3,15 +3,19 @@
 
 module RequestsSpec where
 
-import AppTypes
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Requests
-    ( TgReqM(runSend, runSend_), mkPagination, mkKeyboard, reply)
 import AppServer (makeConfig)
+import AppTypes
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Maybe (fromJust)
+import qualified Data.Text as T
+import Requests
+  ( TgReqM (runSend, runSend_),
+    mkKeyboard,
+    mkPagination,
+    reply,
+  )
 import System.Environment
 import Test.Hspec
-import qualified Data.Text as T
-import Data.Maybe (fromJust)
 import TgramOutJson
 
 getConns :: IO AppConfig

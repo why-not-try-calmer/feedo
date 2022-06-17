@@ -2,18 +2,18 @@
 
 module ParsingSpec where
 
-import AppTypes (BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_link, f_items, f_title), ParsingSettings (PDigestAt), Settings (Settings), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), Batch (Digests))
+import AppTypes (Batch (Digests), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_items, f_link, f_title), ParsingSettings (PDigestAt), Settings (Settings), SubChat (SubChat, sub_chatid), WordMatches (WordMatches))
 import Control.Concurrent.Async (mapConcurrently)
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time (getCurrentTime)
 import Network.HTTP.Req (renderUrl)
 import Notifications (notifFrom)
 import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
 import Test.Hspec
 import Utils (partitionEither)
-import Data.Time (getCurrentTime)
 
 spec :: Spec
 spec = go >> go1 >> go2 >> go3

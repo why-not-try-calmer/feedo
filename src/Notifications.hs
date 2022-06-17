@@ -12,6 +12,7 @@ import TgramOutJson (ChatId)
 import Mongo (HasMongo (evalDb))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Concurrent
+import Utils (mkBatch, renderDbError)
 
 collectDue ::
     SubChats ->
@@ -120,16 +121,16 @@ feedlinksWithMissingPubdates fs = HMS.keys $ HMS.filter
 
 keepNew :: HMS.HashMap T.Text Feed -> [Feed] -> ([T.Text], HMS.HashMap T.Text Feed)
 -- filters out duplicate items from rebuilt feeds kept
-keepNew feeds_map feeds =
+keepNew rebuilt from_cache =
     let delKey f = HMS.delete (f_link f)
         step (discarded, new_feeds_hmap) old_f = case HMS.lookup (f_link old_f) new_feeds_hmap of
             Nothing -> (discarded, new_feeds_hmap)
             Just new_f ->
-                let new_items = f_items new_f
-                    old_items = f_items old_f
-                    maybe_first_last = if null new_items then Nothing else Just (head new_items, last new_items)
-                    diffed = filter (\new_item -> all (\old_item -> i_link new_item /= i_link old_item) old_items) new_items
-                    discarded' = discarded ++ map i_link new_items
+                let rebuilt_items = f_items new_f
+                    cached_items_links = map i_link $ f_items old_f
+                    maybe_first_last = if null rebuilt_items then Nothing else Just (head rebuilt_items, last rebuilt_items)
+                    diffed = filter (\new_item -> i_link new_item `notElem` cached_items_links) rebuilt_items
+                    discarded' = discarded ++ map i_link rebuilt_items
                 in  if null diffed
                     then (discarded', delKey old_f new_feeds_hmap)
                     else case maybe_first_last of
@@ -139,7 +140,7 @@ keepNew feeds_map feeds =
                             else 
                                 let updated = HMS.update (\f -> Just $ f { f_items = diffed } ) (f_link old_f) new_feeds_hmap
                                 in  (discarded', updated)
-    in  foldl' step ([], feeds_map) feeds
+    in  foldl' step ([], rebuilt) from_cache
 
 markNotified :: MonadIO m => AppConfig -> [ChatId] -> UTCTime -> m ()
 -- marking input chats as notified 

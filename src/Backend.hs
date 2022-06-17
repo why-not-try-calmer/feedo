@@ -17,7 +17,7 @@ import Mongo (HasMongo (evalDb), evalDb)
 import Notifications
 import Parsing (rebuildFeed)
 import TgramOutJson (ChatId)
-import Utils (defaultChatSettings, removeByUserIdx, sortItems, updateSettings)
+import Utils (defaultChatSettings, removeByUserIdx, sortItems, updateSettings, renderDbError)
 
 withChat :: MonadIO m => UserAction -> ChatId -> App m (Either UserError ChatRes)
 withChat action cid = do
