@@ -19,7 +19,6 @@ evalDb' action = liftIO getCurrentTime >>= \now -> case action of
     DeleteChat _ -> pure DbOk
     GetAllFeeds -> pure $ DbFeeds []
     GetAllChats -> pure $ DbChats []
-    GetFeed _ -> pure $ DbFeeds []
     IncReads _ -> pure DbOk
     DbSearch key _ _ -> pure $ DbSearchRes key []
     PruneOld _ -> pure DbOk

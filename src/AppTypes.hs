@@ -334,8 +334,6 @@ data DbAction
   | DeleteChat ChatId
   | GetAllFeeds
   | GetAllChats
-  -- | GetAllPages
-  | GetFeed FeedLink
   | GetPages ChatId Int
   | IncReads [FeedLink]
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
@@ -365,8 +363,6 @@ data DbRes = DbFeeds [Feed]
   | DbNoPage ChatId Int
   | DbPages [T.Text] (Maybe T.Text)
   deriving (Eq, Show)
-  
--- | DbPagesOne [PageOne]
   
 data DbError
   = PipeNotAcquired
@@ -449,7 +445,6 @@ data LogItem = LogPerf
 
 data Job =
     JobArchive [Feed] UTCTime |
-    -- JobFlipPages |
     JobIncReadsJob [FeedLink] |
     JobLog LogItem |
     JobPin ChatId Int |
@@ -522,11 +517,3 @@ newtype App m a = App { getApp :: ReaderT AppConfig m a }
 
 runApp :: AppConfig -> App m a -> m a
 runApp env action = runReaderT (getApp action) env
-
-{-
-newtype App' e m a = App' { getApp' :: ExceptT e (ReaderT AppConfig m) a }
-  deriving (Functor, Applicative, Monad, MonadReader AppConfig, MonadError e, MonadIO)
-
-runApp' :: AppConfig -> App' e m a -> m (Either e a)
-runApp' env action = runReaderT (runExceptT $ getApp' action) env
--}

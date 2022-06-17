@@ -173,8 +173,11 @@ withBroker CacheRefresh = do
                             discarded_str =  "Discarded: " `T.append` (T.pack . show . length $ discarded) `T.append`
                                 " items. Added: " `T.append` T.intercalate ", " (HMS.keys rebuilt_replaced)
                             -- reporting and returning filtered out old item links
-                        in  liftIO (writeChan (postjobs env) $ JobLog $ LogMessage (missing_str `T.append` discarded_str) now)
-                                >> pure rebuilt_replaced
+                        in  do
+                            liftIO $ unless (null discarded) $
+                                writeChan (postjobs env) (JobLog $ 
+                                    LogMessage (missing_str `T.append` discarded_str) now)
+                            pure rebuilt_replaced
                     Right _ -> pure rebuilt
                 -- creating update notification payload
                 let notifications_template = HMS.union rebuilt_replaced rebuilt

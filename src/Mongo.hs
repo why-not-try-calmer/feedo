@@ -254,22 +254,6 @@ evalMongo env GetAllChats =
         Right docs ->
             if null docs then pure DbNoChat
             else pure $ DbChats . map readDoc $ docs
-{-
-evalMongo env GetAllPages =
-    let action = find (select [] "pages")
-    in  withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ DbErr FailedToGetAllPages
-        Right docs -> 
-            let pages = reduceMaybeWith bsonToPage docs
-            in  if null pages then pure $ DbErr FailedToGetAllPages
-                else pure $ DbPagesOne pages  
--}
-evalMongo env (GetFeed link) =
-    let action = withMongo env $ findOne (select ["f_link" =: link] "feeds")
-    in  action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetFeed failed"
-        Right (Just doc) -> pure $ DbFeeds [bsonToFeed doc]
-        Right Nothing -> pure DbNoFeed
 evalMongo env (GetPages cid mid) =
     let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
     in  action >>= \case
