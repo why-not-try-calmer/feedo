@@ -2,7 +2,7 @@
 
 module ParsingSpec where
 
-import AppTypes (Batch (Digests), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_items, f_link, f_title), ParsingSettings (PDigestAt), Settings (Settings), SubChat (SubChat, sub_chatid), WordMatches (WordMatches))
+import AppTypes (Batch (Digests), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_items, f_link, f_title), ParsingSettings (PDigestAt), Settings (Settings), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), Item (i_pubdate))
 import Control.Concurrent.Async (mapConcurrently)
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
@@ -55,9 +55,19 @@ spec = go >> go1 >> go2 >> go3
                         notifs = notifFrom (Just now) feedlinks feedsmap chats_recipes
                         only_feeds = HMS.map (\(_, Digests ds) -> foldMap (\f -> [
                             f_title f,
-                            f_link f, 
-                            T.pack . show . length $ f_items f
+                            f_link f,
+                            T.pack . show . length $ f_items f,
+                            "Faulty (default) pubdates: " `T.append` (faulty . f_items $ f),
+                            "Proof: " `T.append` T.intercalate "," (map (T.pack . show . i_pubdate) $ f_items f) 
                             ]) ds) notifs
                     print only_feeds
                     notifs `shouldSatisfy` (not . null . HMS.toList)
             in  desc $ as target
+            where
+                faulty [] = "No item found!"
+                faulty [i] = "Only one item found, cannot check if faulty."
+                faulty (i:is) = 
+                    let initial = i_pubdate i
+                        final = i_pubdate . last $ is 
+                    in  if length is == 1 && initial == final then "2"
+                        else T.pack . show . length $ filter (\i -> i_pubdate i == initial) is
