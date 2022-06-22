@@ -175,7 +175,12 @@ interpretCmd contents
             Just n ->
                 if null $ tail args then Left . BadInput $ "Cannot subscribe to an empty list urls..."
                 else Right . SubChannel n $ tail args
-    | cmd == "/testdigest" = Right TestDigest
+    | cmd == "/testdigest" = 
+        if null args then Right TestDigest
+        else if length args > 1 then Left . BadInput $ "/testdigest cannot take more than one (optional) argument (channel_id)."
+        else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
+            Nothing -> Left . BadInput $ "The first value passed to /list could not be parsed into a valid chat_id."
+            Just n -> Right . TestDigestChannel $ n
     | cmd == "/unsub" =
         if null args then Left . BadInput $ "/unsub <optional: channel id> <mandatory: list of #s or url feeds>" else
         case readMaybe . T.unpack . head $ args :: Maybe ChatId of
@@ -543,6 +548,7 @@ evalTgAct uid TestDigest  cid = ask >>= \env ->
                     let filtered = filter (\i -> i_pubdate i > last_week now) $ f_items feed
                     in  if null filtered then fs else feed { f_items = take 3 filtered }:fs
             in  foldl' step []
+evalTgAct uid (TestDigestChannel chan_id) _ = evalTgAct uid TestDigest chan_id
 evalTgAct uid (UnSub feeds) cid = ask >>= \env ->
     checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
         Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
