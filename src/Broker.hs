@@ -207,7 +207,7 @@ withBroker CacheRefresh = do
                                         )
                                 pure rebuilt_replaced
                             Right _ -> pure rebuilt
-                    -- creating update notification payload
+                    -- creating update notification payload, with 'last_run' used only for 'follow notifications'
                     let notifications_template = HMS.union rebuilt_replaced rebuilt
                         digests = notifFrom last_run flinks_to_rebuild notifications_template due
                         has_digest = HMS.keys digests
@@ -233,6 +233,10 @@ withBroker CacheRefresh = do
                                     , log_not_updated = S.toList not_updated_feeds
                                     , log_at = now
                                     }
+                        -- logging possibly too aggressive union:
+                        unless (rebuilt /= rebuilt_replaced) $ do
+                            writeChan (postjobs env) . JobTgAlert $
+                                "Replaced " `T.append` (T.pack . show $ rebuilt) `T.append` (T.pack . show $ rebuilt_replaced)
                     pure . Right $ CacheDigests digests
   where
     partitionDigests =
