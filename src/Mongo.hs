@@ -612,7 +612,7 @@ collectLogStats env = do
         Right (docs_logs, feeds_docs) ->
             let logs = sortOn log_at . filter (not . T.null . log_message) . map readDoc $ docs_logs
                 feeds_counts = map (\d -> let f = readDoc d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
-             in pure $ foldl' (\acc (k, v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
+             in pure $ foldl' (\acc (!k, !v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
   where
     mkStats logs =
         let values =

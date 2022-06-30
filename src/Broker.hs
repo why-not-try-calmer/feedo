@@ -260,7 +260,7 @@ withBroker CacheRefresh = do
          in T.intercalate ", " $ filter (`notElem` get_items repl) (get_items reb)
     partitionDigests =
         foldl'
-            ( \(not_found, found) (c, bat) ->
+            ( \(!not_found, !found) (!c, !bat) ->
                 let subs = sub_feeds_links c
                     found' = case bat of
                         Follows fs -> S.fromList $ map f_link fs
