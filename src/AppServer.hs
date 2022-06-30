@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
 
 module AppServer (startApp, registerWebhook, makeConfig) where
 
@@ -30,62 +30,67 @@ import Utils (renderUserError)
 import Web
 
 type BotAPI =
-    Get '[HTML] Markup :<|>
-    "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] () :<|>
-    "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup :<|>
-    "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup :<|>
-    "read_settings" :> ReqBody '[JSON] ReadReq :> Post '[JSON] ReadResp :<|>
-    "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteResp :<|>
-    "settings" :> Raw
+    Get '[HTML] Markup
+        :<|> "webhook" :> Capture "secret" T.Text :> ReqBody '[JSON] Update :> Post '[JSON] ()
+        :<|> "digests" :> Capture "digest_id" T.Text :> Get '[HTML] Markup
+        :<|> "view" :> QueryParam "flinks" T.Text :> QueryParam "from" T.Text :> QueryParam "to" T.Text :> Get '[HTML] Markup
+        :<|> "read_settings" :> ReqBody '[JSON] ReadReq :> Post '[JSON] ReadResp
+        :<|> "write_settings" :> ReqBody '[JSON] WriteReq :> Post '[JSON] WriteResp
+        :<|> "settings" :> Raw
 
 botApi :: Proxy BotAPI
 botApi = Proxy
 
 server :: MonadIO m => ServerT BotAPI (App m)
 server =
-    home :<|>
-    handleWebhook :<|>
-    viewDigests :<|>
-    viewSearchRes :<|>
-    readSettings :<|>
-    writeSettings :<|>
-    staticSettings where
-
+    home
+        :<|> handleWebhook
+        :<|> viewDigests
+        :<|> viewSearchRes
+        :<|> readSettings
+        :<|> writeSettings
+        :<|> staticSettings
+  where
     handleWebhook :: MonadIO m => T.Text -> Update -> App m ()
-    handleWebhook secret update = ask >>= \env ->
-        let tok = bot_token . tg_config
-            finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
-            handle upd = case callback_query upd of
-                Just dat -> processCbq dat
-                Nothing -> case message upd of
-                    Nothing -> liftIO $ putStrLn "Failed to parse message"
-                    Just msg ->
-                        let cid = chat_id . chat $ msg
-                            uid = user_id . fromJust . from $ msg
-                        in  case reply_to_message msg of
-                            Just _ -> pure () -- ignoring replies
-                            Nothing -> case TgramInJson.text msg of
-                                Nothing -> pure () -- ignoring empty contents
-                                Just conts -> case interpretCmd conts of
-                                    Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
-                                    Left err -> finishWith cid err
-                                    Right action -> evalTgAct uid action cid >>= \case
-                                        Left err -> finishWith cid err
-                                        Right r -> reply (tok env) cid r (postjobs env)
-        in  if EQ == compare secret (tok env)
-            then liftIO (try . runApp env . handle $ update) >>= \case
-                -- catching all leftover exceptions if any
-                Left (SomeException err) -> liftIO $ writeChan (postjobs env) $ 
-                    JobTgAlert $ "Exception thrown against handler: " `T.append` (T.pack . show $ err)
-                Right _ -> pure ()
-            else liftIO $ putStrLn "Secrets do not match."
-            
+    handleWebhook secret update =
+        ask >>= \env ->
+            let tok = bot_token . tg_config
+                finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
+                handle upd = case callback_query upd of
+                    Just dat -> processCbq dat
+                    Nothing -> case message upd of
+                        Nothing -> liftIO $ putStrLn "Failed to parse message"
+                        Just msg ->
+                            let cid = chat_id . chat $ msg
+                                uid = user_id . fromJust . from $ msg
+                             in case reply_to_message msg of
+                                    Just _ -> pure () -- ignoring replies
+                                    Nothing -> case TgramInJson.text msg of
+                                        Nothing -> pure () -- ignoring empty contents
+                                        Just conts -> case interpretCmd conts of
+                                            Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
+                                            Left err -> finishWith cid err
+                                            Right action ->
+                                                evalTgAct uid action cid >>= \case
+                                                    Left err -> finishWith cid err
+                                                    Right r -> reply (tok env) cid r (postjobs env)
+             in if EQ == compare secret (tok env)
+                    then
+                        liftIO (try . runApp env . handle $ update) >>= \case
+                            -- catching all leftover exceptions if any
+                            Left (SomeException err) ->
+                                liftIO $
+                                    writeChan (postjobs env) $
+                                        JobTgAlert $ "Exception thrown against handler: " `T.append` (T.pack . show $ err)
+                            Right _ -> pure ()
+                    else liftIO $ putStrLn "Secrets do not match."
+
     staticSettings :: MonadIO m => ServerT Raw m
     staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
 
 initServer :: AppConfig -> Server BotAPI
 initServer config = hoistServer botApi (runApp config) server
-    
+
 withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
 
@@ -96,36 +101,42 @@ makeConfig env =
         base = T.pack . fromJust $ lookup "BASE_URL" env
         webhook =
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
-            in  if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
+             in if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
         mongo_connection_string = fromJust $ lookup "MONGO_CONN_STRING" env
         port = maybe 80 read $ lookup "PORT" env
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
-    in do
-    mvar <- newMVar HMS.empty
-    chan <- newChan
-    conn <- setupRedis >>= \case
-        Left err -> throwIO . userError $ err
-        Right c -> putStrLn "Redis...OK" >> pure c
-    (pipe, creds) <- setupMongo mongo_connection_string >>= \case
-        Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
-        Right p -> putStrLn "Mongo...OK" >> pure p
-    pipe_ioref <- newIORef pipe
-    last_run_ioref <- newIORef Nothing
-    pure (AppConfig {
-        tg_config = ServerConfig {bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id},
-        base_url = base,
-        mongo_creds = creds,
-        last_worker_run = last_run_ioref,
-        subs_state = mvar,
-        postjobs = chan,
-        worker_interval = interval,
-        connectors = (conn, pipe_ioref)
-        }, port)
+     in do
+            mvar <- newMVar HMS.empty
+            chan <- newChan
+            conn <-
+                setupRedis >>= \case
+                    Left err -> throwIO . userError $ err
+                    Right c -> putStrLn "Redis...OK" >> pure c
+            (pipe, creds) <-
+                setupMongo mongo_connection_string >>= \case
+                    Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
+                    Right p -> putStrLn "Mongo...OK" >> pure p
+            pipe_ioref <- newIORef pipe
+            last_run_ioref <- newIORef Nothing
+            pure
+                ( AppConfig
+                    { tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
+                    , base_url = base
+                    , mongo_creds = creds
+                    , last_worker_run = last_run_ioref
+                    , subs_state = mvar
+                    , postjobs = chan
+                    , worker_interval = interval
+                    , connectors = (conn, pipe_ioref)
+                    }
+                , port
+                )
 
 initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
 initStart = loadChats >> regenFeeds >> refresh_cache >> postProcJobs >> procNotif
-    where
-        refresh_cache = withCache CacheWarmup >>= \case
+  where
+    refresh_cache =
+        withCache CacheWarmup >>= \case
             Left msg -> liftIO $ do
                 print $ "Unable to warm up cache: " `T.append` msg
                 putStrLn "Proceededing nonetheless"
@@ -137,5 +148,5 @@ startApp = do
     (config, port) <- makeConfig env
     registerWebhook config
     runApp config initStart
-    print $ "Server now listening to port " `T.append`(T.pack . show $ port)
+    print $ "Server now listening to port " `T.append` (T.pack . show $ port)
     run port . withServer $ config

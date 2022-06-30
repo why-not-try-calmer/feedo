@@ -81,6 +81,15 @@ findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
         next_day = addUTCTime (toNominalDifftime early_h early_m) until_midnight
         still_today = addUTCTime (minimum times) now
 
+collectNoDigest :: [ChatId] -> HMS.HashMap k (SubChat, b) -> [ChatId]
+collectNoDigest has_digest =
+    HMS.foldl'
+        ( \acc (!c, _) ->
+            let cid = sub_chatid c
+             in if cid `notElem` has_digest then cid : acc else acc
+        )
+        []
+
 notifFrom ::
     Maybe UTCTime ->
     [FeedLink] ->
@@ -141,6 +150,20 @@ keepNew rebuilt from_cache =
                                 let updated = HMS.update (\f -> Just $ f { f_items = diffed } ) (f_link old_f) new_feeds_hmap
                                 in  (discarded', updated)
     in  foldl' step ([], rebuilt) from_cache
+
+--partitionDigests ::
+partitionDigests :: HMS.HashMap ChatId (SubChat, Batch) -> (S.Set T.Text, S.Set T.Text)
+partitionDigests =
+    foldl'
+        ( \(not_found, found) (c, bat) ->
+            let subs = sub_feeds_links c
+                found' = case bat of
+                    Follows fs -> S.fromList $ map f_link fs
+                    Digests fs -> S.fromList $ map f_link fs
+                not_found' = S.filter (`notElem` found') subs
+             in (not_found `S.union` not_found', found `S.union` found')
+        )
+        (mempty, mempty)
 
 markNotified :: MonadIO m => AppConfig -> [ChatId] -> UTCTime -> m ()
 -- marking input chats as notified 

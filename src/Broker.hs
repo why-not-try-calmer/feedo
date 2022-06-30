@@ -18,10 +18,10 @@ import Data.IORef (readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
-import Data.Time (getCurrentTime)
+import Data.Time (UTCTime, getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
-import Notifications (collectDue, feedlinksWithMissingPubdates, keepNew, markNotified, notifFrom)
+import Notifications (collectDue, collectNoDigest, feedlinksWithMissingPubdates, keepNew, markNotified, notifFrom)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
 import Utils (freshLastXDays, partitionEither, readBatchRecipe, sortItems)
@@ -72,6 +72,34 @@ getAllFeeds env =
 
 feedsHmap :: [Feed] -> HMS.HashMap FeedLink Feed
 feedsHmap = HMS.fromList . map (\f -> (f_link f, f))
+
+rebuildUpdate ::
+    (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
+    AppConfig ->
+    [FeedLink] ->
+    UTCTime ->
+    m (Either T.Text (HMS.HashMap T.Text Feed))
+rebuildUpdate env flinks now = do
+    succeeded <- liftIO $ do
+        -- rebuilding all feeds with any subscribers
+        eitherUpdated <- mapConcurrently rebuildFeed flinks
+        let (failed, succeeded) = partitionEither eitherUpdated
+        -- handling case of some feeds not rebuilding
+        unless
+            (null failed)
+            ( writeChan (postjobs env) . JobTgAlert $
+                "Failed to update these feeds: " `T.append` T.intercalate ", " failed
+            )
+        -- archiving
+        writeChan (postjobs env) $ JobArchive succeeded now
+        pure succeeded
+    getAllFeeds env >>= \case
+        Left _ -> pure . Left $ "Unable to acquire old feeds. Refresh aborted."
+        Right old_feeds ->
+            -- updating cache
+            let fresh_feeds = HMS.fromList . map (\f -> (f_link f, f)) $ succeeded
+                to_cache = HMS.union fresh_feeds old_feeds
+             in withBroker (CachePushFeeds $ HMS.elems to_cache) >> pure (Right to_cache)
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
@@ -185,40 +213,28 @@ withBroker CacheRefresh = do
     if HMS.null due
         then pure $ Right CacheOk
         else
-            rebuild_update flinks_to_rebuild now env >>= \case
+            rebuildUpdate env flinks_to_rebuild now >>= \case
                 Left err -> pure $ Left err
                 Right rebuilt -> do
                     -- sometimes a digest would contain items with the same timestamps, but
                     -- we can filter them out through a simple comparison
-                    let missing = feedlinksWithMissingPubdates rebuilt
                     rebuilt_replaced <-
-                        withBroker (CachePullFeeds missing) >>= \case
-                            Left err -> do
-                                liftIO . writeChan (postjobs env) $ JobTgAlert err
+                        withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
+                            Left err -> liftIO $ do
+                                writeChan (postjobs env) $ JobTgAlert err
                                 pure rebuilt
-                            Right (CacheFeeds fs) -> do
+                            Right (CacheFeeds fs) -> liftIO $ do
                                 let (discarded_duplicates, rebuilt_replaced) = keepNew rebuilt fs
                                 -- logging when that happens
-                                liftIO . unless (null discarded_duplicates) $
-                                    writeChan
-                                        (postjobs env)
-                                        ( JobLog $
-                                            LogMissing discarded_duplicates (sum . map (length . snd) $ discarded_duplicates) now
-                                        )
+                                unless (null discarded_duplicates) $
+                                    writeChan (postjobs env) . JobLog $
+                                        LogMissing discarded_duplicates (sum . map (length . snd) $ discarded_duplicates) now
                                 pure rebuilt_replaced
                             Right _ -> pure rebuilt
                     -- creating update notification payload, with 'last_run' used only for 'follow notifications'
-                    let notifications_template = HMS.union rebuilt_replaced rebuilt
-                        digests = notifFrom last_run flinks_to_rebuild notifications_template due
+                    let digests = notifFrom last_run flinks_to_rebuild (HMS.union rebuilt_replaced rebuilt) due
                         has_digest = HMS.keys digests
-                        no_digest =
-                            HMS.foldl'
-                                ( \acc (!c, _) ->
-                                    let cid = sub_chatid c
-                                     in if cid `notElem` has_digest then cid : acc else acc
-                                )
-                                []
-                                due
+                        no_digest = collectNoDigest has_digest due
                         (not_updated_feeds, updated_feeds) = partitionDigests digests
                     liftIO $ do
                         -- logging due chats with no digest
@@ -236,9 +252,12 @@ withBroker CacheRefresh = do
                         -- logging possibly too aggressive union:
                         unless (rebuilt /= rebuilt_replaced) $ do
                             writeChan (postjobs env) . JobTgAlert $
-                                "Replaced " `T.append` (T.pack . show $ rebuilt) `T.append` (T.pack . show $ rebuilt_replaced)
+                                "Replaced " `T.append` reportOverwritten rebuilt rebuilt_replaced
                     pure . Right $ CacheDigests digests
   where
+    reportOverwritten reb repl =
+        let get_items = foldMap (map i_link . f_items)
+         in T.intercalate ", " $ filter (`notElem` get_items repl) (get_items reb)
     partitionDigests =
         foldl'
             ( \(not_found, found) (c, bat) ->
@@ -250,27 +269,6 @@ withBroker CacheRefresh = do
                  in (not_found `S.union` not_found', found `S.union` found')
             )
             (mempty, mempty)
-    rebuild_update flinks now env = do
-        succeeded <- liftIO $ do
-            -- rebuilding all feeds with any subscribers
-            eitherUpdated <- mapConcurrently rebuildFeed flinks
-            let (failed, succeeded) = partitionEither eitherUpdated
-            -- handling case of some feeds not rebuilding
-            unless
-                (null failed)
-                ( writeChan (postjobs env) . JobTgAlert $
-                    "Failed to update these feeds: " `T.append` T.intercalate ", " failed
-                )
-            -- archiving
-            writeChan (postjobs env) $ JobArchive succeeded now
-            pure succeeded
-        -- updating cache
-        getAllFeeds env >>= \case
-            Left _ -> pure . Left $ "Unable to acquire old feeds. Refresh aborted."
-            Right old_feeds ->
-                let fresh_feeds = HMS.fromList . map (\f -> (f_link f, f)) $ succeeded
-                    to_cache = HMS.union fresh_feeds old_feeds
-                 in withBroker (CachePushFeeds $ HMS.elems to_cache) >> pure (Right to_cache)
 withBroker CacheWarmup =
     ask >>= \env ->
         evalDb env GetAllFeeds >>= \case
