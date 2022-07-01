@@ -250,7 +250,7 @@ withBroker CacheRefresh = do
                                     , log_at = now
                                     }
                         -- logging possibly too aggressive union:
-                        unless (rebuilt /= rebuilt_replaced) $ do
+                        unless (rebuilt == rebuilt_replaced) $ do
                             writeChan (postjobs env) . JobTgAlert $
                                 "Replaced " `T.append` reportOverwritten rebuilt rebuilt_replaced
                     pure . Right $ CacheDigests digests
