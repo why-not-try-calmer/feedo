@@ -4,7 +4,7 @@ services:
       container_name: feedfarer-test
       depends_on: [redis]
       restart: "no"
-      build: .
+      build: ./Dockerfile-test
       command: stack test
       ports: [80:80]
       environment:

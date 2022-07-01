@@ -251,13 +251,16 @@ withBroker CacheRefresh = do
                                     }
                         -- logging possibly too aggressive union:
                         unless (rebuilt == rebuilt_replaced) $ do
-                            writeChan (postjobs env) . JobTgAlert $
-                                "Replaced " `T.append` reportOverwritten rebuilt rebuilt_replaced
+                            let missing = get_missing rebuilt rebuilt_replaced
+                            writeChan (postjobs env) . JobLog $
+                                LogMissing missing (sum . map (length . snd) $ missing) now
                     pure . Right $ CacheDigests digests
   where
-    reportOverwritten reb repl =
-        let get_items = foldMap (map i_link . f_items)
-         in T.take 3950 . T.intercalate ", " $ filter (`notElem` get_items repl) (get_items reb)
+    get_missing reb repl =
+        let get_items = foldMap f_items
+            diff = filter (`notElem` get_items repl) (get_items reb)
+            step acc i = HMS.adjust (i_link i :) (i_feed_link i) acc
+         in HMS.toList . foldl' step HMS.empty $ diff
     partitionDigests =
         foldl'
             ( \(!not_found, !found) (!c, !bat) ->
