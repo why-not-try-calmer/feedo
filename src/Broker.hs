@@ -257,7 +257,7 @@ withBroker CacheRefresh = do
   where
     reportOverwritten reb repl =
         let get_items = foldMap (map i_link . f_items)
-         in T.intercalate ", " $ filter (`notElem` get_items repl) (get_items reb)
+         in T.take 3950 . T.intercalate ", " $ filter (`notElem` get_items repl) (get_items reb)
     partitionDigests =
         foldl'
             ( \(!not_found, !found) (!c, !bat) ->
