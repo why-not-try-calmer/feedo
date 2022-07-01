@@ -5,7 +5,7 @@ services:
       depends_on: [redis]
       restart: "no"
       context: .
-      build: Dockerfile-test
+      build: Dockerfile_test
       command: stack test
       ports: [80:80]
       environment:
