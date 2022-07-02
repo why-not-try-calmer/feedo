@@ -212,7 +212,7 @@ withBroker CacheRefresh = do
                 Right rebuilt -> do
                     -- sometimes a digest would contain items with the same timestamps, but
                     -- we can filter them out through a simple comparison
-                    last_batch <- get_last_batch env rebuilt
+                    last_batch <- get_last_batch rebuilt
                     -- caching
                     recached <- withBroker . CachePushFeeds $ HMS.elems rebuilt
                     -- creating update notification payload, with 'last_run' used only for 'follow notifications'
@@ -243,13 +243,10 @@ withBroker CacheRefresh = do
                                 LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
                     pure . Right $ CacheDigests $ batches post
   where
-    get_last_batch env rebuilt =
+    get_last_batch rebuilt =
         withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
-            Left err -> liftIO $ do
-                writeChan (postjobs env) $ JobTgAlert err
-                pure mempty
             Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
-            Right _ -> pure mempty
+            _ -> pure mempty
     partitionDigests =
         foldl'
             ( \(!not_found, !found) (!c, !bat) ->
