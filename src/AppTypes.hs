@@ -379,6 +379,11 @@ data FromCache
 
 type FeedItems = [(Feed, [Item])]
 
+data Notifier
+    = Pre {feeds_to_refresh :: [FeedLink], batch_recipes :: HMS.HashMap ChatId (SubChat, BatchRecipe), n_last_run :: Maybe UTCTime}
+    | Post {discarded_items_links :: [T.Text], batches :: HMS.HashMap ChatId (SubChat, Batch)}
+    deriving (Show, Eq)
+
 {- Logs -}
 
 data LogItem
@@ -391,7 +396,7 @@ data LogItem
         , log_total :: Int64
         }
     | LogMissing
-        { log_feeds_with_missing :: [(T.Text, [T.Text])]
+        { log_feeds_with_missing :: [T.Text]
         , log_total_missed :: Int
         , log_at :: UTCTime
         }

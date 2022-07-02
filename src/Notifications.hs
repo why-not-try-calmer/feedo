@@ -8,12 +8,66 @@ import Control.Concurrent
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (foldl')
 import qualified Data.HashMap.Strict as HMS
+import Data.List (sortOn)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDayTime), addUTCTime)
 import Mongo (HasMongo (evalDb))
 import TgramOutJson (ChatId)
-import Utils (mkBatch, renderDbError)
+import Utils (renderDbError)
+
+preNotifier :: UTCTime -> Maybe UTCTime -> SubChats -> Notifier
+preNotifier now mb_last_run chats = Pre{feeds_to_refresh = to_refresh, n_last_run = mb_last_run, batch_recipes = due_chats}
+  where
+    to_refresh = foldMap (get_recipe . snd) due_chats
+    due_chats = collectDue chats mb_last_run now
+    get_recipe (FollowFeedLinks fs) = fs
+    get_recipe (DigestFeedLinks fs) = fs
+
+postNotifier :: HMS.HashMap FeedLink Feed -> [T.Text] -> Notifier -> Notifier
+postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) = Post{discarded_items_links = discarded, batches = ba}
+  where
+    (discarded, ba) =
+        let rebuilt_items_links = foldMap (map i_link . f_items) rebuilt_feeds
+            get_batch (Follows fs) = fs
+            get_batch (Digests fs) = fs
+            items_notified =
+                let fs = foldMap (foldMap f_items . get_batch . snd) makeBatches
+                 in map i_link fs
+            missing = filter (`notElem` items_notified) rebuilt_items_links
+         in (missing, makeBatches)
+    makeBatches = foldl' step HMS.empty due_chats
+    step batches (!sub, FollowFeedLinks !fs) =
+        let collected = relevant_to fs sub mb_last_run
+         in if null collected then batches else HMS.insert (sub_chatid sub) (sub, Follows collected) batches
+    step batches (!sub, DigestFeedLinks !fs) =
+        let collected = relevant_to fs sub $ sub_last_digest sub
+         in if null collected then batches else HMS.insert (sub_chatid sub) (sub, Digests collected) batches
+    relevant_to fs sub time_ref =
+        let select =
+                filter
+                    ( \i ->
+                        let out_scope_or_matching = i_feed_link i `notElem` scope sub || has_keywords i (words_searched sub)
+                         in fresher_than i time_ref && i_link i `notElem` previously_sent_items && out_scope_or_matching && not (has_keywords i $ blacklisted sub)
+                    )
+         in foldl'
+                ( \acc f ->
+                    let selected = slice . sort . select $ f_items f
+                     in if f_link f `elem` targets && (not . null $ selected) then f{f_items = selected} : acc else acc
+                )
+                []
+                rebuilt_feeds
+      where
+        sort = sortOn i_pubdate
+        slice = take . settings_digest_size . sub_settings $ sub
+        targets = S.toList (scope sub) ++ fs
+    fresher_than _ Nothing = True
+    fresher_than i (Just t) = t < i_pubdate i
+    has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
+    scope = match_only_search_results . settings_word_matches . sub_settings
+    blacklisted = match_blacklist . settings_word_matches . sub_settings
+    words_searched = match_searchset . settings_word_matches . sub_settings
+postNotifier _ _ _ = undefined
 
 collectDue ::
     SubChats ->
@@ -108,51 +162,6 @@ collectNoDigest has_digest =
         )
         []
 
-notifFrom ::
-    Maybe UTCTime ->
-    [FeedLink] ->
-    FeedsMap ->
-    HMS.HashMap ChatId (SubChat, BatchRecipe) ->
-    HMS.HashMap ChatId (SubChat, Batch)
-notifFrom last_run flinks feeds_map =
-    foldl'
-        ( \hmap (!c, !batch) ->
-            let (recipes, time_ref) = case batch of
-                    DigestFeedLinks fs -> (fs, sub_last_digest c)
-                    FollowFeedLinks fs -> (fs, last_run)
-             in let collected =
-                        foldl'
-                            ( \fs f ->
-                                let feeds_items =
-                                        let fresh = take (settings_digest_size . sub_settings $ c) $ fresh_filtered c (f_items f) time_ref
-                                         in if f_link f `notElem` recipes || null fresh then fs else f{f_items = fresh} : fs
-                                 in if f_link f `notElem` flinks then fs else feeds_items
-                            )
-                            []
-                            feeds_map
-                 in if null collected then hmap else HMS.insert (sub_chatid c) (c, mkBatch batch collected) hmap
-        )
-        HMS.empty
-  where
-    has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
-    fresh_filtered c is time_ref =
-        let bl = match_blacklist . settings_word_matches . sub_settings $ c
-            only_search_notif = match_only_search_results . settings_word_matches . sub_settings $ c
-            search_notif = match_searchset . settings_word_matches . sub_settings $ c
-         in foldl'
-                ( \acc i ->
-                    let off_scope = [fresher_than i time_ref, i `lacks_keywords` bl]
-                        in_scope = off_scope ++ [i `has_keywords` search_notif]
-                     in if i_feed_link i `S.member` only_search_notif
-                            then if and in_scope then i : acc else acc
-                            else if and off_scope then i : acc else acc
-                )
-                []
-                is
-    fresher_than _ Nothing = True
-    fresher_than i (Just t) = t < i_pubdate i
-    lacks_keywords i kws = not $ has_keywords i kws
-
 feedlinksWithMissingPubdates :: HMS.HashMap FeedLink Feed -> [FeedLink]
 feedlinksWithMissingPubdates fs =
     HMS.keys $
@@ -163,31 +172,6 @@ feedlinksWithMissingPubdates fs =
             )
             fs
 
-keepNew :: HMS.HashMap T.Text Feed -> [Feed] -> ([(T.Text, [T.Text])], HMS.HashMap T.Text Feed)
--- filters out duplicate items from rebuilt feeds kept
-keepNew rebuilt from_cache =
-    let delKey f = HMS.delete (f_link f)
-        step (discarded, new_feeds_hmap) old_f = case HMS.lookup (f_link old_f) new_feeds_hmap of
-            Nothing -> (discarded, new_feeds_hmap)
-            Just new_f ->
-                let rebuilt_items = f_items new_f
-                    cached_items_links = map i_link $ f_items old_f
-                    maybe_first_last = if null rebuilt_items then Nothing else Just (head rebuilt_items, last rebuilt_items)
-                    diffed = filter (\new_item -> i_link new_item `notElem` cached_items_links) rebuilt_items
-                    discarded' = (f_title new_f, map i_link rebuilt_items) : discarded
-                 in if null diffed
-                        then (discarded', delKey old_f new_feeds_hmap)
-                        else case maybe_first_last of
-                            Nothing -> (discarded, delKey old_f new_feeds_hmap)
-                            Just (fi, la) ->
-                                if i_pubdate fi /= i_pubdate la
-                                    then (discarded, new_feeds_hmap)
-                                    else
-                                        let updated = HMS.update (\f -> Just $ f{f_items = diffed}) (f_link old_f) new_feeds_hmap
-                                         in (discarded', updated)
-     in foldl' step ([], rebuilt) from_cache
-
---partitionDigests ::
 partitionDigests :: HMS.HashMap ChatId (SubChat, Batch) -> (S.Set T.Text, S.Set T.Text)
 partitionDigests =
     foldl'
