@@ -13,8 +13,9 @@ RUN cp crtbeginS.o crtbeginT.o
 # building statically linked executable
 WORKDIR /opt/app/
 RUN stack install --ghc-options "-optl-static -fPIC"
-# inject build artifacts from previous step into fresh image
-FROM alpine:latest as runner
+# inject build artifacts from previous step into fresh image 
+# (latest minimual ubuntu)
+FROM ubuntu:18.04 as runner
 COPY --from=builder /root/.local/bin/feedfarer-exe /bin
 # not forgetting about web assets
 COPY /static /var/www/feedfarer-webui
