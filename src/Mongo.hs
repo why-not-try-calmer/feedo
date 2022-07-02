@@ -526,14 +526,7 @@ bsonToLog doc = case M.lookup "log_refresh" doc of
     Nothing -> case M.lookup "log_discarded_duplicates" doc of
         Just docs ->
             LogMissing
-                { log_feeds_with_missing =
-                    map
-                        ( \d ->
-                            let misses = M.lookup "items_links" d :: Maybe [T.Text]
-                                title = M.lookup "feed_title" d :: Maybe T.Text
-                             in (fromMaybe mempty title, fromMaybe mempty misses)
-                        )
-                        docs
+                { log_feeds_with_missing = docs
                 , log_at = fromMaybe undefined $ M.lookup "log_at" doc
                 , log_total_missed = fromMaybe 0 $ M.lookup "log_total_dicarded" doc
                 }
@@ -560,8 +553,8 @@ logToBson LogPerf{..} =
     , "log_total" =: log_total
     , "log_type" =: ("performance" :: T.Text)
     ]
-logToBson (LogMissing missing_pairs total t) =
-    [ "log_discarded_duplicates" =: map (\(title, m) -> ["feed_title" =: title, "item_links" =: m, "total" =: length m]) missing_pairs
+logToBson (LogMissing missing total t) =
+    [ "log_discarded_duplicates" =: missing
     , "log_total_discarded" =: total
     , "log_at" =: t
     , "log_type" =: ("discarded_duplicates" :: T.Text)

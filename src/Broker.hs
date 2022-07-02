@@ -21,10 +21,10 @@ import qualified Data.Text.Encoding as B
 import Data.Time (UTCTime, getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
-import Notifications (collectDue, collectNoDigest, feedlinksWithMissingPubdates, keepNew, markNotified, notifFrom)
+import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotified, postNotifier, preNotifier)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
-import Utils (freshLastXDays, partitionEither, readBatchRecipe, sortItems)
+import Utils (freshLastXDays, partitionEither, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -207,35 +207,28 @@ withBroker CacheRefresh = do
         last_run <- readIORef $ last_worker_run env
         pure (chats, now, last_run)
     -- checking due chats
-    let due = collectDue chats last_run now
-        flinks_to_rebuild = foldMap (readBatchRecipe . snd) due
+    let pre = preNotifier now last_run chats
     -- handling due chats
-    if HMS.null due
+    if null $ feeds_to_refresh pre
         then pure $ Right CacheOk
         else
-            rebuildUpdate env flinks_to_rebuild now >>= \case
+            rebuildUpdate env (feeds_to_refresh pre) now >>= \case
                 Left err -> pure $ Left err
                 Right rebuilt -> do
                     -- sometimes a digest would contain items with the same timestamps, but
                     -- we can filter them out through a simple comparison
-                    rebuilt_replaced <-
+                    last_batch <-
                         withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
                             Left err -> liftIO $ do
                                 writeChan (postjobs env) $ JobTgAlert err
-                                pure rebuilt
-                            Right (CacheFeeds fs) -> liftIO $ do
-                                let (discarded_duplicates, rebuilt_replaced) = keepNew rebuilt fs
-                                -- logging when that happens
-                                unless (null discarded_duplicates) $
-                                    writeChan (postjobs env) . JobLog $
-                                        LogMissing discarded_duplicates (sum . map (length . snd) $ discarded_duplicates) now
-                                pure rebuilt_replaced
-                            Right _ -> pure rebuilt
+                                pure mempty
+                            Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
+                            Right _ -> pure mempty
                     -- creating update notification payload, with 'last_run' used only for 'follow notifications'
-                    let digests = notifFrom last_run flinks_to_rebuild (HMS.union rebuilt_replaced rebuilt) due
-                        has_digest = HMS.keys digests
-                        no_digest = collectNoDigest has_digest due
-                        (not_updated_feeds, updated_feeds) = partitionDigests digests
+                    let post = postNotifier rebuilt last_batch pre
+                        has_digest = HMS.keys $ batches post
+                        no_digest = collectNoDigest has_digest $ batch_recipes pre
+                        (not_updated_feeds, updated_feeds) = partitionDigests $ batches post
                     liftIO $ do
                         -- logging due chats with no digest
                         unless (null no_digest) $ do
@@ -250,17 +243,11 @@ withBroker CacheRefresh = do
                                     , log_at = now
                                     }
                         -- logging possibly too aggressive union:
-                        unless (rebuilt == rebuilt_replaced) $ do
-                            let missing = get_missing rebuilt rebuilt_replaced
+                        unless (null $ discarded_items_links post) $
                             writeChan (postjobs env) . JobLog $
-                                LogMissing missing (sum . map (length . snd) $ missing) now
-                    pure . Right $ CacheDigests digests
+                                LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
+                    pure . Right $ CacheDigests $ batches post
   where
-    get_missing reb repl =
-        let get_items = foldMap f_items
-            diff = filter (`notElem` get_items repl) (get_items reb)
-            step acc i = HMS.adjust (i_link i :) (i_feed_link i) acc
-         in HMS.toList . foldl' step HMS.empty $ diff
     partitionDigests =
         foldl'
             ( \(!not_found, !found) (!c, !bat) ->
