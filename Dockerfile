@@ -14,7 +14,7 @@ RUN cp crtbeginS.o crtbeginT.o
 WORKDIR /opt/app/
 RUN stack install --ghc-options "-optl-static -fPIC"
 # inject build artifacts from previous step into fresh image
-FROM debian:sid-slim as runner
+FROM alpine:latest as runner
 COPY --from=builder /root/.local/bin/feedfarer-exe /bin
 # not forgetting about web assets
 COPY /static /var/www/feedfarer-webui

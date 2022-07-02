@@ -6,9 +6,9 @@ WORKDIR /opt/app
 RUN stack upgrade
 
 COPY ./feedfarer.cabal ./stack.yaml /opt/app/
-RUN stack build --only-dependencies --no-library-profiling
+RUN stack build --only-dependencies --no-library-profiling --fast
 
 COPY . /opt/app/
-RUN stack build
+RUN stack build --fast
 
 COPY /static /var/www/feedfarer-webui

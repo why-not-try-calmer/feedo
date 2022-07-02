@@ -5,7 +5,7 @@ services:
       depends_on: [redis]
       restart: on-failure
       build: .
-      command: stack exec -- feedfarer-exe
+      command: feedfarer-exe
       ports: [80:80]
       environment:
         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
