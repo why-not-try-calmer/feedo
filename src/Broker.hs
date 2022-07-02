@@ -79,27 +79,22 @@ rebuildUpdate ::
     [FeedLink] ->
     UTCTime ->
     m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildUpdate env flinks now = do
-    succeeded <- liftIO $ do
-        -- rebuilding all feeds with any subscribers
-        eitherUpdated <- mapConcurrently rebuildFeed flinks
-        let (failed, succeeded) = partitionEither eitherUpdated
-        -- handling case of some feeds not rebuilding
+rebuildUpdate env flinks now =
+    liftIO $
+        fetch_feeds >>= \(failed, succeeded) ->
+            if null succeeded
+                then pure $ Left "Failed to fetch feeds"
+                else log_or_archive failed succeeded >> pure (Right . as_list $ succeeded)
+  where
+    fetch_feeds = partitionEither <$> mapConcurrently rebuildFeed flinks
+    log_or_archive failed succeeded = do
         unless
             (null failed)
             ( writeChan (postjobs env) . JobTgAlert $
                 "Failed to update these feeds: " `T.append` T.intercalate ", " failed
             )
-        -- archiving
         writeChan (postjobs env) $ JobArchive succeeded now
-        pure succeeded
-    getAllFeeds env >>= \case
-        Left _ -> pure . Left $ "Unable to acquire old feeds. Refresh aborted."
-        Right old_feeds ->
-            -- updating cache
-            let fresh_feeds = HMS.fromList . map (\f -> (f_link f, f)) $ succeeded
-                to_cache = HMS.union fresh_feeds old_feeds
-             in withBroker (CachePushFeeds $ HMS.elems to_cache) >> pure (Right to_cache)
+    as_list = HMS.fromList . map (\f -> (f_link f, f))
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
@@ -217,19 +212,19 @@ withBroker CacheRefresh = do
                 Right rebuilt -> do
                     -- sometimes a digest would contain items with the same timestamps, but
                     -- we can filter them out through a simple comparison
-                    last_batch <-
-                        withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
-                            Left err -> liftIO $ do
-                                writeChan (postjobs env) $ JobTgAlert err
-                                pure mempty
-                            Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
-                            Right _ -> pure mempty
+                    last_batch <- get_last_batch env rebuilt
+                    -- caching
+                    recached <- withBroker . CachePushFeeds $ HMS.elems rebuilt
                     -- creating update notification payload, with 'last_run' used only for 'follow notifications'
                     let post = postNotifier rebuilt last_batch pre
                         has_digest = HMS.keys $ batches post
                         no_digest = collectNoDigest has_digest $ batch_recipes pre
                         (not_updated_feeds, updated_feeds) = partitionDigests $ batches post
                     liftIO $ do
+                        -- ensuring caching worked
+                        case recached of
+                            Left e -> writeChan (postjobs env) . JobTgAlert $ e
+                            _ -> pure ()
                         -- logging due chats with no digest
                         unless (null no_digest) $ do
                             markNotified env no_digest now
@@ -242,12 +237,19 @@ withBroker CacheRefresh = do
                                     , log_not_updated = S.toList not_updated_feeds
                                     , log_at = now
                                     }
-                        -- logging possibly too aggressive union:
+                        -- logging possibly too aggressive union
                         unless (null $ discarded_items_links post) $
                             writeChan (postjobs env) . JobLog $
                                 LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
                     pure . Right $ CacheDigests $ batches post
   where
+    get_last_batch env rebuilt =
+        withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
+            Left err -> liftIO $ do
+                writeChan (postjobs env) $ JobTgAlert err
+                pure mempty
+            Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
+            Right _ -> pure mempty
     partitionDigests =
         foldl'
             ( \(!not_found, !found) (!c, !bat) ->
