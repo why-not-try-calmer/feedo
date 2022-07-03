@@ -3,10 +3,10 @@ services:
     feedfarer:
       image: adrienazure.azurecr.io/feedfarer-master
       depends_on: [redis]
-      #restart: on-failure
+      restart: on-failure
       build: .
       command: feedfarer-exe
-      #ports: [80:80]
+      ports: [80:80]
       environment:
         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
         BASE_URL: ${BASE_URL}
@@ -14,9 +14,9 @@ services:
         WEBHOOK_URL: ${WEBHOOK_URL}
         MONGO_CONN_STRING: ${MONGO_CONN_STRING}
     redis:
-        image: redis:6.0-alpine
+        image: redis:latest
         expose: [6379]
-        #restart: on-failure
-        command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu --protected-mode no
+        restart: on-failure
+        command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
         volumes:
           - /data/redis-store

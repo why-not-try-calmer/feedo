@@ -9,7 +9,7 @@ import qualified Data.ByteString as B
 import Data.Int (Int64)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Database.Redis (ConnectInfo (connectHost, connectPort), Connection, PortID (PortNumber), Redis, checkedConnect, defaultConnectInfo, runRedis)
+import Database.Redis (ConnectInfo (connectHost), Connection, Redis, checkedConnect, defaultConnectInfo, runRedis)
 
 class Monad m => HasRedis m where
     withRedis :: AppConfig -> Redis a -> m a
@@ -40,7 +40,7 @@ setupRedis = liftIO $ do
   where
     try_over n =
         let hostname = switch_hostnames n
-         in try (checkedConnect defaultConnectInfo{connectHost = hostname, connectPort = PortNumber 6379})
+         in try (checkedConnect defaultConnectInfo{connectHost = hostname})
                 >>= ( handleWith >=> \case
                         Left () ->
                             if n == 5
