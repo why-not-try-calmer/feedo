@@ -110,7 +110,7 @@ makeConfig env =
             chan <- newChan
             conn <-
                 setupRedis >>= \case
-                    Left err -> throwIO . userError $ err
+                    Left err -> throwIO . userError $ T.unpack err
                     Right c -> putStrLn "Redis...OK" >> pure c
             (pipe, creds) <-
                 setupMongo mongo_connection_string >>= \case
