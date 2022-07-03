@@ -1,4 +1,3 @@
-Ad, [03.07.2022 11:08]
 # build dependencies
 FROM haskell:9.0.2 as builder
 WORKDIR /opt/app/
