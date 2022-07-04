@@ -11,5 +11,12 @@ RUN stack build
 FROM haskell:9.0.2-slim-buster as runner
 EXPOSE 80
 WORKDIR /opt/app/
-COPY --from=builder /opt/app/.stack-work ./.stack-work
-COPY . .
+RUN stack install --ghc-options "-optl-static -fPIC"
+# using a runner very likely to share glibc version with builder
+FROM debian:buster-slim as runner
+COPY --from=builder /root/.local/bin/feedfarer-exe /bin
+# apparently needed to dodge an 'getaddrinfo' error at runtime
+COPY --from=builder /etc/protocols /etc/protocols
+COPY --from=builder /etc/services /etc/services
+# not forgetting about web assets
+COPY /static /var/www/feedfarer-webui
