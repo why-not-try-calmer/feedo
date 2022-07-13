@@ -44,13 +44,13 @@ setWebhook tok webhook = do
         request = req GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
             "url" =: (webhook `T.append` "/webhook/" `T.append` tok)
 
-fetchFeed :: MonadIO m => Url scheme -> m (Maybe LB.ByteString)
+fetchFeed :: MonadIO m => Url scheme -> m (Either T.Text LB.ByteString)
 fetchFeed url = liftIO (try action :: IO (Either SomeException LbsResponse)) >>= \case
-    Left _ -> pure Nothing
+    Left err -> pure $ Left (T.pack . show $ err)
     Right resp ->
         let contents = responseBody resp
             code = responseStatusCode resp :: Int
-        in  if code /= 200 then pure Nothing else pure . Just $ contents
+        in  if code /= 200 then pure (Left "Response code is not 200, could not reach server!") else pure . Right $ contents
     where
         action = withReqManager $ runReq defaultHttpConfig . pure request
         request = req GET url NoReqBody lbsResponse mempty
@@ -134,26 +134,6 @@ mkDigestLinkButton link
     | T.null link = Nothing
     | otherwise = Just $ InlineKeyboardButton label (Just link) Nothing
     where label = "Permalink"
-
-{-
-sliceReplies :: Reply -> [Reply]
-sliceReplies rep@ChatReply{..} 
-    | under reply_contents = [rep]
-    | otherwise = 
-        let replies = go [] . T.lines $ reply_contents
-        in  map (\r -> rep { reply_contents = r }) replies 
-    where
-        upper_bound = 4096
-        under txt = T.length txt < upper_bound 
-        go acc [] = acc
-        go [] (l:ls) = go [l] ls
-        go (p:ps) (l:ls) =
-            let pl = T.intercalate "\n" [p, l]
-            in case T.compareLength pl upper_bound of
-                GT -> go (l:p:ps) ls
-                _ -> go (pl:ps) ls
-sliceReplies rep = [rep]
--}
 
 reply :: TgReqM m =>
     BotToken ->

@@ -32,8 +32,8 @@ buildFeed :: MonadIO m => FeedType -> Url scheme -> m (Either UserError (Feed, M
 buildFeed ty url = do
     now <- liftIO getCurrentTime
     fetchFeed url >>= \case
-        Nothing -> pure . Left . BadFeedUrl $ renderUrl url
-        Just feed -> case parseLBS def feed of
+        Left err -> pure . Left . BadFeedUrl $ err
+        Right feed -> case parseLBS def feed of
             Left (SomeException ex) -> pure . Left . ParseError $
                 "Unable to parse feed at "
                 `T.append` (T.pack . show $ url)
