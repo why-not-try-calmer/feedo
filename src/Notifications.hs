@@ -17,7 +17,12 @@ import TgramOutJson (ChatId)
 import Utils (renderDbError)
 
 preNotifier :: UTCTime -> Maybe UTCTime -> SubChats -> Notifier
-preNotifier now mb_last_run chats = Pre{feeds_to_refresh = to_refresh, n_last_run = mb_last_run, batch_recipes = due_chats}
+preNotifier now mb_last_run chats =
+    Pre
+        { feeds_to_refresh = to_refresh
+        , n_last_run = mb_last_run
+        , batch_recipes = due_chats
+        }
   where
     to_refresh = foldMap (get_recipe . snd) due_chats
     due_chats = collectDue chats mb_last_run now
@@ -25,7 +30,11 @@ preNotifier now mb_last_run chats = Pre{feeds_to_refresh = to_refresh, n_last_ru
     get_recipe (DigestFeedLinks fs) = fs
 
 postNotifier :: HMS.HashMap FeedLink Feed -> [T.Text] -> Notifier -> Notifier
-postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) = Post{discarded_items_links = discarded, batches = ba}
+postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) =
+    Post
+        { discarded_items_links = discarded
+        , batches = ba
+        }
   where
     (discarded, ba) =
         let rebuilt_items_links = foldMap (map i_link . f_items) rebuilt_feeds

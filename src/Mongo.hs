@@ -126,22 +126,21 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
 {- Evaluation -}
 
 withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
-withMongo config action = do
-    res <- go
-    case res of
+withMongo config action =
+    go >>= \case
         Left (ConnectionFailure err) -> do
             alert err
             closed <- liftIO $ do
                 p <- readIORef ref
                 isClosed p
-            if closed then do
-                new_pipe <- initConnectionMongo $ mongo_creds config
-                case new_pipe of
-                    Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
-                    Right p -> do
-                        liftIO (atomicModifyIORef' ref (const (p, ())))
-                        go_or_giveup
-            else go_or_giveup
+            if closed
+                then
+                    initConnectionMongo (mongo_creds config) >>= \case
+                        Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
+                        Right p -> do
+                            liftIO (atomicModifyIORef' ref (const (p, ())))
+                            go_or_giveup
+                else go_or_giveup
         Left err -> alertGiveUp err
         Right r -> pure $ Right r
   where
@@ -149,12 +148,13 @@ withMongo config action = do
     go = liftIO $ do
         pipe <- readIORef ref
         try $ runMongo pipe action
-    go_or_giveup = go >>= \case
-        Left e -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
-        Right r -> pure $ Right r
+    go_or_giveup =
+        go >>= \case
+            Left e -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+            Right r -> pure $ Right r
     runMongo :: MonadIO m => Pipe -> Action m a -> m a
     runMongo pipe = access pipe master (database_name . mongo_creds $ config)
-    
+
     alertGiveUp err = alert err >> pure (Left ())
     alert err =
         liftIO $

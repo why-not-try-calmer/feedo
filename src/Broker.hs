@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Broker where
 
@@ -241,6 +242,8 @@ withBroker CacheRefresh = do
                         unless (null $ discarded_items_links post) $
                             writeChan (postjobs env) . JobLog $
                                 LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
+                        -- Rust??
+                        where_is_rust env pre post
                     pure . Right $ CacheDigests $ batches post
   where
     get_last_batch rebuilt =
@@ -258,6 +261,25 @@ withBroker CacheRefresh = do
                  in (not_found `S.union` not_found', found `S.union` found')
             )
             (mempty, mempty)
+    where_is_rust env Pre{..} Post{..} =
+        let rust_in = filter (T.isInfixOf "rust")
+            to_refresh = rust_in feeds_to_refresh
+            discarded = rust_in discarded_items_links
+            recipes =
+                foldl'
+                    ( \acc (_, v) -> case v of
+                        FollowFeedLinks fs -> acc ++ rust_in fs
+                        DigestFeedLinks ds -> acc ++ rust_in ds
+                    )
+                    []
+                    batch_recipes
+         in writeChan (postjobs env) . JobTgAlert $
+                "To refresh: " `T.append` T.intercalate "," to_refresh
+                    `T.append` ". Discarded: "
+                    `T.append` T.intercalate "," discarded
+                    `T.append` ". Recipes: "
+                    `T.append` T.intercalate "," recipes
+    where_is_rust _ _ _ = undefined
 withBroker CacheWarmup =
     ask >>= \env ->
         evalDb env GetAllFeeds >>= \case
