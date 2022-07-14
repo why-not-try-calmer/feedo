@@ -295,26 +295,20 @@ subFeed cid feeds_urls = do
                                          in -- exiting early if no feed could be built
                                             if null built_feeds
                                                 then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
-                                                else
-                                                    evalDb env (UpsertFeeds feeds) >>= \case
-                                                        -- subscribes chat to newly added feeds, returning result to caller
-                                                        DbOk ->
-                                                            withCache (CachePushFeeds feeds) >>= \case
-                                                                Left err -> respondWith err
+                                                else withCache (CachePushFeeds feeds) >>= \case
+                                                    Left err -> respondWith err
+                                                    Right _ ->
+                                                        let to_sub_to = map f_link feeds
+                                                            in withChat (Sub to_sub_to) cid >>= \case
+                                                                Left err -> respondWith $ renderUserError err
                                                                 Right _ ->
-                                                                    let to_sub_to = map f_link feeds
-                                                                     in withChat (Sub to_sub_to) cid >>= \case
-                                                                            Left err -> respondWith $ renderUserError err
-                                                                            Right _ ->
-                                                                                let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
-                                                                                    ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
-                                                                                    warnings_text = case sequenceA warnings of
-                                                                                        Nothing -> mempty
-                                                                                        Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
-                                                                                 in respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
-                                                        _ ->
-                                                            respondWith . renderUserError $
-                                                                UpdateError "Something bad occurred; unable to add and subscribe to these feeds."
+                                                                    let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
+                                                                        ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
+                                                                        warnings_text = case sequenceA warnings of
+                                                                            Nothing -> mempty
+                                                                            Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
+                                                                        in respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
+                                                    
   where
     respondWith err = pure $ ServiceReply err
 

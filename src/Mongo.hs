@@ -126,26 +126,35 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
 {- Evaluation -}
 
 withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
-withMongo config action =
-    go >>= \case
-        Left (ConnectionFailure err) ->
+withMongo config action = do
+    res <- go
+    case res of
+        Left (ConnectionFailure err) -> do
             alert err
-                >> let creds = mongo_creds config
-                    in initConnectionMongo creds >>= \case
-                        Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
-                        Right pipe ->
-                            let ref = snd . connectors $ config
-                             in liftIO (atomicModifyIORef' ref (const (pipe, ()))) >> go >>= \case
-                                    Left e -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
-                                    Right r -> pure $ Right r
+            closed <- liftIO $ do
+                p <- readIORef ref
+                isClosed p
+            if closed then do
+                new_pipe <- initConnectionMongo $ mongo_creds config
+                case new_pipe of
+                    Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
+                    Right p -> do
+                        liftIO (atomicModifyIORef' ref (const (p, ())))
+                        go_or_giveup
+            else go_or_giveup
         Left err -> alertGiveUp err
         Right r -> pure $ Right r
   where
+    ref = snd . connectors $ config
+    go = liftIO $ do
+        pipe <- readIORef ref
+        try $ runMongo pipe action
+    go_or_giveup = go >>= \case
+        Left e -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+        Right r -> pure $ Right r
     runMongo :: MonadIO m => Pipe -> Action m a -> m a
     runMongo pipe = access pipe master (database_name . mongo_creds $ config)
-    go = liftIO $ do
-        pipe <- readIORef . snd . connectors $ config
-        try $ runMongo pipe action
+    
     alertGiveUp err = alert err >> pure (Left ())
     alert err =
         liftIO $

@@ -124,11 +124,9 @@ withChat action cid = do
                 let updated_sets = (sub_settings c){settings_paused = pause_or_resume}
                     updated_c = c{sub_settings = updated_sets}
                     updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-                 in do
-                        res <- evalDb env (UpsertChat updated_c)
-                        case res of
-                            DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
-                            _ -> pure (updated_cs, Right ChatOk)
+                 in evalDb env (UpsertChat updated_c) >>= \case
+                        DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
+                        _ -> pure (updated_cs, Right ChatOk)
             _ -> pure (hmap, Right ChatOk)
 
 loadChats :: (MonadReader AppConfig m, MonadIO m) => m ()
