@@ -273,12 +273,14 @@ withBroker CacheRefresh = do
                     )
                     []
                     batch_recipes
-         in writeChan (postjobs env) . JobTgAlert $
-                "To refresh: " `T.append` T.intercalate "," to_refresh
-                    `T.append` ". Discarded: "
-                    `T.append` T.intercalate "," discarded
-                    `T.append` ". Recipes: "
-                    `T.append` T.intercalate "," recipes
+            report =
+                writeChan (postjobs env) . JobTgAlert $
+                    "To refresh: " `T.append` T.intercalate "," to_refresh
+                        `T.append` ". Discarded: "
+                        `T.append` T.intercalate "," discarded
+                        `T.append` ". Recipes: "
+                        `T.append` T.intercalate "," recipes
+         in unless (all null [to_refresh, discarded, recipes]) report
     where_is_rust _ _ _ = undefined
 withBroker CacheWarmup =
     ask >>= \env ->
