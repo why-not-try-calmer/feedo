@@ -228,10 +228,10 @@ evalMongo env (ArchiveItems feeds) =
     let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
         action = withMongo env $ updateAll "items" selector
      in action >>= \case
-            Left _ -> pure . DbErr $ FailedToUpdate mempty "ArchiveItems failed"
+            Left _ -> pure . DbErr $ FailedToUpdate "ArchiveItems" "Action failed during connection."
             Right res ->
                 if failed res
-                    then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+                    then pure . DbErr $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
                     else pure DbOk
 evalMongo env (DbSearch keywords scope last_time) =
     let action = aggregate "items" $ buildSearchQuery keywords last_time
@@ -546,11 +546,13 @@ bsonToLog doc = case M.lookup "log_refresh" doc of
                     , log_not_updated = fromMaybe mempty $ M.lookup "log_not_updated" doc
                     , log_at = fromMaybe undefined $ M.lookup "log_at" doc
                     }
-            Nothing ->
-                LogNoDigest
-                    { log_due_chats_with_no_digest = fromMaybe mempty $ M.lookup "log_due_chats_with_no_digest" doc
-                    , log_at = fromMaybe undefined $ M.lookup "log_at" doc
-                    }
+            Nothing -> case M.lookup "long_due_chats_with_no_digest" doc of
+                Just l ->
+                    LogNoDigest
+                        { log_due_chats_with_no_digest = l
+                        , log_at = fromMaybe undefined $ M.lookup "log_at" doc
+                        }
+                Nothing -> undefined
 
 logToBson :: LogItem -> Document
 logToBson LogPerf{..} =
@@ -579,6 +581,10 @@ logToBson (LogDigest updated not_updated t) =
     , "log_not_updated" =: not_updated
     , "log_type" =: ("feeds_updated_or_not" :: T.Text)
     ]
+logToBson (LogCouldNotArchive feeds t err) =
+    let flinks = map f_link feeds
+        items = foldMap f_items feeds
+     in ["log_at " =: t, "log_error" =: err, "log_flinks" =: flinks, "log_items" =: map (T.pack . show) items]
 
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env logitem = withMongo env (insert "logs" $ writeDoc logitem) >> pure ()

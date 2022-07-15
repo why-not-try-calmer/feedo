@@ -2,7 +2,7 @@
 
 module Jobs where
 
-import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
+import AppTypes (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogCouldNotArchive, LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
 import Backend (withChat)
 import Broker (HasCache (withCache))
 import Control.Concurrent (
@@ -132,12 +132,7 @@ postProcJobs =
                     JobArchive feeds now -> fork $ do
                         -- archiving items
                         evalDb env (ArchiveItems feeds) >>= \case
-                            DbErr err ->
-                                writeChan (postjobs env) . JobTgAlert $
-                                    "Failed to upsert these feeds: "
-                                        `T.append` T.intercalate ", " (map f_link feeds)
-                                        `T.append` " because of "
-                                        `T.append` renderDbError err
+                            DbErr err -> writeChan (postjobs env) . JobLog $ LogCouldNotArchive feeds now (renderDbError err)
                             _ -> pure ()
                         -- cleaning more than 1 month old archives
                         void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)
@@ -148,7 +143,7 @@ postProcJobs =
                             Left _ ->
                                 writeChan jobs . JobTgAlert . with_cid_txt "Tried to pin a message in (chat_id) " cid $
                                     " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
-                            Right _ -> pure ()
+                            _ -> pure ()
                     JobPurge cid -> fork . runApp env $ withChat Purge cid
                     JobRemoveMsg cid mid delay -> do
                         let (msg, checked_delay) = check_delay delay
@@ -159,7 +154,7 @@ postProcJobs =
                                 Left _ ->
                                     writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
                                         " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
-                                Right _ -> pure ()
+                                _ -> pure ()
                     JobSetPagination cid mid pages mb_link ->
                         fork $
                             let to_db = evalDb env $ InsertPages cid mid pages mb_link

@@ -409,6 +409,8 @@ data LogItem
         { log_due_chats_with_no_digest :: [ChatId]
         , log_at :: UTCTime
         }
+    | LogCouldNotArchive
+        {log_no_achive :: [Feed], log_at :: UTCTime, log_error :: T.Text}
     deriving (Eq, Show)
 
 {- Background tasks -}
