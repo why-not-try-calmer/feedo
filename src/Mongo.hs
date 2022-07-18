@@ -67,25 +67,33 @@ instance MongoDoc AdminUser where
 
 class HasMongo m where
     evalDb :: AppConfig -> DbAction -> m DbRes
-    login :: MongoCreds -> Pipe -> m (Either DbError Pipe)
+    loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
+    setupDb :: String -> m (Either DbError (Pipe, MongoCreds))
 
 instance MonadIO m => HasMongo (App m) where
     evalDb = evalMongo
-    login = authWith
+    loginDb = authWith
+    setupDb = setupMongo
 
 instance HasMongo IO where
     evalDb = evalMongo
-    login = authWith
+    loginDb = authWith
+    setupDb = setupMongo
 
 {- Connection -}
 
-setupMongo :: MonadIO m => [Char] -> m (Either DbError (Pipe, MongoCreds))
-setupMongo connection_string =
-    let [h, db, user, passwd] = T.splitOn ":" . T.pack $ connection_string
-        creds = MongoCredsReplicaSrv (T.unpack h) db user passwd
-     in initConnectionMongo creds >>= \case
-            Left err -> pure $ Left err
-            Right pipe -> pure $ Right (pipe, creds)
+primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
+primaryOrSecondary rep =
+    try (primary rep) >>= \case
+        Left (SomeException err) -> do
+            print $
+                "Failed to acquire primary replica, reason:"
+                    ++ show err
+                    ++ ". Moving to second."
+            try (secondaryOk rep) >>= \case
+                Left (SomeException _) -> pure Nothing
+                Right pipe -> pure $ Just pipe
+        Right pipe -> pure $ Just pipe
 
 authWith :: MonadIO m => MongoCreds -> Pipe -> m (Either DbError Pipe)
 authWith creds pipe = do
@@ -94,34 +102,33 @@ authWith creds pipe = do
         then liftIO (putStrLn "Authenticated now.") >> pure (Right pipe)
         else liftIO (putStrLn "Authentication failed.") >> pure (Left PipeNotAcquired)
 
-primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
-primaryOrSecondary rep =
-    try (primary rep) >>= \case
-        Left (_ :: SomeException) ->
-            try (secondaryOk rep) >>= \case
-                Left (_ :: SomeException) -> pure Nothing
-                Right pipe -> pure $ Just pipe
-        Right pipe -> pure $ Just pipe
-
 initConnectionMongo :: MonadIO m => MongoCreds -> m (Either DbError Pipe)
 initConnectionMongo creds@MongoCredsTls{..} = liftIO $ do
     pipe <- Tls.connect host_name db_port
     verdict <- isClosed pipe
-    if verdict then pure . Left $ PipeNotAcquired else login creds pipe
+    if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
 initConnectionMongo creds@MongoCredsReplicaTls{..} = liftIO $ do
     repset <- openReplicaSetTLS (replicateset, hosts)
     mb_pipe <- primaryOrSecondary repset
     maybe
         (pure . Left $ PipeNotAcquired)
-        (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else login creds p)
+        (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
         mb_pipe
 initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
     repset <- openReplicaSetSRV' host_name
     mb_pipe <- primaryOrSecondary repset
     maybe
         (pure . Left $ PipeNotAcquired)
-        (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else login creds p)
+        (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
         mb_pipe
+
+setupMongo :: MonadIO m => String -> m (Either DbError (Pipe, MongoCreds))
+setupMongo connection_string =
+    let [h, db, user, passwd] = T.splitOn ":" . T.pack $ connection_string
+        creds = MongoCredsReplicaSrv (T.unpack h) db user passwd
+     in initConnectionMongo creds >>= \case
+            Left err -> pure $ Left err
+            Right pipe -> pure $ Right (pipe, creds)
 
 {- Evaluation -}
 
