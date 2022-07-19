@@ -105,6 +105,7 @@ makeConfig env =
         mongo_connection_string = fromJust $ lookup "MONGO_CONN_STRING" env
         port = maybe 80 read $ lookup "PORT" env
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
+        key = read . fromJust $ lookup "API_KEY" env
      in do
             mvar <- newMVar HMS.empty
             chan <- newChan
@@ -120,7 +121,8 @@ makeConfig env =
             last_run_ioref <- newIORef Nothing
             pure
                 ( AppConfig
-                    { tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
+                    { api_key = key
+                    , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
                     , base_url = base
                     , mongo_creds = creds
                     , last_worker_run = last_run_ioref

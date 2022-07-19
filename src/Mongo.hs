@@ -9,6 +9,7 @@ import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
+import Data.Aeson (decodeStrict')
 import qualified Data.ByteString.Char8 as B
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
@@ -24,6 +25,8 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
+import Network.HTTP.Req (BsResponse, responseBody)
+import Requests (fetchApi)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Utils (defaultChatSettings)
@@ -69,16 +72,19 @@ class HasMongo m where
     evalDb :: AppConfig -> DbAction -> m DbRes
     loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
     setupDb :: String -> m (Either DbError (Pipe, MongoCreds))
+    fetch :: APIKey -> APIReq -> m (Either String BsResponse)
 
 instance MonadIO m => HasMongo (App m) where
     evalDb = evalMongo
     loginDb = authWith
     setupDb = setupMongo
+    fetch = fetchApi
 
 instance HasMongo IO where
     evalDb = evalMongo
     loginDb = authWith
     setupDb = setupMongo
+    fetch = fetchApi
 
 {- Connection -}
 
@@ -199,7 +205,18 @@ buildSearchQuery ws mb_last_time =
             Just t -> [search, match t, project]
 
 evalMongo :: (HasMongo m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (DbAskForLogin uid cid) =
+evalMongo env (DbAskForLogin uid cid) = do
+    -- FIX ME --
+    -- This should be adapted to the Data API
+    {-
+    let f = "{'admin_uid': '" `T.append` uid `T.append` "', }"
+        q = FindOne "admins" "feedfarer" "Cluster0" f
+    fetchApi (api_key env) q >>= \case
+        Left _ -> pure . DbErr $ FaultyToken
+        Right resp ->
+            let b = responseBody resp :: APIReq
+            in  if null $
+    -}
     let selector = ["admin_uid" =: uid, "admin_chatid" =: cid]
         get_doc = findOne $ select selector "admins"
         write_doc h n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
@@ -277,29 +294,44 @@ evalMongo env (DeleteChat cid) =
      in action >>= \case
             Left _ -> pure $ DbErr $ FailedToUpdate mempty "DeleteChat failed"
             Right _ -> pure DbOk
-evalMongo env GetAllFeeds =
-    let action = find (select [] "feeds")
-     in withMongo env (action >>= rest) >>= \case
-            Left () -> pure $ DbErr $ FailedToUpdate mempty "GetAllFeeds failed"
-            Right docs ->
-                if null docs
-                    then pure DbNoFeed
-                    else pure . DbFeeds $ map readDoc docs
 evalMongo env GetAllChats =
-    let action = find (select [] "chats")
-     in withMongo env (action >>= rest) >>= \case
-            Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllChats failed"
-            Right docs ->
-                if null docs
-                    then pure DbNoChat
-                    else pure $ DbChats . map readDoc $ docs
+    let q = APIReq (renderCollection CChats) database cluster Nothing
+     in fetchApi (api_key env) q >>= \case
+            Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" (T.pack err)
+            Right resp ->
+                let b = responseBody resp
+                 in case decodeStrict' b :: Maybe APIChats of
+                        Nothing -> pure DbNoChat
+                        Just docs -> pure . DbChats . chats_documents $ docs
+evalMongo env GetAllFeeds =
+    let q = APIReq (renderCollection CFeeds) database cluster Nothing
+     in fetchApi (api_key env) q >>= \case
+            Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" (T.pack err)
+            Right resp ->
+                let b = responseBody resp
+                 in case decodeStrict' b :: Maybe APIFeeds of
+                        Nothing -> pure DbNoFeed
+                        Just docs -> pure . DbFeeds . feeds_documents $ docs
 evalMongo env (GetPages cid mid) =
-    let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
-     in action >>= \case
-            Right (Just doc) -> case M.lookup "pages" doc of
-                Just pages -> pure $ DbPages pages (M.lookup "url" doc)
-                _ -> pure $ DbNoPage cid mid
+    let f = "{'chat_id:'" `T.append` (T.pack . show $ cid) `T.append` "', 'message_id':" `T.append` (T.pack . show $ mid) `T.append` "}"
+        q = APIReq (renderCollection CPages) database cluster (Just f)
+     in fetchApi (api_key env) q >>= \case
+            Left _ -> pure $ DbNoPage cid mid
+            Right resp ->
+                let b = responseBody resp
+                 in case decodeStrict' b :: Maybe APIPages of
+                        Nothing -> pure $ DbNoPage cid mid
+                        Just docs ->
+                            let p = head . pages_documents $ docs
+                             in pure $ DbPages (pages_pages p) (pages_url p)
+{-
+let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
+ in action >>= \case
+        Right (Just doc) -> case M.lookup "pages" doc of
+            Just pages -> pure $ DbPages pages (M.lookup "url" doc)
             _ -> pure $ DbNoPage cid mid
+        _ -> pure $ DbNoPage cid mid
+-}
 evalMongo env (IncReads links) =
     let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
      in mapM_ action links >> pure DbOk
@@ -317,18 +349,31 @@ evalMongo env (PruneOld t) =
         del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
      in withMongo env (del_items >> del_digests) >> pure DbOk
 evalMongo env (ReadDigest _id) =
-    let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
+    let mkSelector = case readMaybe . T.unpack $ _id :: Maybe T.Text of
             Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
                 Nothing -> Left FailedToProduceValidId
-                Just n -> Right ["digest_id" =: n]
-            Just oid -> Right ["_id" =: oid]
-        action s = findOne $ select s "digests"
+                Just n -> Right $ "{ 'digest_id': '" `T.append` T.pack (show n) `T.append` "'}" -- Right ["digest_id" =: n]
+            Just oid -> Right $ "{ '_id':" `T.append` oid `T.append` "'}" -- Right ["_id" =: oid]
      in case mkSelector of
             Left err -> pure $ DbErr err
             Right selector ->
-                withMongo env (action selector) >>= \case
-                    Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
-                    Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
+                let q = APIReq "digests" "feedfarer" "Cluster0" (Just selector)
+                 in fetchApi (api_key env) q >>= \case
+                        Left err -> pure . DbErr $ FailedToUpdate "digest" (T.pack err)
+                        Right resp ->
+                            let b = responseBody resp
+                             in case decodeStrict' b :: Maybe APIDigests of
+                                    Nothing -> pure DbNoDigest
+                                    Just docs -> pure . DbDigest . head . digests_documents $ docs
+{-
+    action s = findOne $ select s "digests"
+ in case mkSelector of
+        Left err -> pure $ DbErr err
+        Right selector ->
+            withMongo env (action selector) >>= \case
+                Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
+                Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
+-}
 evalMongo env (UpsertChat chat) =
     let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
      in action >>= \case
@@ -513,7 +558,7 @@ bsonToDigest :: Document -> Digest
 bsonToDigest doc =
     let items = map readDoc . fromJust $ M.lookup "digest_items" doc
         created = fromJust $ M.lookup "digest_created" doc
-        _id = M.lookup "_id" doc :: Maybe ObjectId
+        _id = M.lookup "_id" doc :: Maybe T.Text
         flinks = fromJust $ M.lookup "digest_flinks" doc
         ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
      in Digest _id created items flinks ftitles
