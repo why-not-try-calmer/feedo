@@ -28,6 +28,7 @@ spec = pre >>= \(env, feeds) -> go env >> go1 env feeds
         res <- evalDb config GetAllFeeds
         case res of
             DbFeeds feeds -> pure (config, map f_link feeds)
+            DbNoFeed -> putStrLn "No feed found!" >> pure (config, [])
             _ -> undefined
     go env =
         let desc = describe "withCache: Warmup"

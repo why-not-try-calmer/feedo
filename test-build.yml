@@ -10,6 +10,7 @@ services:
       command: stack test
       ports: [80:80]
       environment:
+        - API_KEY
         - TELEGRAM_TOKEN
         - BASE_URL
         - ALERT_CHATID
