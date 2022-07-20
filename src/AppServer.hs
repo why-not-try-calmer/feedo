@@ -6,7 +6,7 @@ module AppServer (startApp, registerWebhook, makeConfig) where
 
 import AppTypes
 import Backend
-import Broker (HasCache, withCache)
+import Broker (HasCache)
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
@@ -14,6 +14,7 @@ import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Jobs
 import Mongo (setupMongo)
 import Network.Wai
@@ -96,14 +97,15 @@ withServer = serve botApi . initServer
 
 makeConfig :: [(String, String)] -> IO (AppConfig, Int)
 makeConfig env =
-    let token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
-        alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
+    let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
+        key = T.encodeUtf8 . T.pack . fromJust $ lookup "API_KEY" env
         base = T.pack . fromJust $ lookup "BASE_URL" env
+        mongo_connection_string = fromJust $ lookup "MONGO_CONN_STRING" env
+        port = maybe 80 read (lookup "PORT" env)
+        token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
         webhook =
             let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
              in if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
-        mongo_connection_string = fromJust $ lookup "MONGO_CONN_STRING" env
-        port = maybe 80 read $ lookup "PORT" env
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
      in do
             mvar <- newMVar HMS.empty
@@ -120,7 +122,8 @@ makeConfig env =
             last_run_ioref <- newIORef Nothing
             pure
                 ( AppConfig
-                    { tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
+                    { api_key = key
+                    , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
                     , base_url = base
                     , mongo_creds = creds
                     , last_worker_run = last_run_ioref
@@ -133,14 +136,14 @@ makeConfig env =
                 )
 
 initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
-initStart = loadChats >> regenFeeds >> refresh_cache >> postProcJobs >> procNotif
-  where
-    refresh_cache =
-        withCache CacheWarmup >>= \case
-            Left msg -> liftIO $ do
-                print $ "Unable to warm up cache: " `T.append` msg
-                putStrLn "Proceededing nonetheless"
-            _ -> pure ()
+initStart = do
+    loadChats
+    liftIO (putStrLn "Chats loaded")
+    feeds <- regenFeeds
+    liftIO (putStrLn "Feeds regenerated")
+    refreshCache feeds
+    liftIO (putStrLn "Cache refreshed")
+    postProcJobs >> procNotif
 
 startApp :: IO ()
 startApp = do

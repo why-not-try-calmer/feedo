@@ -19,9 +19,10 @@ jobs:
 
     - name: Build & run tests
       env:
+        api: ${{ secrets.API_KEY }}
         tg: ${{ secrets.TELEGRAM_TOKEN }}
         bu: ${{ secrets.BASE_URL }}
         acid: ${{ secrets.ALERT_CHATID }}
         wh: ${{ secrets.WEBHOOK_URL }}
         mon: ${{ secrets.MONGO_CONN_STRING }}
-      run: TELEGRAM_TOKEN=$tg BASE_URL=$bu ALERT_CHATID=$acid WEBHOOK_URL=$wh MONGO_CONN_STRING=$mon docker-compose -f test-build.yml up --build --exit-code-from feedfarer-test
+      run: API_KEY=$api TELEGRAM_TOKEN=$tg BASE_URL=$bu ALERT_CHATID=$acid WEBHOOK_URL=$wh MONGO_CONN_STRING=$mon docker-compose -f test-build.yml up --build --exit-code-from feedfarer-test

@@ -21,7 +21,8 @@ getConns = do
     pure config
 
 spec :: Spec
-spec = go >> runIO getConns >>= go1 where
+spec = go >> runIO getConns >>= go1
+  where
     tester = "Hello _bea||utif||ully *nested* and_ my [.my.humble.world](https://beautiful.ugly.world)"
     go =
         let desc = describe "MarkdownChecker"
@@ -29,7 +30,7 @@ spec = go >> runIO getConns >>= go1 where
             target = case parse tester of
                 Left err -> print err >> undefined
                 Right (parsed, _) -> parsed `shouldSatisfy` not . T.null . render
-        in  desc $ as target
+         in desc $ as target
     go1 env =
         let desc = describe "tries to send a message validated with MarkdownChecker as a Telegram Message"
             as = it "ensures Telegram agrees with the validation for this message"
@@ -46,12 +47,14 @@ spec = go >> runIO getConns >>= go1 where
                             Right (resp :: JsonResponse TgGetMessageResponse) -> do
                                 resp `shouldSatisfy` resp_msg_ok . responseBody
                                 print resp
-        in  desc $ as target
-        where
-            action tok cid contents = runSend tok "sendMessage" $ OutboundMessage {
-                out_chat_id = cid,
-                out_text = contents,
-                out_parse_mode = Just "MarkdownV2",
-                out_disable_web_page_preview = Nothing,
-                out_reply_markup = Nothing
-                }
+         in desc $ as target
+      where
+        action tok cid contents =
+            runSend tok "sendMessage" $
+                OutboundMessage
+                    { out_chat_id = cid
+                    , out_text = contents
+                    , out_parse_mode = Just "MarkdownV2"
+                    , out_disable_web_page_preview = Nothing
+                    , out_reply_markup = Nothing
+                    }

@@ -1,19 +1,25 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module AppTypes where
 
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (Options (fieldLabelModifier, omitNothingFields), defaultOptions, deriveJSON)
+import Data.Aeson.TH (deriveFromJSON, deriveJSON, deriveToJSON)
+import Data.Aeson.Types
+import Data.ByteString.Char8 (ByteString)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
+import Data.Maybe (catMaybes)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Database.Redis (Connection)
+import Text.Read (readMaybe)
 import TgramOutJson (ChatId, InlineKeyboardMarkup, UserId)
 
 {- Replies -}
@@ -51,7 +57,7 @@ data Item = Item
     }
     deriving (Eq, Show, Ord)
 
-$(deriveJSON defaultOptions ''Item)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''Item)
 
 data FeedType = Rss | Atom deriving (Eq, Show)
 
@@ -69,16 +75,58 @@ data Feed = Feed
     }
     deriving (Eq, Show)
 
-$(deriveJSON defaultOptions ''Feed)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''Feed)
+
+data APIFeed = APIFeed
+    { api_f_type :: FeedType
+    , api_f_desc :: T.Text
+    , api_f_title :: T.Text
+    , api_f_link :: T.Text
+    , api_f_items :: [Item]
+    , api_f_avg_interval :: Maybe NominalDiffTime
+    , api_f_last_refresh :: Maybe UTCTime
+    , api_f_reads :: Int
+    }
+    deriving (Eq, Show)
+
+instance FromJSON APIFeed where
+    parseJSON = withObject "APIFeed" $ \o ->
+        let parsed_interval =
+                o .:? "f_avg_interval" >>= \case
+                    Nothing -> pure Nothing
+                    Just s -> pure $ readMaybe s :: Parser (Maybe NominalDiffTime)
+         in APIFeed
+                <$> o .: "f_type"
+                <*> o .: "f_desc"
+                <*> o .: "f_title"
+                <*> o .: "f_link"
+                <*> o .: "f_items"
+                <*> parsed_interval
+                <*> o .: "f_last_refresh"
+                <*> o .: "f_reads"
+
+fromAPIFeed :: APIFeed -> Feed
+fromAPIFeed (APIFeed a b c d e f g h) = Feed a b c d e f g h
 
 data Digest = Digest
-    { digest_id :: Maybe ObjectId
+    { digest_id :: Maybe T.Text
     , digest_created :: UTCTime
     , digest_items :: [Item]
     , digest_links :: [T.Text]
     , digest_titles :: [T.Text]
     }
     deriving (Show, Eq)
+
+$(deriveToJSON defaultOptions{omitNothingFields = True} ''Digest)
+
+instance FromJSON Digest where
+    parseJSON = withObject "APIDigest" $ \o ->
+        Digest
+            <$> o .:? "_id"
+            <*> o .: "digest_created"
+            <*> o .: "digest_items"
+            <*> o .: "digest_flinks"
+            <*> o .: "digest_ftitles"
 
 {- Searches -}
 
@@ -97,6 +145,8 @@ data SearchResult = SearchResult
     }
     deriving (Show, Eq)
 
+$(deriveJSON defaultOptions{omitNothingFields = True} ''SearchResult)
+
 {- Settings -}
 
 data DigestInterval = DigestInterval
@@ -105,7 +155,7 @@ data DigestInterval = DigestInterval
     }
     deriving (Eq, Show)
 
-$(deriveJSON defaultOptions ''DigestInterval)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''DigestInterval)
 
 data WordMatches = WordMatches
     { match_blacklist :: Keywords
@@ -114,7 +164,7 @@ data WordMatches = WordMatches
     }
     deriving (Show, Eq)
 
-$(deriveJSON defaultOptions{fieldLabelModifier = drop 6} ''WordMatches)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''WordMatches)
 
 data Settings = Settings
     { settings_digest_collapse :: Maybe Int
@@ -132,7 +182,26 @@ data Settings = Settings
     }
     deriving (Show, Eq)
 
-$(deriveJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 9} ''Settings)
+$(deriveToJSON defaultOptions{omitNothingFields = True} ''Settings)
+
+instance FromJSON Settings where
+    parseJSON = withObject "Settings" $ \o ->
+        let blacklisted = o .:? "settings_blacklist" .!= S.empty
+            search_search_keywords = o .:? "settings_searchset" .!= S.empty
+            search_only_results_flinks = o .:? "settings_only_search_results" .!= S.empty
+         in Settings
+                <$> o .:? "settings_digest_collapse"
+                <*> o .:? "settings_digest_interval" .!= DigestInterval (Just 86400) Nothing
+                <*> o .:? "settings_digest_size" .!= 10
+                <*> o .:? "settings_digest_start"
+                <*> o .:? "settings_digest_title" .!= mempty
+                <*> o .:? "settings_disable_web_view" .!= False
+                <*> o .:? "settings_follow" .!= False
+                <*> o .:? "settings_pagination" .!= True
+                <*> o .:? "settings_paused" .!= False
+                <*> o .:? "settings_pin" .!= False
+                <*> o .:? "settings_share_link" .!= True
+                <*> (WordMatches <$> blacklisted <*> search_search_keywords <*> search_only_results_flinks)
 
 data SubChat = SubChat
     { sub_chatid :: ChatId
@@ -143,6 +212,8 @@ data SubChat = SubChat
     , sub_settings :: Settings
     }
     deriving (Show, Eq)
+
+$(deriveJSON defaultOptions{omitNothingFields = True} ''SubChat)
 
 type SubChats = (HMS.HashMap ChatId SubChat)
 
@@ -159,6 +230,8 @@ data AdminUser = AdminUser
     , admin_created :: UTCTime
     }
     deriving (Eq, Show)
+
+$(deriveJSON defaultOptions{omitNothingFields = True} ''AdminUser)
 
 {- User actions, errors -}
 
@@ -316,7 +389,7 @@ data DbRes
     = DbFeeds [Feed]
     | DbChats [SubChat]
     | DbNoChat
-    | DbNoFeed
+    | DbBadOID
     | DbNoDigest
     | DbErr DbError
     | DbOk
@@ -333,7 +406,7 @@ data DbRes
 data DbError
     = PipeNotAcquired
     | FaultyToken
-    | NoFeedFound T.Text
+    | NotFound T.Text
     | FailedToUpdate T.Text T.Text
     | FailedToLog
     | FailedToLoadFeeds
@@ -361,7 +434,6 @@ data CacheAction
     | CachePullFeeds [T.Text]
     | CachePushFeeds [Feed]
     | CacheRefresh
-    | CacheWarmup
     | CacheXDays [FeedLink] Int
     | CacheGetPage ChatId Int Int
     | CacheSetPages ChatId Int [T.Text] (Maybe T.Text)
@@ -413,6 +485,8 @@ data LogItem
         {log_no_achive :: [Feed], log_at :: UTCTime, log_error :: T.Text}
     deriving (Eq, Show)
 
+$(deriveFromJSON defaultOptions{omitNothingFields = True} ''LogItem)
+
 {- Background tasks -}
 
 data Job
@@ -425,6 +499,81 @@ data Job
     | JobSetPagination ChatId Int [T.Text] (Maybe T.Text)
     | JobTgAlert T.Text
     deriving (Eq, Show)
+
+{- Mong API Requests -}
+
+type APIKey = ByteString
+
+data APIFilter = APIFilter
+    { filter_chat_id :: Maybe ChatId
+    , filter_message_id :: Maybe Int
+    , filter__id :: Maybe ObjectId
+    }
+
+instance ToJSON APIFilter where
+    toJSON (APIFilter cid mid _id) =
+        let chat_id = ("chat_id" .=) <$> cid
+            message_id = ("message_id" .=) <$> mid
+            oid = (\v -> "_id" .= object [("$oid" :: Key, toJSON $ show v)]) <$> _id
+         in object $ catMaybes [chat_id, message_id, oid]
+
+data Collection = CDigests | CPages | CFeeds | CChats
+
+renderCollection :: Collection -> T.Text
+renderCollection CChats = "chats"
+renderCollection CFeeds = "feeds"
+renderCollection CDigests = "digests"
+renderCollection CPages = "pages"
+
+database :: T.Text
+database = "feedfarer"
+
+cluster :: T.Text
+cluster = "Cluster0"
+
+data APIReq = APIReq
+    { api_collection :: T.Text
+    , api_database :: T.Text
+    , api_dataSource :: T.Text
+    , api_filter :: Maybe APIFilter
+    }
+
+$(deriveToJSON defaultOptions{fieldLabelModifier = drop 4, omitNothingFields = True} ''APIReq)
+
+data Pages = Pages
+    { pages_chat_id :: ChatId
+    , pages_message_id :: Int
+    , pages_pages :: [T.Text]
+    , pages_url :: Maybe T.Text
+    }
+
+instance FromJSON Pages where
+    parseJSON = withObject "Pages" $ \o ->
+        Pages
+            <$> o .: "chat_id"
+            <*> o .: "message_id"
+            <*> o .: "pages"
+            <*> o .:? "url"
+
+$(deriveToJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 6} ''Pages)
+
+{- Mongo API Responses -}
+
+newtype APIChats = APIDoc {chats_documents :: [SubChat]}
+
+$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIChats)
+
+newtype APIFeeds = APIFeeds {feeds_documents :: [APIFeed]}
+
+$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIFeeds)
+
+newtype APIDigest = APIDigest {digest_document :: Digest}
+
+$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 7} ''APIDigest)
+
+newtype APIPages = APIPages {pages_documents :: [Pages]}
+
+$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIPages)
 
 {- Web responses -}
 
@@ -472,7 +621,8 @@ data ServerConfig = ServerConfig
 type FeedsMap = HMS.HashMap T.Text Feed
 
 data AppConfig = AppConfig
-    { last_worker_run :: IORef (Maybe UTCTime)
+    { api_key :: APIKey
+    , last_worker_run :: IORef (Maybe UTCTime)
     , mongo_creds :: MongoCreds
     , connectors :: Connectors
     , tg_config :: ServerConfig
@@ -481,6 +631,19 @@ data AppConfig = AppConfig
     , postjobs :: Chan Job
     , worker_interval :: Int
     }
+
+printConfig :: AppConfig -> IO ()
+printConfig AppConfig{..} =
+    let zipped =
+            zip
+                ["api_key", "mongo_creds", "tg_config", "base_url", "worker_interval"]
+                [ T.decodeUtf8 api_key
+                , T.pack $ show mongo_creds
+                , T.pack $ show tg_config
+                , base_url
+                , T.pack $ show worker_interval
+                ]
+     in print $ T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v) zipped
 
 {- Application -}
 

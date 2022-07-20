@@ -25,7 +25,7 @@ import Mongo (HasMongo (evalDb))
 import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotified, postNotifier, preNotifier)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
-import Utils (freshLastXDays, partitionEither, sortItems)
+import Utils (freshLastXDays, partitionEither, renderDbError, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -108,14 +108,20 @@ withBroker (CacheDeleteFeeds flinks) =
                     pure . Left $
                         "Unable to delete these feeds: "
                             `T.append` T.intercalate ", " flinks
-withBroker (CacheGetPage cid mid n) =
-    ask >>= \env ->
-        withRedis env query >>= \case
-            Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
-            _ ->
-                refresh env >> withRedis env query >>= \case
-                    Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
-                    _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
+withBroker (CacheGetPage cid mid n) = do
+    env <- ask
+    withRedis env query >>= \case
+        Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
+        _ ->
+            refresh env >>= \case
+                Left err -> pure . Left $ err
+                Right _ ->
+                    withRedis env query >>= \case
+                        Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
+                        _ ->
+                            pure . Left $
+                                "Error while trying to refresh after pulling anew from database. Chat involved: "
+                                    `T.append` (T.pack . show $ cid)
   where
     (lk, k) = pageKeys cid mid
     query = do
@@ -129,7 +135,8 @@ withBroker (CacheGetPage cid mid n) =
     refresh env =
         evalDb env (GetPages cid mid) >>= \case
             DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
-            _ -> pure $ Left "Error while trying to refresh after pulling anew from database."
+            DbErr err -> pure . Left $ renderDbError err
+            _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
 withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
 withBroker (CacheSetPages cid mid pages mb_link) =
     ask >>= \env ->
@@ -282,11 +289,6 @@ withBroker CacheRefresh = do
                         `T.append` T.intercalate "," recipes
          in unless (all null [to_refresh, discarded, recipes]) report
     where_is_rust _ _ _ = undefined
-withBroker CacheWarmup =
-    ask >>= \env ->
-        evalDb env GetAllFeeds >>= \case
-            DbFeeds fs -> withBroker $ CachePushFeeds fs
-            _ -> pure . Left $ "Unable to warm the cache."
 withBroker (CacheXDays links days) =
     ask
         >>= ( getAllFeeds

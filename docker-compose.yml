@@ -8,6 +8,7 @@ services:
       command: stack exec -- feedfarer-exe
       ports: [80:80]
       environment:
+        API_KEY: ${API_KEY}
         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
         BASE_URL: ${BASE_URL}
         ALERT_CHATID: ${ALERT_CHATID}
