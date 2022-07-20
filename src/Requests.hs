@@ -233,5 +233,5 @@ fetchApi k query =
                 Left (SomeException e) -> pure . Left . show $ e
                 Right r -> pure $ Right r
   where
-    mkRequest url = req POST url (ReqBodyJson $ toJSON query) bsResponse
+    mkRequest url = req POST url (ReqBodyJson query) bsResponse
     actionFrom request = withReqManager $ runReq defaultHttpConfig . pure request

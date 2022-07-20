@@ -5,6 +5,7 @@
 module Backend where
 
 import AppTypes
+import Broker (HasCache (withCache))
 import Control.Concurrent
 import Control.Concurrent.Async (forConcurrently)
 import Control.Monad.Reader
@@ -135,8 +136,12 @@ loadChats =
         modifyMVar_ (subs_state env) $
             \chats_hmap -> do
                 now <- getCurrentTime
+                putStrLn "Trying to loading chats now"
                 evalDb env GetAllChats >>= \case
                     DbChats chats -> pure $ update_chats chats now
+                    DbErr err -> do
+                        print $ renderDbError err
+                        pure chats_hmap
                     _ -> pure chats_hmap
   where
     update_chats chats now =
@@ -152,7 +157,7 @@ loadChats =
                 )
                 chats
 
-regenFeeds :: (MonadIO m, MonadReader AppConfig m) => m ()
+regenFeeds :: (MonadIO m, MonadReader AppConfig m) => m (Maybe [Feed])
 regenFeeds = do
     env <- ask
     chats <- liftIO . readMVar $ subs_state env
@@ -160,8 +165,16 @@ regenFeeds = do
         report err = writeChan (postjobs env) . JobTgAlert $ "Failed to regen feeds for this reason: " `T.append` err
     liftIO $
         forConcurrently urls rebuildFeed >>= \res -> case sequence res of
-            Left err -> report err
-            Right feeds ->
-                evalDb env (UpsertFeeds (map sortItems feeds)) >>= \case
-                    DbErr err -> report $ renderDbError err
-                    _ -> pure ()
+            Left err -> report err >> pure Nothing
+            Right feeds -> pure $ Just . map sortItems $ feeds
+
+refreshCache :: (MonadIO m, HasCache m) => Maybe [Feed] -> m ()
+refreshCache Nothing = liftIO $ putStrLn "refresh_cache: No feed given"
+refreshCache (Just feeds) =
+    withCache (CachePushFeeds feeds) >>= \case
+        Left msg -> liftIO $ do
+            print $
+                "refresh_cache: Unable to warm up cache: "
+                    `T.append` msg
+                    `T.append` "Proceededing nonetheless"
+        _ -> pure ()

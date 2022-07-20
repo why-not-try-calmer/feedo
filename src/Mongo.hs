@@ -9,7 +9,7 @@ import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
-import Data.Aeson (decodeStrict')
+import Data.Aeson (eitherDecodeStrict')
 import qualified Data.ByteString.Char8 as B
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
@@ -297,21 +297,21 @@ evalMongo env (DeleteChat cid) =
 evalMongo env GetAllChats =
     let q = APIReq (renderCollection CChats) database cluster Nothing
      in fetchApi (api_key env) q >>= \case
-            Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" (T.pack err)
+            Left err -> pure . DbErr $ FailedToUpdate "GetAllChats failed" (T.pack err)
             Right resp ->
                 let b = responseBody resp
-                 in case decodeStrict' b :: Maybe APIChats of
-                        Nothing -> pure DbNoChat
-                        Just docs -> pure . DbChats . chats_documents $ docs
+                 in case eitherDecodeStrict' b :: Either String APIChats of
+                        Left err -> pure $ DbErr . NotFound $ T.pack err
+                        Right docs -> pure . DbChats . chats_documents $ docs
 evalMongo env GetAllFeeds =
     let q = APIReq (renderCollection CFeeds) database cluster Nothing
      in fetchApi (api_key env) q >>= \case
             Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" (T.pack err)
             Right resp ->
                 let b = responseBody resp
-                 in case decodeStrict' b :: Maybe APIFeeds of
-                        Nothing -> pure DbNoFeed
-                        Just docs -> pure . DbFeeds . feeds_documents $ docs
+                 in case eitherDecodeStrict' b :: Either String APIFeeds of
+                        Left err -> pure $ DbErr . NotFound $ T.pack err
+                        Right docs -> pure . DbFeeds . map fromAPIFeed . feeds_documents $ docs
 evalMongo env (GetPages cid mid) =
     let f = "{'chat_id:'" `T.append` (T.pack . show $ cid) `T.append` "', 'message_id':" `T.append` (T.pack . show $ mid) `T.append` "}"
         q = APIReq (renderCollection CPages) database cluster (Just f)
@@ -319,9 +319,9 @@ evalMongo env (GetPages cid mid) =
             Left _ -> pure $ DbNoPage cid mid
             Right resp ->
                 let b = responseBody resp
-                 in case decodeStrict' b :: Maybe APIPages of
-                        Nothing -> pure $ DbNoPage cid mid
-                        Just docs ->
+                 in case eitherDecodeStrict' b :: Either String APIPages of
+                        Left err -> pure $ DbErr . NotFound $ T.pack err
+                        Right docs ->
                             let p = head . pages_documents $ docs
                              in pure $ DbPages (pages_pages p) (pages_url p)
 {-
@@ -362,9 +362,9 @@ evalMongo env (ReadDigest _id) =
                         Left err -> pure . DbErr $ FailedToUpdate "digest" (T.pack err)
                         Right resp ->
                             let b = responseBody resp
-                             in case decodeStrict' b :: Maybe APIDigests of
-                                    Nothing -> pure DbNoDigest
-                                    Just docs -> pure . DbDigest . head . digests_documents $ docs
+                             in case eitherDecodeStrict' b :: Either String APIDigests of
+                                    Left _ -> pure DbNoDigest
+                                    Right docs -> pure . DbDigest . head . digests_documents $ docs
 {-
     action s = findOne $ select s "digests"
  in case mkSelector of

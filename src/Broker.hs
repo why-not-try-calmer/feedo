@@ -282,11 +282,6 @@ withBroker CacheRefresh = do
                         `T.append` T.intercalate "," recipes
          in unless (all null [to_refresh, discarded, recipes]) report
     where_is_rust _ _ _ = undefined
-withBroker CacheWarmup =
-    ask >>= \env ->
-        evalDb env GetAllFeeds >>= \case
-            DbFeeds fs -> withBroker $ CachePushFeeds fs
-            _ -> pure . Left $ "Unable to warm the cache."
 withBroker (CacheXDays links days) =
     ask
         >>= ( getAllFeeds

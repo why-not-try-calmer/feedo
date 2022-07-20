@@ -119,8 +119,8 @@ renderUserError UserNotAdmin = "Only admins can change settings."
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."
 renderDbError FaultyToken = "Login failed. This token is not valid, and perhaps never was."
-renderDbError (FailedToUpdate items reason) = "Unable to update the following items :" `T.append` items `T.append` ". Reason: " `T.append` reason
-renderDbError (NoFeedFound url) = "This feed could not be retrieved from the database: " `T.append` url
+renderDbError (FailedToUpdate items reason) = "Unable to update the following items: " `T.append` items `T.append` ". Reason: " `T.append` reason
+renderDbError (NotFound item) = "Resource could not be found from the network: " `T.append` item
 renderDbError FailedToLog = "Failed to log."
 renderDbError FailedToLoadFeeds = "Failed to load feeds!"
 renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt

@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module AppTypes where
@@ -15,6 +16,7 @@ import Data.IORef (IORef)
 import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Data.Time (NominalDiffTime, UTCTime)
 import Database.MongoDB (Host, Pipe, PortID)
 import Database.Redis (Connection)
@@ -74,12 +76,27 @@ data Feed = Feed
     }
     deriving (Eq, Show)
 
-$(deriveToJSON defaultOptions{omitNothingFields = True} ''Feed)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''Feed)
 
-instance FromJSON Feed where
-    parseJSON = withObject "Feed" $ \o ->
-        let parsed_interval = (readMaybe =<<) <$> (o .:? "f_avg_interval") :: Parser (Maybe NominalDiffTime)
-         in Feed
+data APIFeed = APIFeed
+    { api_f_type :: FeedType
+    , api_f_desc :: T.Text
+    , api_f_title :: T.Text
+    , api_f_link :: T.Text
+    , api_f_items :: [Item]
+    , api_f_avg_interval :: Maybe NominalDiffTime
+    , api_f_last_refresh :: Maybe UTCTime
+    , api_f_reads :: Int
+    }
+    deriving (Eq, Show)
+
+instance FromJSON APIFeed where
+    parseJSON = withObject "APIFeed" $ \o ->
+        let parsed_interval =
+                o .:? "f_avg_interval" >>= \case
+                    Nothing -> pure Nothing
+                    Just s -> pure $ readMaybe s :: Parser (Maybe NominalDiffTime)
+         in APIFeed
                 <$> o .: "f_type"
                 <*> o .: "f_desc"
                 <*> o .: "f_title"
@@ -88,6 +105,9 @@ instance FromJSON Feed where
                 <*> parsed_interval
                 <*> o .: "f_last_refresh"
                 <*> o .: "f_reads"
+
+fromAPIFeed :: APIFeed -> Feed
+fromAPIFeed (APIFeed a b c d e f g h) = Feed a b c d e f g h
 
 data Digest = Digest
     { digest_id :: Maybe T.Text
@@ -154,23 +174,23 @@ data Settings = Settings
     }
     deriving (Show, Eq)
 
+$(deriveToJSON defaultOptions{omitNothingFields = True} ''Settings)
+
 instance FromJSON Settings where
     parseJSON = withObject "Settings" $ \o ->
         Settings
             <$> o .:? "settings_digest_collapse"
-            <*> o .:? "settings_digest_interval" .!= DigestInterval Nothing Nothing
-            <*> o .: "settings_digest_size"
+            <*> o .:? "settings_digest_interval" .!= DigestInterval (Just 86400) Nothing
+            <*> o .:? "settings_digest_size" .!= 10
             <*> o .:? "settings_digest_start"
-            <*> o .: "settings_digest_title"
-            <*> o .: "settings_disable_web_view"
-            <*> o .: "settings_follow"
-            <*> o .: "settings_pagination"
-            <*> o .: "settings_paused"
-            <*> o .: "settings_pin"
-            <*> o .: "settings_share_link"
+            <*> o .:? "settings_digest_title" .!= mempty
+            <*> o .:? "settings_disable_web_view" .!= False
+            <*> o .:? "settings_follow" .!= False
+            <*> o .:? "settings_pagination" .!= True
+            <*> o .:? "settings_paused" .!= False
+            <*> o .:? "settings_pin" .!= False
+            <*> o .:? "settings_share_link" .!= True
             <*> o .:? "settings_word_matches" .!= WordMatches S.empty S.empty S.empty
-
-$(deriveToJSON defaultOptions{omitNothingFields = True} ''Settings)
 
 data SubChat = SubChat
     { sub_chatid :: ChatId
@@ -182,7 +202,7 @@ data SubChat = SubChat
     }
     deriving (Show, Eq)
 
-$(deriveFromJSON defaultOptions{omitNothingFields = True} ''SubChat)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''SubChat)
 
 type SubChats = (HMS.HashMap ChatId SubChat)
 
@@ -375,7 +395,7 @@ data DbRes
 data DbError
     = PipeNotAcquired
     | FaultyToken
-    | NoFeedFound T.Text
+    | NotFound T.Text
     | FailedToUpdate T.Text T.Text
     | FailedToLog
     | FailedToLoadFeeds
@@ -403,7 +423,6 @@ data CacheAction
     | CachePullFeeds [T.Text]
     | CachePushFeeds [Feed]
     | CacheRefresh
-    | CacheWarmup
     | CacheXDays [FeedLink] Int
     | CacheGetPage ChatId Int Int
     | CacheSetPages ChatId Int [T.Text] (Maybe T.Text)
@@ -477,10 +496,10 @@ type APIKey = ByteString
 data Collection = CDigests | CPages | CFeeds | CChats
 
 renderCollection :: Collection -> T.Text
+renderCollection CChats = "chats"
+renderCollection CFeeds = "feeds"
 renderCollection CDigests = "digests"
 renderCollection CPages = "pages"
-renderCollection CFeeds = "feeds"
-renderCollection CChats = "chats"
 
 database :: T.Text
 database = "feedfarer"
@@ -495,7 +514,7 @@ data APIReq = APIReq
     , api_filter :: Maybe T.Text
     }
 
-$(deriveToJSON defaultOptions{fieldLabelModifier = drop 4, omitNothingFields = True} ''APIReq)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 4, omitNothingFields = True} ''APIReq)
 
 data Pages = Pages
     { pages_chat_id :: ChatId
@@ -504,15 +523,15 @@ data Pages = Pages
     , pages_url :: Maybe T.Text
     }
 
-{- Mong API Responses -}
+$(deriveJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 6} ''Pages)
 
-$(deriveFromJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 6} ''Pages)
+{- Mongo API Responses -}
 
 newtype APIChats = APIDoc {chats_documents :: [SubChat]}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIChats)
 
-newtype APIFeeds = APIFeeds {feeds_documents :: [Feed]}
+newtype APIFeeds = APIFeeds {feeds_documents :: [APIFeed]}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIFeeds)
 
@@ -580,6 +599,19 @@ data AppConfig = AppConfig
     , postjobs :: Chan Job
     , worker_interval :: Int
     }
+
+printConfig :: AppConfig -> IO ()
+printConfig AppConfig{..} =
+    let zipped =
+            zip
+                ["api_key", "mongo_creds", "tg_config", "base_url", "worker_interval"]
+                [ T.decodeUtf8 api_key
+                , T.pack $ show mongo_creds
+                , T.pack $ show tg_config
+                , base_url
+                , T.pack $ show worker_interval
+                ]
+     in print $ T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v) zipped
 
 {- Application -}
 
