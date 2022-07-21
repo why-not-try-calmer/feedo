@@ -1,7 +1,5 @@
 module BrokerSpec where
 
-import AppServer (makeConfig)
-import AppTypes
 import Backend (loadChats, refreshCache, regenFeeds)
 import Broker
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -17,8 +15,10 @@ import Database.MongoDB
 import Database.Redis (keys, runRedis)
 import Mongo
 import Redis
+import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
+import Types
 import Utils (renderDbError)
 
 spec :: Spec

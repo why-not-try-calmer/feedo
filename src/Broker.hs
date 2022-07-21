@@ -3,7 +3,6 @@
 
 module Broker where
 
-import AppTypes hiding (Reply)
 import Control.Concurrent (readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, (>=>))
@@ -25,6 +24,7 @@ import Mongo (HasMongo (evalDb))
 import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotified, postNotifier, preNotifier)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
+import Types hiding (Reply)
 import Utils (freshLastXDays, partitionEither, renderDbError, sortItems)
 
 type CacheRes = Either T.Text FromCache

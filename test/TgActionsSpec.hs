@@ -1,15 +1,15 @@
 module TgActionsSpec where
 
-import AppServer (makeConfig)
-import AppTypes
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (mapM_)
 import qualified Data.Text as T
 import GHC.IO (evaluate)
+import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import TgActions (evalTgAct, interpretCmd)
 import TgramOutJson (ChatId, UserId)
+import Types
 
 getConns :: IO AppConfig
 getConns = do

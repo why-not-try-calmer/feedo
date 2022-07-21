@@ -2,7 +2,6 @@
 
 module UtilsSpec where
 
-import AppTypes (Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Notifier (Pre), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import Data.Maybe
@@ -12,6 +11,7 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime, readTime)
 import Notifications
 import Test.Hspec
 import TgramOutJson (ChatId)
+import Types (Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Notifier (Pre), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
 import Utils (
     defaultChatSettings,
     fromEither,

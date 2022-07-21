@@ -1,10 +1,10 @@
 module WebBrowserSpec where
 
-import AppTypes (DigestInterval (DigestInterval), Settings (Settings), WordMatches (WordMatches))
 import Data.Aeson
 import qualified Data.Set as S
 import Parsing (parseSettings)
 import Test.Hspec
+import Types (DigestInterval (DigestInterval), Settings (Settings), WordMatches (WordMatches))
 
 spec :: Spec
 spec = go

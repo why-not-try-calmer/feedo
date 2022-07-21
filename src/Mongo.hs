@@ -2,7 +2,6 @@
 
 module Mongo where
 
-import AppTypes
 import Control.Concurrent (writeChan)
 import Control.Exception
 import Control.Monad (unless, void, when)
@@ -28,6 +27,7 @@ import Network.HTTP.Req (BsResponse, responseBody)
 import Requests (fetchApi)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
+import Types
 import Utils (defaultChatSettings)
 
 {- Interface -}
@@ -312,7 +312,7 @@ evalMongo env GetAllFeeds =
                         Left err -> pure $ DbErr . NotFound $ T.pack err
                         Right docs -> pure . DbFeeds . map fromAPIFeed . feeds_documents $ docs
 evalMongo env (GetPages cid mid) =
-    let f = APIFilter (Just cid) (Just mid) Nothing
+    let f = APIFilter Nothing (Just mid) Nothing
         q = APIReq (renderCollection CPages) database cluster (Just f)
      in fetchApi (api_key env) q >>= \case
             Left _ -> pure $ DbNoPage cid mid
@@ -320,9 +320,9 @@ evalMongo env (GetPages cid mid) =
                 let b = responseBody resp
                  in case eitherDecodeStrict' b :: Either String APIPages of
                         Left err -> pure $ DbErr . NotFound $ T.pack err
-                        Right docs ->
-                            let p = head . pages_documents $ docs
-                             in pure $ DbPages (pages_pages p) (pages_url p)
+                        Right doc -> case pages_document doc of
+                            Just found -> pure $ DbPages (pages_pages found) (pages_url found)
+                            Nothing -> pure $ DbErr . NotFound $ mempty
 {-
 let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
  in action >>= \case

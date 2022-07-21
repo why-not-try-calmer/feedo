@@ -3,7 +3,6 @@
 
 module Backend where
 
-import AppTypes
 import Broker (HasCache (withCache))
 import Control.Concurrent
 import Control.Concurrent.Async (forConcurrently)
@@ -18,6 +17,7 @@ import Mongo (HasMongo (evalDb), evalDb)
 import Notifications
 import Parsing (rebuildFeed)
 import TgramOutJson (ChatId)
+import Types
 import Utils (defaultChatSettings, removeByUserIdx, renderDbError, sortItems, updateSettings)
 
 withChat :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either UserError ChatRes)

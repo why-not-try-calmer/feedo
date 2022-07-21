@@ -1,6 +1,5 @@
 module Redis where
 
-import AppTypes (App, AppConfig (connectors))
 import Control.Concurrent (threadDelay)
 import Control.Exception
 import Control.Monad ((>=>))
@@ -10,6 +9,7 @@ import Data.Int (Int64)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, checkedConnect, defaultConnectInfo, runRedis)
+import Types (App, AppConfig (connectors))
 
 class Monad m => HasRedis m where
     withRedis :: AppConfig -> Redis a -> m a

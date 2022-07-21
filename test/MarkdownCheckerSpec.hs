@@ -2,17 +2,17 @@
 
 module MarkdownCheckerSpec where
 
-import AppServer (makeConfig)
-import AppTypes
 import Control.Monad.Reader (MonadIO (liftIO), ask)
 import qualified Data.Text as T
 import MarkdownChecker (parse, render)
 import Network.HTTP.Req (JsonResponse, responseBody)
 import Requests (TgReqM (runSend), reply)
+import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import TgramInJson (TgGetMessageResponse (resp_msg_ok))
 import TgramOutJson (Outbound (..))
+import Types
 
 getConns :: IO AppConfig
 getConns = do

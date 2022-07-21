@@ -1,10 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module RequestsSpec where
 
-import AppServer (makeConfig)
-import AppTypes
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (ToJSON (toJSON), Value, eitherDecodeStrict', encode)
 import Data.ByteString.Char8 (ByteString)
@@ -23,10 +22,12 @@ import Requests (
     mkPagination,
     reply,
  )
+import Server (makeConfig)
 import System.Environment
 import Test.Hspec
 import Text.Read (readMaybe)
 import TgramOutJson
+import Types
 
 getConns :: IO AppConfig
 getConns = do
@@ -35,9 +36,8 @@ getConns = do
     pure config
 
 spec :: Spec
-spec = {-runIO getConns >>= \config -> go >> go1 >> go2 >> -> -} go4
+spec = go >> go1 >> go2 >> runIO getConns >>= \config -> go4 config >> go5 config
   where
-    k = T.encodeUtf8 "DDHcUZ8HTFMtydBxSd6tJQ0KcWhHFU2qenf0wOnLeQnCG03kl8fOlbfmfbMNKHhB"
     go =
         let desc = describe "mkKeyboard"
             as = it "makes a keyboard adjusted for pagination"
@@ -84,7 +84,7 @@ spec = {-runIO getConns >>= \config -> go >> go1 >> go2 >> -> -} go4
                 sliced `shouldSatisfy` all (\r -> (T.length . reply_contents $ r) < 4096)
         in  desc $ as target
     -}
-    go4 =
+    go4 config =
         let desc = describe "Digests: Ensures correct JSON encoding "
             as = it "Verifies an APIReq's (Digest) JSON encoding"
             target = do
@@ -92,11 +92,25 @@ spec = {-runIO getConns >>= \config -> go >> go1 >> go2 >> -> -} go4
                 let oid = fromMaybe surrogate (readMaybe "62d7ecdedb218a0001000003" :: Maybe ObjectId)
                     f = APIFilter Nothing Nothing (Just oid)
                     r = APIReq (renderCollection CDigests) database cluster (Just f)
-                res <- fetchApi k r
+                res <- fetchApi (api_key config) r
                 res `shouldSatisfy` \case
                     Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIDigest of
                         Left err -> trace err False
-                        Right (APIDigest _) -> True
+                        Right _ -> True
+                    Left err -> trace err False
+         in desc $ as target
+    go5 config =
+        let desc = describe "Pages: Ensures correct JSON encoding "
+            as = it "Verifies an APIReq's (Pages) JSON encoding"
+            target = do
+                let f = Just $ APIFilter Nothing (Just 40620) Nothing
+                    r = APIReq (renderCollection CPages) database cluster f
+                print $ encode r
+                res <- fetchApi (api_key config) r
+                res `shouldSatisfy` \case
+                    Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
+                        Left err -> trace err False
+                        Right _ -> True
                     Left err -> trace err False
          in desc $ as target
 

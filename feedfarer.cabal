@@ -24,8 +24,6 @@ source-repository head
 
 library
   exposed-modules:
-      AppServer
-      AppTypes
       Backend
       Broker
       Jobs
@@ -36,9 +34,11 @@ library
       Redis
       Replies
       Requests
+      Server
       TgActions
       TgramInJson
       TgramOutJson
+      Types
       Utils
       Web
   other-modules:

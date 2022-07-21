@@ -2,7 +2,6 @@
 
 module Utils where
 
-import AppTypes
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import Data.List (foldl', sort, sortOn)
@@ -17,6 +16,7 @@ import Data.Time.Clock.POSIX (
 import Data.Time.Format.ISO8601
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
+import Types
 
 {- Data -}
 

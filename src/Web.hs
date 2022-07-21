@@ -2,7 +2,6 @@
 
 module Web where
 
-import AppTypes
 import Backend (withChat)
 import Control.Concurrent (readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
@@ -25,6 +24,7 @@ import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
+import Types
 import Utils (mbTime, renderDbError, renderUserError)
 
 renderDbRes :: DbRes -> H.Html

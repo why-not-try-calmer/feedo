@@ -2,9 +2,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
 
-module AppServer (startApp, registerWebhook, makeConfig) where
+module Server (startApp, registerWebhook, makeConfig) where
 
-import AppTypes
 import Backend
 import Broker (HasCache)
 import Control.Concurrent (newChan, newMVar, writeChan)
@@ -27,6 +26,7 @@ import System.Environment (getEnvironment)
 import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (callback_query, message), User (user_id), chat_id)
+import Types
 import Utils (renderUserError)
 import Web
 

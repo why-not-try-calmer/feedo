@@ -2,7 +2,6 @@
 
 module Notifications where
 
-import AppTypes
 import Control.Concurrent
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (foldl')
@@ -13,6 +12,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime (utctDayTime), addUTCTime)
 import Mongo (HasMongo (evalDb))
 import TgramOutJson (ChatId)
+import Types
 import Utils (renderDbError)
 
 preNotifier :: UTCTime -> Maybe UTCTime -> SubChats -> Notifier

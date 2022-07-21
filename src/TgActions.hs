@@ -3,7 +3,6 @@
 
 module TgActions where
 
-import AppTypes
 import Backend (withChat)
 import Broker (HasCache (withCache), getAllFeeds)
 import Control.Concurrent (Chan, readMVar, writeChan)
@@ -26,6 +25,7 @@ import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhoo
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
+import Types
 import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
 
 registerWebhook :: AppConfig -> IO ()

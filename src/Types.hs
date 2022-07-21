@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module AppTypes where
+module Types where
 
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
@@ -571,7 +571,7 @@ newtype APIDigest = APIDigest {digest_document :: Digest}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 7} ''APIDigest)
 
-newtype APIPages = APIPages {pages_documents :: [Pages]}
+newtype APIPages = APIPages {pages_document :: Maybe Pages}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIPages)
 
