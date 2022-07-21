@@ -91,27 +91,27 @@ spec = go >> go1 >> go2 >> runIO getConns >>= \config -> go4 config >> go5 confi
                 surrogate <- genObjectId
                 let oid = fromMaybe surrogate (readMaybe "62d7ecdedb218a0001000003" :: Maybe ObjectId)
                     f = APIFilter Nothing Nothing (Just oid)
-                    r = APIReq (renderCollection CDigests) database cluster (Just f)
+                    r = APIReq CDigests (Just f)
                 res <- fetchApi (api_key config) r
                 res `shouldSatisfy` \case
                     Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIDigest of
                         Left err -> trace err False
                         Right _ -> True
-                    Left err -> trace err False
+                    Left err -> trace (T.unpack err) False
          in desc $ as target
     go5 config =
         let desc = describe "Pages: Ensures correct JSON encoding "
             as = it "Verifies an APIReq's (Pages) JSON encoding"
             target = do
                 let f = Just $ APIFilter Nothing (Just 40620) Nothing
-                    r = APIReq (renderCollection CPages) database cluster f
+                    r = APIReq CPages f
                 print $ encode r
                 res <- fetchApi (api_key config) r
                 res `shouldSatisfy` \case
                     Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
                         Left err -> trace err False
                         Right _ -> True
-                    Left err -> trace err False
+                    Left err -> trace (T.unpack err) False
          in desc $ as target
 
 lorec :: T.Text

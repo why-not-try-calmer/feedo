@@ -525,20 +525,18 @@ renderCollection CFeeds = "feeds"
 renderCollection CDigests = "digests"
 renderCollection CPages = "pages"
 
-database :: T.Text
-database = "feedfarer"
-
-cluster :: T.Text
-cluster = "Cluster0"
-
 data APIReq = APIReq
-    { api_collection :: T.Text
-    , api_database :: T.Text
-    , api_dataSource :: T.Text
+    { api_collection :: Collection
     , api_filter :: Maybe APIFilter
     }
 
-$(deriveToJSON defaultOptions{fieldLabelModifier = drop 4, omitNothingFields = True} ''APIReq)
+instance ToJSON APIReq where
+    toJSON (APIReq co fi) =
+        let ba = Just $ "database" .= ("feedfarer" :: T.Text)
+            so = Just $ "dataSource" .= ("Cluster0" :: T.Text)
+            collection = Just $ "collection" .= renderCollection co
+            filt = ("filter" .=) <$> fi
+         in object $ catMaybes [ba, so, collection, filt]
 
 data Pages = Pages
     { pages_chat_id :: ChatId
@@ -571,7 +569,7 @@ newtype APIDigest = APIDigest {digest_document :: Digest}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 7} ''APIDigest)
 
-newtype APIPages = APIPages {pages_document :: Maybe Pages}
+newtype APIPages = APIPages {pages_documents :: [Pages]}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIPages)
 

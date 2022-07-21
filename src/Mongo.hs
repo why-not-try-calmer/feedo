@@ -12,7 +12,7 @@ import qualified Data.ByteString.Char8 as B
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
-import Data.List (sortOn)
+import qualified Data.List as List
 import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Ord
 import qualified Data.Set as S
@@ -71,7 +71,7 @@ class HasMongo m where
     evalDb :: AppConfig -> DbAction -> m DbRes
     loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
     setupDb :: String -> m (Either DbError (Pipe, MongoCreds))
-    fetch :: APIKey -> APIReq -> m (Either String BsResponse)
+    fetch :: APIKey -> APIReq -> m (Either T.Text BsResponse)
 
 instance MonadIO m => HasMongo (App m) where
     evalDb = evalMongo
@@ -279,7 +279,7 @@ evalMongo env (DbSearch keywords scope last_time) =
                                             , sr_feedlink = fromJust f_link
                                             , sr_score = fromJust score
                                             }
-                    sort_limit = take 10 . sortOn (Down . sr_score)
+                    sort_limit = take 10 . List.sortOn (Down . sr_score)
                     rescind = filter (\sr -> sr_feedlink sr `elem` scope)
                     payload r =
                         if null scope
@@ -294,18 +294,18 @@ evalMongo env (DeleteChat cid) =
             Left _ -> pure $ DbErr $ FailedToUpdate mempty "DeleteChat failed"
             Right _ -> pure DbOk
 evalMongo env GetAllChats =
-    let q = APIReq (renderCollection CChats) database cluster Nothing
+    let q = APIReq CChats Nothing
      in fetchApi (api_key env) q >>= \case
-            Left err -> pure . DbErr $ FailedToUpdate "GetAllChats failed" (T.pack err)
+            Left err -> pure . DbErr $ FailedToUpdate "GetAllChats failed" err
             Right resp ->
                 let b = responseBody resp
                  in case eitherDecodeStrict' b :: Either String APIChats of
                         Left err -> pure $ DbErr . NotFound $ T.pack err
                         Right docs -> pure . DbChats . chats_documents $ docs
 evalMongo env GetAllFeeds =
-    let q = APIReq (renderCollection CFeeds) database cluster Nothing
+    let q = APIReq CFeeds Nothing
      in fetchApi (api_key env) q >>= \case
-            Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" (T.pack err)
+            Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" err
             Right resp ->
                 let b = responseBody resp
                  in case eitherDecodeStrict' b :: Either String APIFeeds of
@@ -313,16 +313,16 @@ evalMongo env GetAllFeeds =
                         Right docs -> pure . DbFeeds . map fromAPIFeed . feeds_documents $ docs
 evalMongo env (GetPages cid mid) =
     let f = APIFilter Nothing (Just mid) Nothing
-        q = APIReq (renderCollection CPages) database cluster (Just f)
+        q = APIReq CPages (Just f)
      in fetchApi (api_key env) q >>= \case
             Left _ -> pure $ DbNoPage cid mid
             Right resp ->
                 let b = responseBody resp
                  in case eitherDecodeStrict' b :: Either String APIPages of
                         Left err -> pure $ DbErr . NotFound $ T.pack err
-                        Right doc -> case pages_document doc of
-                            Just found -> pure $ DbPages (pages_pages found) (pages_url found)
+                        Right docs -> case List.find (\p -> pages_chat_id p == cid) $ pages_documents docs of
                             Nothing -> pure $ DbErr . NotFound $ mempty
+                            Just found -> pure $ DbPages (pages_pages found) (pages_url found)
 {-
 let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
  in action >>= \case
@@ -352,9 +352,9 @@ evalMongo env (ReadDigest _id) =
         Nothing -> pure DbBadOID
         oid ->
             let f = APIFilter Nothing Nothing oid
-                q = APIReq (renderCollection CDigests) database cluster (Just f)
+                q = APIReq CDigests (Just f)
              in fetchApi (api_key env) q >>= \case
-                    Left err -> pure . DbErr $ FailedToUpdate "digest" (T.pack err)
+                    Left err -> pure . DbErr $ FailedToUpdate "digest" err
                     Right resp ->
                         let b = responseBody resp
                          in case eitherDecodeStrict' b :: Either String APIDigest of
@@ -432,7 +432,7 @@ feedToBson :: Feed -> Document
 feedToBson Feed{..} =
     [ "f_avg_interval" =: (realToFrac <$> f_avg_interval :: Maybe NominalDiffTime)
     , "f_desc" =: f_desc
-    , "f_items" =: map writeDoc (take 30 . sortOn (Down . i_pubdate) $ f_items)
+    , "f_items" =: map writeDoc (take 30 . List.sortOn (Down . i_pubdate) $ f_items)
     , "f_last_refresh" =: f_last_refresh
     , "f_link" =: f_link
     , "f_reads" =: f_reads
@@ -665,7 +665,7 @@ collectLogStats env = do
     case res of
         Left _ -> pure "Failed to collectLogStats"
         Right (docs_logs, feeds_docs) ->
-            let logs = sortOn log_at . filter (not . T.null . log_message) . map readDoc $ docs_logs
+            let logs = List.sortOn log_at . filter (not . T.null . log_message) . map readDoc $ docs_logs
                 feeds_counts = map (\d -> let f = readDoc d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
              in pure $ foldl' (\acc (!k, !v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
   where
