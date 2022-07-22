@@ -5,13 +5,13 @@
 module Types where
 
 import Control.Concurrent (Chan, MVar)
+import Control.Monad.List (foldM)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as A
 import Data.Aeson.TH
 import Data.Aeson.Types
 import Data.ByteString.Char8 (ByteString)
-import Data.Foldable (Foldable (toList))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
@@ -183,17 +183,18 @@ instance FromJSON Settings where
             _digest_at =
                 (o .:? "settings_digest_at") >>= \case
                     Just (Array arr) ->
-                        let mapped =
-                                mapM
-                                    ( \case
-                                        Object kmap ->
-                                            let hour = parseJSON $ fromMaybe "0" $ A.lookup "hour" kmap :: Parser Int
-                                                minute = parseJSON $ fromMaybe "0" $ A.lookup "minute" kmap :: Parser Int
-                                             in (,) <$> hour <*> minute
-                                        _ -> mempty
-                                    )
-                                    arr
-                         in (\v -> Just $ toList v :: Maybe [(Int, Int)]) <$> mapped
+                        Just
+                            <$> foldM
+                                ( \acc v -> case v of
+                                    Object kmap ->
+                                        let hour = parseJSON $ fromMaybe "0" $ A.lookup "hour" kmap :: Parser Int
+                                            minute = parseJSON $ fromMaybe "0" $ A.lookup "minute" kmap :: Parser Int
+                                            res = (,) <$> hour <*> minute
+                                         in (:) <$> res <*> pure acc
+                                    _ -> pure acc
+                                )
+                                []
+                                arr
                     _ -> pure Nothing
          in Settings
                 <$> o .:? "settings_digest_collapse"
