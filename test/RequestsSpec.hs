@@ -7,7 +7,7 @@ module RequestsSpec where
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (ToJSON (toJSON), Value, eitherDecodeStrict', encode)
 import Data.ByteString.Char8 (ByteString)
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Time (getCurrentTime)
@@ -36,7 +36,11 @@ getConns = do
     pure config
 
 spec :: Spec
-spec = go >> go1 >> go2 >> runIO getConns >>= \config -> go4 config >> go5 config
+spec = do
+    sequence_ [go, go1, go2]
+    runIO getConns >>= \config ->
+        let key = api_key config
+         in sequence_ [go4 key, go5 key, go6 key]
   where
     go =
         let desc = describe "mkKeyboard"
@@ -84,7 +88,7 @@ spec = go >> go1 >> go2 >> runIO getConns >>= \config -> go4 config >> go5 confi
                 sliced `shouldSatisfy` all (\r -> (T.length . reply_contents $ r) < 4096)
         in  desc $ as target
     -}
-    go4 config =
+    go4 key =
         let desc = describe "Digests: Ensures correct JSON encoding "
             as = it "Verifies an APIReq's (Digest) JSON encoding"
             target = do
@@ -92,25 +96,42 @@ spec = go >> go1 >> go2 >> runIO getConns >>= \config -> go4 config >> go5 confi
                 let oid = fromMaybe surrogate (readMaybe "62d7ecdedb218a0001000003" :: Maybe ObjectId)
                     f = APIFilter Nothing Nothing (Just oid)
                     r = APIReq CDigests (Just f)
-                res <- fetchApi (api_key config) r
+                res <- fetchApi key r
                 res `shouldSatisfy` \case
                     Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIDigest of
                         Left err -> trace err False
                         Right _ -> True
                     Left err -> trace (T.unpack err) False
          in desc $ as target
-    go5 config =
+    go5 key =
         let desc = describe "Pages: Ensures correct JSON encoding "
             as = it "Verifies an APIReq's (Pages) JSON encoding"
             target = do
                 let f = Just $ APIFilter Nothing (Just 40620) Nothing
                     r = APIReq CPages f
                 print $ encode r
-                res <- fetchApi (api_key config) r
+                res <- fetchApi key r
                 res `shouldSatisfy` \case
                     Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
                         Left err -> trace err False
                         Right _ -> True
+                    Left err -> trace (T.unpack err) False
+         in desc $ as target
+    go6 key =
+        let desc = describe "Chats: Validates chats values"
+            as = it "Validates chats' values from APIReq's (Chats) bytestring"
+            target = do
+                let r = APIReq CChats Nothing
+                print $ encode r
+                res <- fetchApi key r
+                res `shouldSatisfy` \case
+                    Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIChats of
+                        Left err -> trace err False
+                        Right docs ->
+                            let chats = chats_documents docs
+                                ats = mapMaybe (digest_at . settings_digest_interval . sub_settings) chats
+                                intervals = map (settings_digest_interval . sub_settings) chats
+                             in trace (show intervals ++ "\n" ++ show ats) (any (> 86400) $ mapMaybe digest_every_secs intervals)
                     Left err -> trace (T.unpack err) False
          in desc $ as target
 

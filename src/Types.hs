@@ -6,17 +6,22 @@ module Types where
 
 import Control.Concurrent (Chan, MVar)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
-import Data.Aeson.TH (deriveFromJSON, deriveJSON, deriveToJSON)
+import Data.Aeson
+import qualified Data.Aeson.KeyMap as A
+import Data.Aeson.TH
 import Data.Aeson.Types
 import Data.ByteString.Char8 (ByteString)
+import Data.Foldable (Foldable (toList))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
 import Data.Int (Int64)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Data.Time (NominalDiffTime, UTCTime)
+import Data.Time (NominalDiffTime, UTCTime, defaultTimeLocale, diffUTCTime, parseTimeM, rfc822DateFormat)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Time.Format.ISO8601
 import Database.MongoDB (Host, ObjectId, Pipe, PortID)
 import Database.Redis (Connection)
 import Text.Read (readMaybe)
@@ -89,25 +94,6 @@ data APIFeed = APIFeed
     }
     deriving (Eq, Show)
 
-instance FromJSON APIFeed where
-    parseJSON = withObject "APIFeed" $ \o ->
-        let parsed_interval =
-                o .:? "f_avg_interval" >>= \case
-                    Nothing -> pure Nothing
-                    Just s -> pure $ readMaybe s :: Parser (Maybe NominalDiffTime)
-         in APIFeed
-                <$> o .: "f_type"
-                <*> o .: "f_desc"
-                <*> o .: "f_title"
-                <*> o .: "f_link"
-                <*> o .: "f_items"
-                <*> parsed_interval
-                <*> o .: "f_last_refresh"
-                <*> o .: "f_reads"
-
-fromAPIFeed :: APIFeed -> Feed
-fromAPIFeed (APIFeed a b c d e f g h) = Feed a b c d e f g h
-
 data Digest = Digest
     { digest_id :: Maybe T.Text
     , digest_created :: UTCTime
@@ -117,8 +103,6 @@ data Digest = Digest
     }
     deriving (Show, Eq)
 
-$(deriveToJSON defaultOptions{omitNothingFields = True} ''Digest)
-
 instance FromJSON Digest where
     parseJSON = withObject "APIDigest" $ \o ->
         Digest
@@ -127,6 +111,8 @@ instance FromJSON Digest where
             <*> o .: "digest_items"
             <*> o .: "digest_flinks"
             <*> o .: "digest_ftitles"
+
+$(deriveToJSON defaultOptions{omitNothingFields = True} ''Digest)
 
 {- Searches -}
 
@@ -189,9 +175,29 @@ instance FromJSON Settings where
         let blacklisted = o .:? "settings_blacklist" .!= S.empty
             search_search_keywords = o .:? "settings_searchset" .!= S.empty
             search_only_results_flinks = o .:? "settings_only_search_results" .!= S.empty
+            digest_every =
+                (o .:? "settings_digest_every_secs") >>= \p ->
+                    case mbNom <$> p of
+                        Nothing -> pure $ Just 86400
+                        Just t -> pure t
+            _digest_at =
+                (o .:? "settings_digest_at") >>= \case
+                    Just (Array arr) ->
+                        let mapped =
+                                mapM
+                                    ( \case
+                                        Object kmap ->
+                                            let hour = parseJSON $ fromMaybe "0" $ A.lookup "hour" kmap :: Parser Int
+                                                minute = parseJSON $ fromMaybe "0" $ A.lookup "minute" kmap :: Parser Int
+                                             in (,) <$> hour <*> minute
+                                        _ -> mempty
+                                    )
+                                    arr
+                         in (\v -> Just $ toList v :: Maybe [(Int, Int)]) <$> mapped
+                    _ -> pure Nothing
          in Settings
                 <$> o .:? "settings_digest_collapse"
-                <*> o .:? "settings_digest_interval" .!= DigestInterval (Just 86400) Nothing
+                <*> (DigestInterval <$> digest_every <*> _digest_at)
                 <*> o .:? "settings_digest_size" .!= 10
                 <*> o .:? "settings_digest_start"
                 <*> o .:? "settings_digest_title" .!= mempty
@@ -202,6 +208,16 @@ instance FromJSON Settings where
                 <*> o .:? "settings_pin" .!= False
                 <*> o .:? "settings_share_link" .!= True
                 <*> (WordMatches <$> blacklisted <*> search_search_keywords <*> search_only_results_flinks)
+      where
+        mbNom :: String -> Maybe NominalDiffTime
+        mbNom s =
+            maybe second_pass pure $
+                iso8601ParseM s >>= \t ->
+                    pure . diffUTCTime t $ posixSecondsToUTCTime 0
+          where
+            second_pass = foldr step Nothing formats
+            step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
+            formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 data SubChat = SubChat
     { sub_chatid :: ChatId
@@ -510,13 +526,6 @@ data APIFilter = APIFilter
     , filter__id :: Maybe ObjectId
     }
 
-instance ToJSON APIFilter where
-    toJSON (APIFilter cid mid _id) =
-        let chat_id = ("chat_id" .=) <$> cid
-            message_id = ("message_id" .=) <$> mid
-            oid = (\v -> "_id" .= object [("$oid" :: Key, toJSON $ show v)]) <$> _id
-         in object $ catMaybes [chat_id, message_id, oid]
-
 data Collection = CDigests | CPages | CFeeds | CChats
 
 renderCollection :: Collection -> T.Text
@@ -530,6 +539,44 @@ data APIReq = APIReq
     , api_filter :: Maybe APIFilter
     }
 
+data Pages = Pages
+    { pages_chat_id :: ChatId
+    , pages_message_id :: Int
+    , pages_pages :: [T.Text]
+    , pages_url :: Maybe T.Text
+    }
+
+{- Web responses -}
+
+newtype ReadReq = ReadReq {read_req_hash :: T.Text}
+
+data ReadResp = ReadResp
+    { read_resp_settings :: Maybe Settings
+    , read_resp_cid :: Maybe ChatId
+    , read_resp_error :: Maybe T.Text
+    }
+
+data WriteReq = WriteReq
+    { write_req_hash :: T.Text
+    , write_req_settings :: Settings
+    , write_req_confirm :: Maybe Bool
+    }
+
+data WriteResp = WriteResp
+    { write_resp_status :: Int
+    , write_resp_checkout :: Maybe T.Text
+    , write_resp_error :: Maybe T.Text
+    }
+
+{- Instances -}
+
+instance ToJSON APIFilter where
+    toJSON (APIFilter cid mid _id) =
+        let chat_id = ("chat_id" .=) <$> cid
+            message_id = ("message_id" .=) <$> mid
+            oid = (\v -> "_id" .= object [("$oid" :: Key, toJSON $ show v)]) <$> _id
+         in object $ catMaybes [chat_id, message_id, oid]
+
 instance ToJSON APIReq where
     toJSON (APIReq co fi) =
         let ba = Just $ "database" .= ("feedfarer" :: T.Text)
@@ -537,13 +584,6 @@ instance ToJSON APIReq where
             collection = Just $ "collection" .= renderCollection co
             filt = ("filter" .=) <$> fi
          in object $ catMaybes [ba, so, collection, filt]
-
-data Pages = Pages
-    { pages_chat_id :: ChatId
-    , pages_message_id :: Int
-    , pages_pages :: [T.Text]
-    , pages_url :: Maybe T.Text
-    }
 
 instance FromJSON Pages where
     parseJSON = withObject "Pages" $ \o ->
@@ -563,6 +603,25 @@ $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIChats)
 
 newtype APIFeeds = APIFeeds {feeds_documents :: [APIFeed]}
 
+instance FromJSON APIFeed where
+    parseJSON = withObject "APIFeed" $ \o ->
+        let parsed_interval =
+                o .:? "f_avg_interval" >>= \case
+                    Nothing -> pure Nothing
+                    Just s -> pure $ readMaybe s :: Parser (Maybe NominalDiffTime)
+         in APIFeed
+                <$> o .: "f_type"
+                <*> o .: "f_desc"
+                <*> o .: "f_title"
+                <*> o .: "f_link"
+                <*> o .: "f_items"
+                <*> parsed_interval
+                <*> o .: "f_last_refresh"
+                <*> o .: "f_reads"
+
+fromAPIFeed :: APIFeed -> Feed
+fromAPIFeed (APIFeed a b c d e f g h) = Feed a b c d e f g h
+
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIFeeds)
 
 newtype APIDigest = APIDigest {digest_document :: Digest}
@@ -573,33 +632,11 @@ newtype APIPages = APIPages {pages_documents :: [Pages]}
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 6} ''APIPages)
 
-{- Web responses -}
-
-newtype ReadReq = ReadReq {read_req_hash :: T.Text}
-
 $(deriveJSON defaultOptions ''ReadReq)
-
-data ReadResp = ReadResp
-    { read_resp_settings :: Maybe Settings
-    , read_resp_cid :: Maybe ChatId
-    , read_resp_error :: Maybe T.Text
-    }
 
 $(deriveJSON defaultOptions{omitNothingFields = True} ''ReadResp)
 
-data WriteReq = WriteReq
-    { write_req_hash :: T.Text
-    , write_req_settings :: Settings
-    , write_req_confirm :: Maybe Bool
-    }
-
 $(deriveJSON defaultOptions{omitNothingFields = True} ''WriteReq)
-
-data WriteResp = WriteResp
-    { write_resp_status :: Int
-    , write_resp_checkout :: Maybe T.Text
-    , write_resp_error :: Maybe T.Text
-    }
 
 $(deriveJSON defaultOptions{omitNothingFields = True} ''WriteResp)
 
