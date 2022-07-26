@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 
-module Parsing where
+module Parsing (eitherUrlScheme, rebuildFeed, getFeedFromUrlScheme, parseSettings) where
 
 import Control.Exception
 import Control.Monad.IO.Class

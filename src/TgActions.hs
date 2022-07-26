@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
-module TgActions where
+module TgActions (registerWebhook, checkIfAdmin, interpretCmd, processCbq, evalTgAct) where
 
 import Backend (withChat)
 import Broker (HasCache (withCache), getAllFeeds)

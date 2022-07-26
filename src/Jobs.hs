@@ -1,8 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Jobs where
+module Jobs (procNotif, postProcJobs) where
 
-import Types (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogCouldNotArchive, LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
 import Backend (withChat)
 import Broker (HasCache (withCache))
 import Control.Concurrent (
@@ -27,8 +26,9 @@ import Replies (
     mkDigestUrl,
     mkReply,
  )
-import Requests (reply, reqSend_)
+import Requests (reply, runSend_)
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
+import Types (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FeedLink, FromCache (CacheDigests), Job (..), LogItem (LogCouldNotArchive, LogPerf, log_at, log_message, log_refresh, log_sending_notif, log_total, log_updating), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
 import Utils (renderDbError, scanTimeSlices)
 
 {- Background tasks -}
@@ -139,7 +139,7 @@ postProcJobs =
                     JobIncReadsJob links -> fork $ evalDb env (IncReads links)
                     JobLog item -> fork $ saveToLog env item
                     JobPin cid mid -> fork $ do
-                        reqSend_ tok "pinChatMessage" (PinMessage cid mid) >>= \case
+                        runSend_ tok "pinChatMessage" (PinMessage cid mid) >>= \case
                             Left _ ->
                                 writeChan jobs . JobTgAlert . with_cid_txt "Tried to pin a message in (chat_id) " cid $
                                     " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
@@ -150,7 +150,7 @@ postProcJobs =
                         putStrLn ("Removing message in " ++ msg)
                         fork $ do
                             threadDelay checked_delay
-                            reqSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
+                            runSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
                                 Left _ ->
                                     writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
                                         " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"

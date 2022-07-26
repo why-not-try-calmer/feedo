@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Requests where
+module Requests (mkPagination, setWebhook, fetchApi, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
@@ -127,12 +127,14 @@ mkPagination orig_txt mb_url =
                 GT -> go (l : p : ps) ls
                 _ -> go (pl : ps) ls
 
+{-
 mkDigestLinkButton :: T.Text -> Maybe InlineKeyboardButton
 mkDigestLinkButton link
     | T.null link = Nothing
     | otherwise = Just $ InlineKeyboardButton label (Just link) Nothing
   where
     label = "Permalink"
+-}
 
 reply ::
     TgReqM m =>

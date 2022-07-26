@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 module Utils where
 
 import qualified Data.HashMap.Strict as HMS
@@ -21,6 +19,7 @@ import Types
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
+{-# INLINE partitionEither #-}
 partitionEither = foldl' step ([], [])
   where
     step (!ls, !rs) val = case val of
@@ -28,13 +27,16 @@ partitionEither = foldl' step ([], [])
         Right r -> (ls, r : rs)
 
 reduceMaybeWith :: (a -> Maybe b) -> [a] -> [b]
+{-# INLINE reduceMaybeWith #-}
 reduceMaybeWith f = foldl' (\acc val -> case f val of Just x -> x : acc; _ -> acc) []
 
 fromEither :: b -> Either a b -> b
+{-# INLINE fromEither #-}
 fromEither def (Left _) = def
 fromEither _ (Right v) = v
 
 maybeUserIdx :: [a] -> Int -> Maybe a
+{-# INLINE maybeUserIdx #-}
 maybeUserIdx [] _ = Nothing
 maybeUserIdx ls i
     | i < 1 = Nothing
@@ -44,6 +46,7 @@ maybeUserIdx ls i
     | otherwise = Just $ ls !! (i - 1)
 
 removeByUserIdx :: [a] -> [Int] -> Maybe [a]
+{-# INLINE removeByUserIdx #-}
 removeByUserIdx [] _ = Nothing
 removeByUserIdx _ [] = Nothing
 removeByUserIdx ls is =
@@ -86,6 +89,7 @@ unFeedRefs :: [FeedRef] -> [T.Text]
 unFeedRefs = map unFeedRef
 
 toFeedRef :: [T.Text] -> Either UserError [FeedRef]
+{-# INLINE toFeedRef #-}
 toFeedRef ss
     | all_valid_urls = Right intoUrls
     | all_ints = Right intoIds
@@ -132,6 +136,7 @@ renderDbError FailedToGetAllPages = "Db was unable to retrieve all pages."
 {- Time -}
 
 mbTime :: String -> Maybe UTCTime
+{-# INLINE mbTime #-}
 mbTime s = maybe second_pass pure $ iso8601ParseM s
   where
     second_pass = foldr step Nothing formats
@@ -176,6 +181,7 @@ utcToYmdHMS :: UTCTime -> T.Text
 utcToYmdHMS = T.pack . formatTime defaultTimeLocale "%Y-%m-%d %T"
 
 sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
+{-# INLINE sortTimePairs #-}
 sortTimePairs = go []
   where
     go sorter [] = sorter
@@ -213,6 +219,7 @@ defaultChatSettings =
         }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
+{-# INLINE updateSettings #-}
 updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
   where
@@ -249,4 +256,5 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
         PPagination v -> o{settings_pagination = v}
 
 sortItems :: Feed -> Feed
+{-# INLINE sortItems #-}
 sortItems f = f{f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f}

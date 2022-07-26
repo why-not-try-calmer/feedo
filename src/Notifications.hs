@@ -16,6 +16,7 @@ import Types
 import Utils (renderDbError)
 
 preNotifier :: UTCTime -> Maybe UTCTime -> SubChats -> Notifier
+{-# INLINEABLE preNotifier #-}
 preNotifier now mb_last_run chats =
     Pre
         { feeds_to_refresh = to_refresh
@@ -29,6 +30,7 @@ preNotifier now mb_last_run chats =
     get_recipe (DigestFeedLinks fs) = fs
 
 postNotifier :: HMS.HashMap FeedLink Feed -> [T.Text] -> Notifier -> Notifier
+{-# INLINEABLE postNotifier #-}
 postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) =
     Post
         { discarded_items_links = discarded
@@ -82,6 +84,7 @@ collectDue ::
     Maybe UTCTime ->
     UTCTime ->
     HMS.HashMap ChatId (SubChat, BatchRecipe)
+{-# INLINEABLE collectDue #-}
 -- Peeling off conditions for notifications:
 -- new start or new digest or new follow
 collectDue chats last_run now =
@@ -117,6 +120,7 @@ collectDue chats last_run now =
     nextWasNow Nothing (Just last_t) i = findNextTime last_t i < now
 
 findNextTime :: UTCTime -> DigestInterval -> UTCTime
+{-# INLINEABLE findNextTime #-}
 --  No 'digest_at' or 'digest_every' set? In 1.5 hour
 --  No 'digest_at' but 'digest_every' is set? In the <number of seconds> to which
 --      'digest_every' is set.
@@ -162,6 +166,7 @@ findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
     still_today = addUTCTime (minimum times) now
 
 collectNoDigest :: [ChatId] -> HMS.HashMap k (SubChat, b) -> [ChatId]
+{-# INLINE collectNoDigest #-}
 collectNoDigest has_digest =
     HMS.foldl'
         ( \acc (!c, _) ->
@@ -181,6 +186,7 @@ feedlinksWithMissingPubdates fs =
             fs
 
 partitionDigests :: HMS.HashMap ChatId (SubChat, Batch) -> (S.Set T.Text, S.Set T.Text)
+{-# INLINE partitionDigests #-}
 partitionDigests =
     foldl'
         ( \(!not_found, !found) (c, bat) ->

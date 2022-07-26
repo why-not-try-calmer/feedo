@@ -15,7 +15,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Jobs
-import Mongo (setupMongo)
+import Mongo (setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Redis (setupRedis)
@@ -115,7 +115,7 @@ makeConfig env =
                     Left err -> throwIO . userError $ T.unpack err
                     Right c -> putStrLn "Redis...OK" >> pure c
             (pipe, creds) <-
-                setupMongo mongo_connection_string >>= \case
+                setupDb mongo_connection_string >>= \case
                     Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
                     Right p -> putStrLn "Mongo...OK" >> pure p
             pipe_ioref <- newIORef pipe

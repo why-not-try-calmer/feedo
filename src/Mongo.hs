@@ -1,15 +1,14 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Mongo where
+module Mongo (saveToLog, HasMongo (..), checkDbMapper) where
 
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (unless, void, when)
+import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import Data.Aeson (eitherDecodeStrict')
 import qualified Data.ByteString.Char8 as B
-import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.List as List
@@ -17,7 +16,7 @@ import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
@@ -636,6 +635,7 @@ logToBson (LogCouldNotArchive feeds t err) =
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env logitem = withMongo env (insert "logs" $ writeDoc logitem) >> pure ()
 
+{-
 cleanLogs :: (HasMongo m, MonadIO m) => AppConfig -> m (Either String ())
 cleanLogs env = do
     now <- liftIO getCurrentTime
@@ -694,6 +694,7 @@ collectLogStats env = do
                     )
     showLength = T.pack . show . length
     showAvgLength a l = T.pack . show $ fromIntegral a `div` length l
+-}
 
 {- Admins -}
 
@@ -714,7 +715,7 @@ adminToBson AdminUser{..} =
     ]
 
 {- Pages -}
-
+{-
 bsonToPage :: Document -> Maybe PageOne
 bsonToPage doc =
     let cid = M.lookup "chat_id" doc
@@ -724,9 +725,10 @@ bsonToPage doc =
         n = length <$> pages
         mb_url = M.lookup "url" doc
      in PageOne <$> one <*> cid <*> mid <*> n <*> mb_url
+-}
 
 {- Cleanup -}
-
+{-
 purgeCollections :: (HasMongo m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
 purgeCollections _ [] = pure . Left $ "Empty list of collection names!"
 purgeCollections env colls =
@@ -745,6 +747,7 @@ remapChats env chats =
     let selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) $ HMS.elems chats
         action = updateAll "chats" selector
      in withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()
+-}
 
 checkDbMapper :: MonadIO m => m ()
 checkDbMapper = do
