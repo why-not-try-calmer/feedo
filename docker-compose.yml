@@ -5,7 +5,6 @@ services:
       depends_on: [redis]
       restart: on-failure
       build: .
-      command: stack exec -- feedfarer-exe
       ports: [80:80]
       environment:
         API_KEY: ${API_KEY}
