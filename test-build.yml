@@ -8,7 +8,6 @@ services:
         context: .
         dockerfile: Dockerfile_test
       command: stack test --fast
-      # ports: [80:80]
       environment:
         - API_KEY
         - TELEGRAM_TOKEN
