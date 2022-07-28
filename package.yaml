@@ -55,6 +55,11 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     - -O2
+    - -static
+    cc-options:
+    - -static
+    ld-options:
+    - -static
     dependencies:
     - feedfarer
 
@@ -66,5 +71,10 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -static
+    cc-options:
+    - -static
+    ld-options:
+    - -static
     dependencies:
     - feedfarer
