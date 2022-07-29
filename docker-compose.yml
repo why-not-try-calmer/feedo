@@ -5,6 +5,7 @@ services:
       depends_on: [redis]
       restart: on-failure
       build: .
+      command: ./feefarer-exe
       ports: [80:80]
       environment:
         API_KEY: ${API_KEY}

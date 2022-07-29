@@ -500,6 +500,11 @@ data LogItem
         }
     | LogCouldNotArchive
         {log_no_achive :: [Feed], log_at :: UTCTime, log_error :: T.Text}
+    | LogDiscardedToRefreshRecipes
+        { discarded :: [T.Text]
+        , to_refresh :: [T.Text]
+        , recipes :: [T.Text]
+        }
     deriving (Eq, Show)
 
 $(deriveFromJSON defaultOptions{omitNothingFields = True} ''LogItem)

@@ -281,12 +281,11 @@ withBroker CacheRefresh = do
                     []
                     batch_recipes
             report =
-                writeChan (postjobs env) . JobTgAlert $
-                    "To refresh: " `T.append` T.intercalate "," to_refresh
-                        `T.append` ". Discarded: "
-                        `T.append` T.intercalate "," discarded
-                        `T.append` ". Recipes: "
-                        `T.append` T.intercalate "," recipes
+                writeChan (postjobs env) . JobLog $
+                    LogDiscardedToRefreshRecipes
+                        to_refresh
+                        discarded
+                        recipes
          in unless (all null [to_refresh, discarded, recipes]) report
     where_is_rust _ _ _ = undefined
 withBroker (CacheXDays links days) =
