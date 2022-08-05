@@ -172,9 +172,9 @@ $(deriveToJSON defaultOptions{omitNothingFields = True} ''Settings)
 
 instance FromJSON Settings where
     parseJSON = withObject "Settings" $ \o ->
-        let blacklisted = o .:? "settings_blacklist" .!= S.empty
-            search_search_keywords = o .:? "settings_searchset" .!= S.empty
-            search_only_results_flinks = o .:? "settings_only_search_results" .!= S.empty
+        let blacklisted = o .:? "settings_blacklist" >>= memptyOrList
+            search_search_keywords = o .:? "settings_searchset" >>= memptyOrList
+            search_only_results_flinks = o .:? "settings_only_search_results" >>= memptyOrList
             digest_every =
                 (o .:? "settings_digest_every_secs") >>= \p ->
                     case mbNom <$> p of
@@ -210,6 +210,9 @@ instance FromJSON Settings where
                 <*> o .:? "settings_share_link" .!= True
                 <*> (WordMatches <$> blacklisted <*> search_search_keywords <*> search_only_results_flinks)
       where
+        memptyOrList o = case o of
+            Nothing -> pure mempty
+            Just l -> pure $ S.fromList l
         mbNom :: String -> Maybe NominalDiffTime
         mbNom s =
             maybe second_pass pure $
