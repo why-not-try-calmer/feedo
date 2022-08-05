@@ -72,4 +72,7 @@ search_notif: undefined
 share_link: true
     # append at the end of the digest (summary)
     # a link for sharing with non-Telegram users
+    # __NB__: set this to `false` if the channel is linked to a comment chat
+    # otherwise the "Share link" button will _replace_ the "Leave a comment" feature
+    # added by Telegram.
 ```

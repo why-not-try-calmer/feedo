@@ -266,7 +266,7 @@ mkReply (FromDigest fs mb_link s) =
             , reply_pin_on_send = settings_pin s
             , reply_disable_webview = settings_disable_web_view s
             , reply_pagination = settings_pagination s
-            , reply_permalink = mb_link
+            , reply_permalink = if settings_share_link s then mb_link else Nothing
             }
 mkReply (FromFeedLinkItems flinkitems) =
     let step acc (!f, !items) = acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items

@@ -621,6 +621,11 @@ logToBson (LogNoDigest chat_ids t) =
     , "log_due_chats_with_no_digest" =: chat_ids
     , "log_type" =: ("chats_without_digest" :: T.Text)
     ]
+logToBson (LogDiscardedToRefreshRecipes to_refresh discarded recipes) =
+    [ "log_refresh" =: to_refresh
+    , "log_discarded" =: discarded
+    , "log_recipes" =: recipes
+    ]
 logToBson (LogDigest updated not_updated t) =
     [ "log_at" =: t
     , "log_updated_feeds" =: updated
