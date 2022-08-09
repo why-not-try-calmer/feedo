@@ -55,12 +55,21 @@ postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) =
          in if null collected then batches else HMS.insert (sub_chatid sub) (sub, Digests collected) batches
     relevant_to fs sub time_ref =
         let select =
+                -- ITEMS
+                -- keep only items:
+                --  arrived since the last collection
+                --  not sent in any previous batch (identified by i_link)
+                --  with no occurrence of a blacklisted word
+                --  if in 'scope' (restricted feeds) then with occurrences of a word matching the words_searched
                 filter
                     ( \i ->
                         let out_scope_or_matching = i_feed_link i `notElem` scope sub || has_keywords i (words_searched sub)
                          in fresher_than i time_ref && i_link i `notElem` previously_sent_items && out_scope_or_matching && not (has_keywords i $ blacklisted sub)
                     )
          in foldl'
+                -- FEEDS
+                -- fold over feeds in the targets provided they don't yield null items
+                -- , slicing & sorting them en passant
                 ( \acc f ->
                     let selected = slice . sort . select $ f_items f
                      in if f_link f `elem` targets && (not . null $ selected) then f{f_items = selected} : acc else acc
@@ -70,7 +79,7 @@ postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) =
       where
         sort = sortOn i_pubdate
         slice = take . settings_digest_size . sub_settings $ sub
-        targets = S.toList (scope sub) ++ fs
+        targets = S.toList (scope sub) ++ fs -- both only_search_results and regular subs
     fresher_than _ Nothing = True
     fresher_than i (Just t) = t < i_pubdate i
     has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` T.toCaseFold t) [i_desc i, i_link i, i_title i])
