@@ -123,6 +123,7 @@ test-suite feedfarer-test
       BrokerSpec
       DatabaseSpec
       MarkdownCheckerSpec
+      NotifierSpec
       ParsingSpec
       RequestsSpec
       TgActionsSpec
