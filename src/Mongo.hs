@@ -137,41 +137,42 @@ setupMongo connection_string =
 {- Evaluation -}
 
 withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
-withMongo config action =
-    go >>= \case
+withMongo AppConfig{..} action = liftIO $ do
+    pipe <- acquire
+    first_pass <- attemptWith pipe
+    case first_pass of
         Left (ConnectionFailure err) -> do
             alert err
-            closed <- liftIO $ do
-                p <- readIORef ref
-                isClosed p
-            if closed
-                then
-                    initConnectionMongo (mongo_creds config) >>= \case
-                        Left e -> alertGiveUp $ "Giving up after failed re-authentication on: " ++ show e
-                        Right p -> do
-                            liftIO (atomicModifyIORef' ref (const (p, ())))
-                            go_or_giveup
-                else go_or_giveup
+            second_pass <- attemptWith pipe
+            case second_pass of
+                Left (ConnectionFailure _) ->
+                    initConnectionMongo mongo_creds >>= \case
+                        Left e -> alertGiveUp $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
+                        Right fresh_pipe -> finishWith fresh_pipe
+                Left err2 -> alertGiveUp err2
+                Right res -> pure $ Right res
         Left err -> alertGiveUp err
         Right r -> pure $ Right r
   where
-    ref = snd . connectors $ config
-    go = liftIO $ do
-        pipe <- readIORef ref
-        try $ runMongo pipe action
-    go_or_giveup =
-        go >>= \case
-            Left e -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+    ref = snd connectors
+    acquire = readIORef ref
+    finishWith fresh_pipe = do
+        atomicModifyIORef' ref (const (fresh_pipe, ()))
+        attemptGiveup fresh_pipe
+    attemptWith pipe = try $ runMongo pipe action
+    attemptGiveup pipe =
+        attemptWith pipe >>= \case
+            Left (SomeException e) -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
             Right r -> pure $ Right r
-    runMongo :: MonadIO m => Pipe -> Action m a -> m a
-    runMongo pipe = access pipe master (database_name . mongo_creds $ config)
 
+    runMongo :: MonadIO m => Pipe -> Action m a -> m a
+    runMongo pipe = access pipe master (database_name mongo_creds)
     alertGiveUp err = alert err >> pure (Left ())
     alert err =
         liftIO $
-            writeChan (postjobs config) . JobTgAlert $
+            writeChan postjobs . JobTgAlert $
                 "withMongo failed with " `T.append` (T.pack . show $ err)
-                    `T.append` " If the connector timed out, one retry will be carried out."
+                    `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Actions -}
 
