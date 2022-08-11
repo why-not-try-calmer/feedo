@@ -435,6 +435,7 @@ data DbError
     | FailedToProduceValidId
     | FailedToInsertPage
     | FailedToGetAllPages
+    | ConnectorChokeOn T.Text
     deriving (Show, Eq)
 
 data PageOne = PageOne

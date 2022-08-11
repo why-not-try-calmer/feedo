@@ -33,8 +33,8 @@ postNotifier :: HMS.HashMap FeedLink Feed -> [T.Text] -> Notifier -> Notifier
 {-# INLINEABLE postNotifier #-}
 postNotifier rebuilt_feeds previously_sent_items (Pre _ due_chats mb_last_run) =
     Post
-        { discarded_items_links = discarded
-        , batches = ba
+        { discarded_items_links = discarded -- diff between items in/out, compared on i_link
+        , batches = ba -- actual batches to send to Telegram service
         }
   where
     (discarded, ba) =

@@ -132,6 +132,7 @@ renderDbError FailedToSaveDigest = "Unable to save this digest. The database did
 renderDbError FailedToProduceValidId = "Db was unable to return a valid identifier"
 renderDbError FailedToInsertPage = "Db was unable to insert these pages."
 renderDbError FailedToGetAllPages = "Db was unable to retrieve all pages."
+renderDbError (ConnectorChokeOn reason) = "Failed to connect to the database for this reason " `T.append` reason `T.append` "Please try later."
 
 {- Time -}
 
