@@ -139,18 +139,13 @@ setupMongo connection_string =
 withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
 withMongo AppConfig{..} action = liftIO $ do
     pipe <- acquire
-    first_pass <- attemptWith pipe
-    case first_pass of
-        Left (ConnectionFailure err) -> do
-            alert err
-            second_pass <- attemptWith pipe
-            case second_pass of
-                Left (ConnectionFailure _) ->
-                    initConnectionMongo mongo_creds >>= \case
-                        Left e -> alertGiveUp $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
-                        Right fresh_pipe -> finishWith fresh_pipe
-                Left err2 -> alertGiveUp err2
-                Right res -> pure $ Right res
+    attempt <- attemptWith pipe
+    case attempt of
+        Left (ConnectionFailure failure) -> do
+            alert failure
+            initConnectionMongo mongo_creds >>= \case
+                Left e -> alertGiveUp $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
+                Right fresh_pipe -> finishWith fresh_pipe
         Left err -> alertGiveUp err
         Right r -> pure $ Right r
   where
