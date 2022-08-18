@@ -65,7 +65,7 @@ withChat action cid = do
                         _ -> pure (update_m, Right ChatOk)
             Migrate to ->
                 let updated_c = c{sub_chatid = to}
-                    update_m = HMS.update (\_ -> Just updated_c) cid hmap
+                    update_m = HMS.insert cid updated_c hmap
                  in evalDb env (UpsertChat updated_c) >>= \case
                         DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
                         _ -> pure (update_m, Right ChatOk)
