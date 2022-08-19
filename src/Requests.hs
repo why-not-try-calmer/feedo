@@ -77,7 +77,7 @@ answer tok query =
          in req Network.HTTP.Req.POST reqUrl (ReqBodyJson query) jsonResponse mempty
 
 mkPermaLinkBtn :: T.Text -> InlineKeyboardButton
-mkPermaLinkBtn url = InlineKeyboardButton "Permalink" (Just url) Nothing
+mkPermaLinkBtn url = InlineKeyboardButton "Show in full" (Just url) Nothing
 
 mkPermLinkKeyboard :: T.Text -> InlineKeyboardMarkup
 mkPermLinkKeyboard txt = InlineKeyboardMarkup [[mkPermaLinkBtn txt]]
