@@ -216,6 +216,7 @@ defaultChatSettings =
         , settings_follow = False
         , settings_digest_collapse = Nothing
         , settings_digest_start = Nothing
+        , settings_digest_no_collapse = mempty
         }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
@@ -254,6 +255,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
         PShareLink v -> o{settings_share_link = v}
         PFollow v -> o{settings_follow = v}
         PPagination v -> o{settings_pagination = v}
+        PNoCollapse v -> o{settings_digest_no_collapse = v}
 
 sortItems :: Feed -> Feed
 {-# INLINE sortItems #-}

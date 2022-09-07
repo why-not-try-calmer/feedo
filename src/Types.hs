@@ -165,6 +165,7 @@ data Settings = Settings
     , settings_pin :: Bool
     , settings_share_link :: Bool
     , settings_word_matches :: WordMatches
+    , settings_digest_no_collapse :: Scope
     }
     deriving (Show, Eq)
 
@@ -209,6 +210,7 @@ instance FromJSON Settings where
                 <*> o .:? "settings_pin" .!= False
                 <*> o .:? "settings_share_link" .!= True
                 <*> (WordMatches <$> blacklisted <*> search_search_keywords <*> search_only_results_flinks)
+                <*> o .:? "settings_digest_no_collapse" .!= mempty
       where
         memptyOrList o = case o of
             Nothing -> pure mempty
@@ -271,6 +273,7 @@ data ParsingSettings
     | PSearchLinks (S.Set T.Text)
     | PShareLink Bool
     | PFollow Bool
+    | PNoCollapse (S.Set T.Text)
     deriving (Show, Eq)
 
 data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (Eq, Show)

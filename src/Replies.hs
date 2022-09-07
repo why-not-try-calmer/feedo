@@ -140,6 +140,7 @@ instance Renderable SubChat where
                             , every_txt
                             , ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items")
                             , ("Digest collapse", maybe "false" (\v -> if v == 0 then "false" else T.pack . show $ v) $ settings_digest_collapse sub_settings)
+                            , ("Digest not collapsible", if S.null (settings_digest_no_collapse sub_settings) then "none" else T.intercalate ", " $ S.toList $ settings_digest_no_collapse sub_settings)
                             , ("Digest title", settings_digest_title sub_settings)
                             , ("Last digest", maybe "none" utcToYmdHMS sub_last_digest)
                             , ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest)
@@ -170,8 +171,8 @@ instance Renderable SubChat where
 instance Renderable [Item] where
     render = intoTimeLine
 
-instance Renderable ([(FeedLink, [Item])], Int) where
-    render (!f_items, !collapse_size) =
+instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
+    render (!f_items, !collapse_size, !protected) =
         let out_of i
                 | collapse_size < length i =
                     " (" `T.append` (T.pack . show $ collapse_size)
@@ -191,7 +192,7 @@ instance Renderable ([(FeedLink, [Item])], Int) where
                     `T.append` t
                     `T.append` "*"
                     `T.append` out_of i
-                    `T.append` (render . take collapse_size . sortOn (Down . i_pubdate) $ i)
+                    `T.append` (render . (\items -> let link = i_feed_link $ head items in if link `elem` protected then i else take collapse_size i) . sortOn (Down . i_pubdate) $ i)
          in foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
@@ -246,11 +247,11 @@ mkReply (FromFeedItems f) =
                 . f_items
                 $ f
      in defaultReply rendered_items
-mkReply (FromFollow fs _) =
+mkReply (FromFollow fs s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
         payload =
             "New 'follow update'.\n--\n"
-                `T.append` render (fitems, 0 :: Int)
+                `T.append` render (fitems, 0 :: Int, S.toList $ settings_digest_no_collapse s)
      in ChatReply payload True True False True Nothing
 mkReply (FromDigest fs mb_link s) =
     let fitems = map (\f -> (f_title f, f_items f)) fs
@@ -258,7 +259,8 @@ mkReply (FromDigest fs mb_link s) =
         -- collapsing would have occurred
         collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s
         header = "-- " `T.append` settings_digest_title s `T.append` " --"
-        body = render (fitems, collapse)
+        protected = S.toList $ settings_digest_no_collapse s
+        body = render (fitems, collapse, protected)
         payload = header `T.append` body
      in ChatReply
             { reply_contents = payload
