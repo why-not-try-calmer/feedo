@@ -99,9 +99,12 @@ spec = do
                     r = APIReq CDigests (Just f)
                 res <- fetchApi key r
                 res `shouldSatisfy` \case
-                    Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIDigest of
-                        Left err -> trace err False
-                        Right _ -> True
+                    Right body -> responseStatusCode body == 200
+                    {-
+                    case eitherDecodeStrict' $ responseBody body :: Either String APIDigest of
+                    Left err -> trace err False
+                    Right _ -> True
+                    -}
                     Left err -> trace (T.unpack err) False
          in desc $ as target
     go5 key =
