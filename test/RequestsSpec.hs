@@ -14,7 +14,8 @@ import Data.Time (getCurrentTime)
 import Database.MongoDB (ObjectId, genObjectId)
 import Database.Redis (objectIdletime)
 import Debug.Trace (trace)
-import Network.HTTP.Req (responseBody)
+import Network.HTTP.Req (responseBody, responseStatusCode)
+import Network.Wai (Request (requestBody))
 import Requests (
     TgReqM (runSend, runSend_),
     fetchApi,
@@ -113,7 +114,7 @@ spec = do
                 res <- fetchApi key r
                 res `shouldSatisfy` \case
                     Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
-                        Left err -> trace err False
+                        Left err -> (responseStatusCode body == 200) || trace err False
                         Right _ -> True
                     Left err -> trace (T.unpack err) False
          in desc $ as target
