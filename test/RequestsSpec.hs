@@ -113,9 +113,11 @@ spec = do
                 print $ encode r
                 res <- fetchApi key r
                 res `shouldSatisfy` \case
-                    Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
-                        Left err -> (responseStatusCode body == 200) || trace err False
+                    Right body -> responseStatusCode body == 200
+                    {-case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
+                        Left err -> trace err False
                         Right _ -> True
+                    -}
                     Left err -> trace (T.unpack err) False
          in desc $ as target
     go6 key =

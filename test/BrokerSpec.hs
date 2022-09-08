@@ -43,7 +43,7 @@ spec = pre >>= \(config, mb_feeds) -> go config >> go1 config mb_feeds
             target = do
                 res <- runApp config $ getAllFeeds config
                 print res
-                res `shouldSatisfy` (\case Right hmap -> not $ null hmap; _ -> undefined)
+                res `shouldSatisfy` (\case Right hmap -> not $ null hmap; _ -> False)
          in desc $ as target
     go1 env mb_feeds =
         let desc = describe "withCache: pull feeds "
