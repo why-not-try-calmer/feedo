@@ -494,6 +494,7 @@ bsonToChat doc =
                 , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc
                 , settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
                 , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
+                , settings_digest_no_collapse = maybe S.empty S.fromList $ M.lookup "settings_digest_no_collapse" settings_doc
                 }
      in SubChat
             { sub_chatid = fromJust $ M.lookup "sub_chatid" doc
@@ -523,6 +524,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
             , "settings_searchset" =: searchset
             , "settings_share_link" =: settings_share_link settings
             , "settings_pagination" =: settings_pagination settings
+            , "settings_digest_no_collapse" =: S.toList (settings_digest_no_collapse settings)
             ]
         with_secs =
             maybe
@@ -756,7 +758,7 @@ checkDbMapper = do
     let item = Item mempty mempty mempty mempty now
         digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
         word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-        settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches
+        settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
         chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings
         feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
         log' = LogPerf mempty now 0 0 0 0

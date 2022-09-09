@@ -273,6 +273,12 @@ parseSettings lns = case foldr mkPairs Nothing lns of
             if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False : parsed) else ("'follow' takes only 'true' or 'false' as values." : not_parsed, parsed)
         | k == "pagination" =
             if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPagination True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPagination False : parsed) else ("'pagination' takes only 'true' or 'false' as values." : not_parsed, parsed)
+        | k == "no_collapse" =
+            if T.length txt < 3
+                then ("'no_collapse' cannot be shorter than 3 characters." : not_parsed, parsed)
+                else
+                    let v = if "reset" `T.isInfixOf` T.toCaseFold txt then S.empty else S.fromList . T.words . T.toLower $ txt
+                     in (not_parsed, PNoCollapse v : parsed)
         | otherwise = (k : not_parsed, parsed)
     into_hm val acc =
         let [hh, mm] = T.splitOn ":" val
