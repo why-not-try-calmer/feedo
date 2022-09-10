@@ -125,6 +125,7 @@ test-suite feedfarer-test
       MarkdownCheckerSpec
       NotifierSpec
       ParsingSpec
+      RepliesSpec
       RequestsSpec
       TgActionsSpec
       UtilsSpec

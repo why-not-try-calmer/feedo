@@ -173,7 +173,8 @@ instance Renderable [Item] where
 
 instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
     render (!f_items, !collapse_size, !protected) =
-        let out_of i
+        let protected' = map T.toCaseFold protected
+            out_of i
                 | collapse_size < length i =
                     " (" `T.append` (T.pack . show $ collapse_size)
                         `T.append` " out of "
@@ -192,7 +193,14 @@ instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
                     `T.append` t
                     `T.append` "*"
                     `T.append` out_of i
-                    `T.append` (render . (\items -> let link = i_feed_link $ head items in if link `elem` protected then i else take collapse_size i) . sortOn (Down . i_pubdate) $ i)
+                    `T.append` ( render
+                                    . ( \items ->
+                                            let link = T.toCaseFold . i_feed_link $ head items
+                                             in if link `elem` protected' then i else take collapse_size i
+                                      )
+                                    . sortOn (Down . i_pubdate)
+                                    $ i
+                               )
          in foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
