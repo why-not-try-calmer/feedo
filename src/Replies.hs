@@ -188,19 +188,16 @@ instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
                     `T.append` "*\n"
                     `T.append` (render . take 30 . sortOn (Down . i_pubdate) $ i)
             into_folder acc (!t, !i) =
-                acc
-                    `T.append` "\n*| "
-                    `T.append` t
-                    `T.append` "*"
-                    `T.append` out_of i
-                    `T.append` ( render
-                                    . ( \items ->
-                                            let link = T.toCaseFold . i_feed_link $ head items
-                                             in if link `elem` protected' then i else take collapse_size i
-                                      )
-                                    . sortOn (Down . i_pubdate)
-                                    $ i
-                               )
+                let sorted = sortOn (Down . i_pubdate)
+                    is_protected =
+                        let link = T.toCaseFold . i_feed_link $ head i
+                         in link `elem` protected'
+                    collapsed = if is_protected then sorted i else take collapse_size . sorted $ i
+                 in acc
+                        `T.append` "\n*| "
+                        `T.append` t
+                        `T.append` "*"
+                        `T.append` if is_protected then mempty else out_of i `T.append` render collapsed
          in foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
