@@ -3,7 +3,7 @@ name: Build Then Push
 on:
   workflow_run:
     workflows: ["Tests"]
-    branches: [master]
+    branches: [dev]
     types:
     - completed
 
