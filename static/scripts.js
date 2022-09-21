@@ -4,7 +4,7 @@ const Ctx = {
     settings: {},
     chat_id: null,
     acess_token: '',
-    base_url: 'https://feedfarer-webapp.azurewebsites.net',
+    base_url: 'https://feedo.cloudns.ph',
     headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -13,7 +13,7 @@ const Ctx = {
         return fetch(`${this.base_url}/read_settings`, {
             method: 'POST',
             headers: this.headers,
-            body: JSON.stringify({read_req_hash: token})
+            body: JSON.stringify({ read_req_hash: token })
         })
     },
     send_payload: function (payload) {
@@ -46,7 +46,7 @@ function submit_listener(e) {
     const form_data = new FormData(document.forms.form)
     const form_entries = Object.fromEntries(form_data.entries())
     const settings = {
-        word_matches:{
+        word_matches: {
             blacklist: [],
             searchset: [],
             only_search_results: []
@@ -70,7 +70,7 @@ function submit_listener(e) {
     settings.digest_start = mb_digest_start.length > 3 ? mb_digest_start : null
     let parsed = null
     for (const [k, v] of Object.entries(form_entries)) {
-        switch(k) {
+        switch (k) {
             case 'digest_title':
                 settings.digest_title = v
                 break
@@ -79,7 +79,7 @@ function submit_listener(e) {
                 break
             case 'digest_every_secs':
                 parsed = parseInt(v)
-                settings.digest_interval.digest_every_secs = parsed > 0  ? parsed : null
+                settings.digest_interval.digest_every_secs = parsed > 0 ? parsed : null
                 break
             case 'digest_size':
                 settings.digest_size = parseInt(v) || null
@@ -153,7 +153,7 @@ function to_human_friendly(n) {
         return [m, m == 1 ? 'hour' : 'hours']
     }
     if (n % 60 === 0) {
-        m = n / 60 
+        m = n / 60
         return [m, m == 1 ? 'minute' : 'minutes']
     }
     return [n, 'seconds']
@@ -169,7 +169,7 @@ function helper_listener(e) {
     setTimeout(() => rewrite(input), 350)
 }
 
-function reset_field(n){
+function reset_field(n) {
     const field_name = n === 'digest_every' ? 'digest_every_secs' : n
     const field = document.getElementById(field_name)
     const def = Defaults[field_name]
@@ -182,7 +182,7 @@ function reset_field(n){
 
 function asssign_from_Ctx() {
     document.getElementById('blacklist').value = Ctx.settings.word_matches.blacklist.join(' ')
-    
+
     const digest_at = Ctx.settings.digest_interval.digest_at.map(v => {
         let [h, m] = v
         if (h < 10) h = "0" + h
@@ -193,7 +193,7 @@ function asssign_from_Ctx() {
     document.getElementById('digest_size').value = Ctx.settings.digest_size
     document.getElementById('digest_title').value = Ctx.settings.digest_title
     document.getElementById('digest_collapse').value = Ctx.settings.digest_collapse
-    
+
     every_s_helper = document.getElementById('digest_every_secs_helper')
     every_s = document.getElementById('digest_every_secs')
     every_s.value = Ctx.settings.digest_interval.digest_every_secs
@@ -202,7 +202,7 @@ function asssign_from_Ctx() {
 
     document.getElementById('searchset').value = Ctx.settings.word_matches.searchset.join(' ')
     document.getElementById('only_search_results').value = Ctx.settings.word_matches.only_search_results.join(' ')
-    
+
     document.getElementById('pagination').checked = Ctx.settings.pagination
     document.getElementById('share_link').checked = Ctx.settings.share_link
     document.getElementById('disable_web_view').checked = Ctx.settings.disable_web_view
@@ -214,18 +214,18 @@ function set_page() {
     // Initializing form
     const form = document.getElementById('form')
     form.addEventListener('submit', submit_listener)
-    
+
     // ... resetters
     const resetters = document.getElementsByClassName('field_resetter')
-    Array.from(resetters).forEach(btn => btn.addEventListener('click', (e) => { reset_field(e.target.name); e.preventDefault() })) 
+    Array.from(resetters).forEach(btn => btn.addEventListener('click', (e) => { reset_field(e.target.name); e.preventDefault() }))
     const reset_all = document.getElementById('reset_all')
-    reset_all.addEventListener('click', (e) => { 
+    reset_all.addEventListener('click', (e) => {
         Object.keys(Defaults).forEach(k => {
             reset_field(k)
         })
-        e.preventDefault() 
+        e.preventDefault()
     })
-    
+
     // ... loader
     const reloader = document.getElementById('reload')
     reloader.addEventListener('click', (e) => {
@@ -236,9 +236,9 @@ function set_page() {
     // ... meta data
     document.getElementById('access_token').innerHTML = "Access token: " + Ctx.access_token
     document.getElementById('chat_id').innerHTML = "Chat Id: " + Ctx.chat_id
-    
+
     // ... helper
-    every_s = document.getElementById('digest_every_secs')    
+    every_s = document.getElementById('digest_every_secs')
     every_s.addEventListener('keyup', helper_listener)
 
     asssign_from_Ctx()

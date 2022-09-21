@@ -6,6 +6,7 @@ module Requests (mkPagination, setWebhook, fetchApi, fetchFeed, runSend, runSend
 
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
@@ -38,9 +39,7 @@ setWebhook tok webhook = do
     resp <- withReqManager $ runReq defaultHttpConfig . pure request
     let code = responseStatusCode (resp :: JsonResponse Value) :: Int
         message = responseStatusMessage resp
-    if code /= 200
-        then liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message
-        else pure ()
+    when (code /= 200) $ liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message
   where
     request =
         req GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
@@ -181,13 +180,14 @@ reply tok cid rep chan =
                     ]
              in runSend tok "sendMessage" (fromReply msg) >>= \case
                     Left err ->
-                        let forbidden = "Forbidden: bot was blocked by the user" `T.isInfixOf` err
+                        let forbidden = any (`T.isInfixOf` err) ["blocked", "kicked"]
                          in if not forbidden
                                 then report err
                                 else do
                                     liftIO $ writeChan chan . JobPurge $ cid
                                     report $
-                                        "Bot blocked in private chat " `T.append` (T.pack . show $ cid)
+                                        "Bot blocked in private chat "
+                                            `T.append` (T.pack . show $ cid)
                                             `T.append` "Chat purged."
                     Right resp ->
                         let mid = mid_from resp
@@ -223,7 +223,13 @@ fetchFeed url =
 fetchApi :: MonadIO m => APIKey -> APIReq -> m (Either T.Text BsResponse)
 fetchApi k query =
     let url =
-            https "data.mongodb-api.com" /: "app" /: "data-uaflk" /: "endpoint" /: "data" /: "v1" /: "action"
+            https "data.mongodb-api.com"
+                /: "app"
+                /: "data-uaflk"
+                /: "endpoint"
+                /: "data"
+                /: "v1"
+                /: "action"
                 /: endpoint
         headers =
             let conts = header "Content-Type" "application/json"

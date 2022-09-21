@@ -18,10 +18,12 @@ import Jobs
 import Mongo (setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Network.Wai.Handler.WarpTLS
 import Redis (setupRedis)
 import Requests (reply)
 import Servant
 import Servant.HTML.Blaze
+import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getEnvironment)
 import Text.Blaze
 import TgActions
@@ -82,7 +84,8 @@ server =
                             Left (SomeException err) ->
                                 liftIO $
                                     writeChan (postjobs env) $
-                                        JobTgAlert $ "Exception thrown against handler: " `T.append` (T.pack . show $ err)
+                                        JobTgAlert $
+                                            "Exception thrown against handler: " `T.append` (T.pack . show $ err)
                             Right _ -> pure ()
                     else liftIO $ putStrLn "Secrets do not match."
 
@@ -94,6 +97,12 @@ initServer config = hoistServer botApi (runApp config) server
 
 withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
+
+sslCert :: FilePath
+sslCert = "./cert.pem"
+
+sslKey :: FilePath
+sslKey = "./private.key"
 
 makeConfig :: [(String, String)] -> IO (AppConfig, Int)
 makeConfig env =
@@ -138,18 +147,32 @@ makeConfig env =
 initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
 initStart = do
     loadChats
-    liftIO (putStrLn "Chats loaded")
+    liftIO . putStrLn $ "Chats loaded"
     feeds <- regenFeeds
-    liftIO (putStrLn "Feeds regenerated")
+    liftIO . putStrLn $ "Feeds regenerated"
     refreshCache feeds
-    liftIO (putStrLn "Cache refreshed")
+    liftIO . putStrLn $ "Cache refreshed"
     postProcJobs >> procNotif
 
 startApp :: IO ()
 startApp = do
     env <- getEnvironment
     (config, port) <- makeConfig env
-    registerWebhook config
+    -- no longer using registerWebhook as it needs updating to use TLS certification
+    -- registerWebhook config
     runApp config initStart
-    print $ "Server now listening to port " `T.append` (T.pack . show $ port)
-    run port . withServer $ config
+    finds_ssl_keys <- (&&) <$> doesFileExist sslCert <*> doesFileExist sslKey
+    if finds_ssl_keys
+        then do
+            print $ "Server (HTTPS) now listening to port " <> show port
+            runTLS tlsOpts (warpOpts port) . withServer $ config
+        else do
+            dir <- getCurrentDirectory
+            print $ "WARNING: Missing SSL keys from " <> dir
+            print $ "Server (PLAIN HTTP) now listening to port " <> show port
+            run port $ withServer config
+  where
+    warpOpts p
+        | p == 80 = setPort 443 defaultSettings
+        | otherwise = setPort p defaultSettings
+    tlsOpts = tlsSettings sslCert sslKey
