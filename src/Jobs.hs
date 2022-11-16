@@ -9,9 +9,9 @@ import Control.Concurrent (
     threadDelay,
     writeChan,
  )
-import Control.Concurrent.Async (async, forConcurrently)
-import Control.Exception (Exception, SomeException (SomeException), catch)
-import Control.Monad (forever, void, when)
+import Control.Concurrent.Async (async, forConcurrently, waitCatch, withAsync)
+import Control.Exception (SomeException)
+import Control.Monad (void, when, (>=>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.HashMap.Strict as HMS
@@ -33,17 +33,23 @@ import Utils (renderDbError, scanTimeSlices)
 
 {- Background tasks -}
 
-runForever_ :: Exception e => IO () -> (e -> IO ()) -> IO ()
-runForever_ action handler = void . async . forever $ catch action handler
+runForeverWhileReporting :: IO () -> (SomeException -> IO ()) -> IO ()
+runForeverWhileReporting action handler = go
+  where
+    go = withAsync action (waitCatch >=> applyHandler)
+    applyHandler (Left exc) = handler exc >> go
+    applyHandler (Right _) = go
+
+-- void . async . forever $ catch action handler
 
 procNotif :: (MonadReader AppConfig m, MonadIO m) => m ()
 procNotif = do
     env <- ask
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
-        onError (SomeException err) = do
-            let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
-            writeChan (postjobs env) . JobTgAlert $ report
+        report err = do
+            let message = "notifier: exception met : " `T.append` (T.pack . show $ err)
+            writeChan (postjobs env) . JobTgAlert $ message
         -- sending digests + follows
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
             \(cid, (c, batch)) ->
@@ -119,8 +125,7 @@ procNotif = do
                 -- to avoid an incomplete pattern
                 _ -> pure ()
         wait_action = threadDelay interval >> notify
-        handler e = onError e >> notify
-    liftIO $ runForever_ wait_action handler
+    liftIO $ runForeverWhileReporting wait_action report
 
 postProcJobs :: (MonadReader AppConfig m, MonadIO m) => m ()
 postProcJobs =
@@ -168,11 +173,11 @@ postProcJobs =
                         let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
                         print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                         reply tok (alert_chat . tg_config $ env) msg jobs
-            handler (SomeException e) = do
-                let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
+            handler err = do
+                let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ err)
                 writeChan (postjobs env) . JobTgAlert $ report
                 print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
-         in liftIO $ runForever_ action handler
+         in liftIO $ runForeverWhileReporting action handler
   where
     fork = void . async
     check_delay delay
