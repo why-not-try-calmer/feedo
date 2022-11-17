@@ -57,10 +57,10 @@ procNotif = do
                         Digests ds -> do
                             let (ftitles, flinks, fitems) =
                                     foldr
-                                        ( \f (_ftitles, _flinks, _fitems) ->
+                                        ( \f acc@(_ftitles, _flinks, _fitems) ->
                                             let link = f_link f
                                              in if link `elem` _flinks
-                                                    then (_ftitles, _flinks, _fitems)
+                                                    then acc
                                                     else (f_title f : _ftitles, link : _flinks, _fitems ++ f_items f)
                                         )
                                         ([], [], [])
