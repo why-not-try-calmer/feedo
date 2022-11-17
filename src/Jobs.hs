@@ -33,9 +33,10 @@ import Utils (renderDbError, scanTimeSlices)
 
 {- Background tasks -}
 
-runForeverWhileReporting :: IO () -> (String -> IO ()) -> IO ()
-runForeverWhileReporting action report = void . async . forever . catch action $
-    \(SomeException err) -> report $ show err
+runForeverWhileReporting :: IO () -> (T.Text -> IO ()) -> IO ()
+runForeverWhileReporting action report = void . async . forever . handle handler $ action
+  where
+    handler (SomeException err) = report . T.pack . show $ err
 
 procNotif :: (MonadReader AppConfig m, MonadIO m) => m ()
 procNotif = do
@@ -43,7 +44,7 @@ procNotif = do
     let tok = bot_token . tg_config $ env
         interval = worker_interval env
         handler err = do
-            let message = "notifier: exception met : " `T.append` T.pack err
+            let message = "notifier: exception met : " `T.append` err
             writeChan (postjobs env) . JobTgAlert $ message
         -- sending digests + follows
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
@@ -56,8 +57,11 @@ procNotif = do
                         Digests ds -> do
                             let (ftitles, flinks, fitems) =
                                     foldr
-                                        ( \f (one, two, three) ->
-                                            (f_title f : one, f_link f : two, three ++ f_items f)
+                                        ( \f (_ftitles, _flinks, _fitems) ->
+                                            let link = f_link f
+                                             in if link `elem` _flinks
+                                                    then (_ftitles, _flinks, _fitems)
+                                                    else (f_title f : _ftitles, link : _flinks, _fitems ++ f_items f)
                                         )
                                         ([], [], [])
                                         ds
@@ -169,9 +173,9 @@ postProcJobs =
                         print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                         reply tok (alert_chat . tg_config $ env) msg jobs
             handler err = do
-                let report = "postProcJobs: Exception met : " `T.append` T.pack err
+                let report = "postProcJobs: Exception met : " `T.append` err
                 writeChan (postjobs env) . JobTgAlert $ report
-                print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
+                print $ "postProcJobs bumped on exception " `T.append` report `T.append` "Rescheduling postProcJobs now."
          in liftIO $ runForeverWhileReporting action handler
   where
     fork = void . async
