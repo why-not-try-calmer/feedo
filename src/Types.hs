@@ -106,11 +106,16 @@ data Digest = Digest
 instance FromJSON Digest where
     parseJSON = withObject "APIDigest" $ \o ->
         Digest
-            <$> o .:? "_id"
-            <*> o .: "digest_created"
-            <*> o .: "digest_items"
-            <*> o .: "digest_flinks"
-            <*> o .: "digest_ftitles"
+            <$> o
+            .:? "_id"
+            <*> o
+            .: "digest_created"
+            <*> o
+            .: "digest_items"
+            <*> o
+            .: "digest_flinks"
+            <*> o
+            .: "digest_ftitles"
 
 $(deriveToJSON defaultOptions{omitNothingFields = True} ''Digest)
 
@@ -600,10 +605,14 @@ instance ToJSON APIReq where
 instance FromJSON Pages where
     parseJSON = withObject "Pages" $ \o ->
         Pages
-            <$> o .: "chat_id"
-            <*> o .: "message_id"
-            <*> o .: "pages"
-            <*> o .:? "url"
+            <$> o
+            .: "chat_id"
+            <*> o
+            .: "message_id"
+            <*> o
+            .: "pages"
+            <*> o
+            .:? "url"
 
 $(deriveToJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 6} ''Pages)
 
@@ -622,14 +631,21 @@ instance FromJSON APIFeed where
                     Nothing -> pure Nothing
                     Just s -> pure $ readMaybe s :: Parser (Maybe NominalDiffTime)
          in APIFeed
-                <$> o .: "f_type"
-                <*> o .: "f_desc"
-                <*> o .: "f_title"
-                <*> o .: "f_link"
-                <*> o .: "f_items"
+                <$> o
+                .: "f_type"
+                <*> o
+                .: "f_desc"
+                <*> o
+                .: "f_title"
+                <*> o
+                .: "f_link"
+                <*> o
+                .: "f_items"
                 <*> parsed_interval
-                <*> o .: "f_last_refresh"
-                <*> o .: "f_reads"
+                <*> o
+                .: "f_last_refresh"
+                <*> o
+                .: "f_reads"
 
 fromAPIFeed :: APIFeed -> Feed
 fromAPIFeed (APIFeed a b c d e f g h) = Feed a b c d e f g h
@@ -677,6 +693,7 @@ data AppConfig = AppConfig
     , subs_state :: MVar SubChats
     , postjobs :: Chan Job
     , worker_interval :: Int
+    , sem :: MVar (IO ())
     }
 
 printConfig :: AppConfig -> IO ()

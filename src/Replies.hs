@@ -38,7 +38,7 @@ mkdDoubles = ["[", "]"]
 mkViewUrl :: [Item] -> Maybe T.Text
 mkViewUrl [] = Nothing
 mkViewUrl items =
-    let base_url = "https://feedfarer-webapp.azurewebsites.net/view"
+    let base_url = "https://feedo.cloudns.ph/view"
         (ts, flinks) = foldl' step ([], []) items
         flinks_txt = "?flinks=" `T.append` encodeText (T.intercalate "\\" flinks)
         from_to_txt =
@@ -73,7 +73,10 @@ intoTimeLine = fst . foldl' step (mempty, 0)
          in if d == d'
                 then (str `T.append` finish (i_title i) (i_link i), d)
                 else
-                    ( str `T.append` "_" `T.append` date `T.append` "_ \n"
+                    ( str
+                        `T.append` "_"
+                        `T.append` date
+                        `T.append` "_ \n"
                         `T.append` finish (i_title i) (i_link i)
                     , d'
                     )
@@ -174,9 +177,10 @@ instance Renderable [Item] where
 instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
     render (!f_items, !collapse_size, !protected) =
         let protected' = map T.toCaseFold protected
-            out_of i
+            collapsing i
                 | collapse_size < length i =
-                    " (" `T.append` (T.pack . show $ collapse_size)
+                    " ("
+                        `T.append` (T.pack . show $ collapse_size)
                         `T.append` " out of "
                         `T.append` (T.pack . show . length $ i)
                         `T.append` " new):\n"
@@ -192,12 +196,17 @@ instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
                     is_protected =
                         let link = T.toCaseFold . i_feed_link $ head i
                          in link `elem` protected'
-                    collapsed = if is_protected then sorted i else take collapse_size . sorted $ i
-                 in acc
-                        `T.append` "\n*| "
-                        `T.append` t
-                        `T.append` "*"
-                        `T.append` if is_protected then mempty else out_of i `T.append` render collapsed
+                    items = if is_protected then sorted i else take collapse_size . sorted $ i
+                    acc' =
+                        if null items
+                            then acc
+                            else
+                                acc
+                                    `T.append` "\n*| "
+                                    `T.append` t
+                                    `T.append` "*"
+                                    `T.append` if is_protected then ":\n" `T.append` render items else collapsing i `T.append` render items
+                 in acc'
          in foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
 
 instance Renderable (S.Set T.Text, [SearchResult]) where

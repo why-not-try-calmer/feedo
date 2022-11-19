@@ -26,12 +26,14 @@ dependencies:
 - unordered-containers
 - containers
 - mtl
+- directory
 - time
 - async
 - aeson
 - servant-server
 - wai
 - warp
+- warp-tls
 - mongoDB
 - hedis
 - servant-blaze
