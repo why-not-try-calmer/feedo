@@ -1,7 +1,6 @@
 version: "3"
 services:
     feedfarer:
-      # image: adrienazure.azurecr.io/feedfarer-master
       image: ghcr.io/why-not-try-calmer/feedo:latest
       depends_on: [redis]
       restart: on-failure

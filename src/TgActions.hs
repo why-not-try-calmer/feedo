@@ -32,7 +32,8 @@ registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
     let tok = bot_token . tg_config $ config
         webhook = webhook_url . tg_config $ config
-     in putStrLn "Trying to set webhook" >> setWebhook tok webhook
+     in putStrLn "Trying to set webhook"
+            >> setWebhook tok webhook
             >> print ("Webhook successfully set at " `T.append` webhook)
 
 checkIfAdmin :: TgReqM m => BotToken -> UserId -> ChatId -> m (Maybe Bool)
@@ -646,11 +647,10 @@ evalTgAct uid TestDigest cid =
                             Nothing -> pure . Left $ NotFoundChat
                             Just c -> do
                                 let feeds = sub_feeds_links c
-                                (now, either_rebuilt) <- liftIO $ do
+                                (now, failed, succeeded) <- liftIO $ do
                                     now <- getCurrentTime
-                                    rebuilt <- mapConcurrently rebuildFeed (S.toList feeds)
-                                    pure (now, rebuilt)
-                                let (failed, succeeded) = partitionEither either_rebuilt
+                                    (failed, succeeded) <- partitionEither <$> mapConcurrently rebuildFeed (S.toList feeds)
+                                    pure (now, failed, succeeded)
                                 if null failed
                                     then
                                         pure . Right . mkReply $
