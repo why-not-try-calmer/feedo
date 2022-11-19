@@ -1,0 +1,9 @@
+version: "3"
+services:
+    feedfarer:
+      ports:
+        - "80:80"
+        - "443:443"
+      volumes:
+        - ${PWD}/cert.pem:/opt/app/cert.pem:ro
+        - ${PWD}/private.key:/opt/app/private.key:ro
