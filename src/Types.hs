@@ -693,7 +693,6 @@ data AppConfig = AppConfig
     , subs_state :: MVar SubChats
     , postjobs :: Chan Job
     , worker_interval :: Int
-    , sem :: MVar (IO ())
     }
 
 printConfig :: AppConfig -> IO ()

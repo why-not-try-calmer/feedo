@@ -6,7 +6,7 @@ module Server (startApp, registerWebhook, makeConfig) where
 
 import Backend
 import Broker (HasCache)
-import Control.Concurrent (newChan, newEmptyMVar, newMVar, writeChan)
+import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
@@ -118,7 +118,6 @@ makeConfig env =
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
      in do
             mvar <- newMVar HMS.empty
-            mvar2 <- newEmptyMVar
             chan <- newChan
             conn <-
                 setupRedis >>= \case
@@ -141,7 +140,6 @@ makeConfig env =
                     , postjobs = chan
                     , worker_interval = interval
                     , connectors = (conn, pipe_ioref)
-                    , sem = mvar2
                     }
                 , port
                 )
