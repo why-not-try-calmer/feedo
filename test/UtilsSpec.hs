@@ -7,7 +7,7 @@ import Data.Int (Int64)
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (UTCTime, diffUTCTime, getCurrentTime, readTime)
+import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Notifications
 import Test.Hspec
 import TgramOutJson (ChatId)
