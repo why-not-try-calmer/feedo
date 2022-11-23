@@ -1,77 +1,78 @@
-name:                feedfarer
-version:             1.2
-github:              "githubuser/feedfarer"
-license:             BSD3
-author:              "Adrien Glauser"
-maintainer:          "mrnycticorax@gmail.com"
-copyright:           "2021 Adrien Glauser"
+name: feedfarer
+version: 1.2
+github: "githubuser/feedfarer"
+license: BSD3
+author: "Adrien Glauser"
+maintainer: "mrnycticorax@gmail.com"
+copyright: "2021 Adrien Glauser"
 
 extra-source-files:
-- README.md
+  - README.md
 
-description:         Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
+description: Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
 
 default-extensions:
-- LambdaCase
-- OverloadedStrings
-- StrictData
-- BangPatterns
+  - LambdaCase
+  - OverloadedStrings
+  - StrictData
+  - BangPatterns
+  - ImportQualifiedPost
 
 dependencies:
-- base >= 4.7 && < 5
-- xml-conduit
-- req
-- text
-- bytestring
-- unordered-containers
-- containers
-- mtl
-- directory
-- time
-- async
-- aeson
-- servant-server
-- wai
-- warp
-- warp-tls
-- mongoDB
-- hedis
-- servant-blaze
-- blaze-markup
-- blaze-html
-- uri-encode
-- cryptonite
-- hspec
+  - base >= 4.7 && < 5
+  - xml-conduit
+  - req
+  - text
+  - bytestring
+  - unordered-containers
+  - containers
+  - mtl
+  - directory
+  - time
+  - async
+  - aeson
+  - servant-server
+  - wai
+  - warp
+  - warp-tls
+  - mongoDB
+  - hedis
+  - servant-blaze
+  - blaze-markup
+  - blaze-html
+  - uri-encode
+  - cryptonite
+  - hspec
 
 library:
   source-dirs: src
   ghc-options:
-  - -Wall
+    - -Wall
 
 executables:
   feedfarer-exe:
-    main:                Main.hs
-    source-dirs:         app
+    main: Main.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -O2
-    - -static
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -O2
+      - -static
     cc-options:
-    - -static
+      - -static
     ld-options:
-    - -static
+      - -static
     dependencies:
-    - feedfarer
+      - feedfarer
 
 tests:
   feedfarer-test:
-    main:                Spec.hs
-    source-dirs:         test
+    main: Spec.hs
+    source-dirs: test
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - feedfarer
+      - feedfarer
