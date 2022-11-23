@@ -4,23 +4,23 @@ module Mongo (saveToLog, HasMongo (..), checkDbMapper) where
 
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (unless, when)
+import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import Data.Aeson (eitherDecodeStrict')
-import qualified Data.ByteString.Char8 as B
+import Data.ByteString.Char8 qualified as B
 import Data.Functor ((<&>))
-import qualified Data.HashMap.Strict as HMS
-import qualified Data.List as List
+import Data.HashMap.Strict qualified as HMS
+import Data.List qualified as List
 import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Ord
-import qualified Data.Set as S
-import qualified Data.Text as T
+import Data.Set qualified as S
+import Data.Text qualified as T
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
-import qualified Database.MongoDB as M
-import qualified Database.MongoDB.Transport.Tls as Tls
+import Database.MongoDB qualified as M
+import Database.MongoDB.Transport.Tls qualified as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Network.HTTP.Req (BsResponse, responseBody)
 import Requests (fetchApi)
@@ -166,7 +166,8 @@ withMongo AppConfig{..} action = liftIO $ do
     alert err =
         liftIO $
             writeChan postjobs . JobTgAlert $
-                "withMongo failed with " `T.append` (T.pack . show $ err)
+                "withMongo failed with "
+                    `T.append` (T.pack . show $ err)
                     `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Actions -}
@@ -223,7 +224,7 @@ evalMongo env (DbAskForLogin uid cid) = do
                     _ <- withMongo env (write_doc h now)
                     pure $ DbToken h
                 Right (Just doc) -> do
-                    when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env delete_doc >> pure ())
+                    when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (void $ withMongo env delete_doc)
                     pure $ DbToken . admin_token . readDoc $ doc
   where
     mkSafeHash =
@@ -636,7 +637,7 @@ logToBson (LogCouldNotArchive feeds t err) =
      in ["log_at " =: t, "log_error" =: err, "log_flinks" =: flinks, "log_items" =: map (T.pack . show) items]
 
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env logitem = withMongo env (insert "logs" $ writeDoc logitem) >> pure ()
+saveToLog env logitem = void $ withMongo env (insert "logs" $ writeDoc logitem)
 
 {-
 cleanLogs :: (HasMongo m, MonadIO m) => AppConfig -> m (Either String ())
