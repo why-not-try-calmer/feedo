@@ -1,4 +1,4 @@
-# stack-ready ghc 9.2.4 compiled against musl
+# stack-ready ghc 9.2.2 compiled against musl
 FROM nycticoracs/ghc-musl-with-stack as builder
 WORKDIR /opt/app/
 # build dependencies
