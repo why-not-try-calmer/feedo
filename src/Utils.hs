@@ -257,6 +257,31 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
         PPagination v -> o{settings_pagination = v}
         PNoCollapse v -> o{settings_digest_no_collapse = v}
 
+{- Items -}
+
 sortItems :: Feed -> Feed
 {-# INLINE sortItems #-}
 sortItems f = f{f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f}
+
+{- Replies -}
+
+sliceOnN :: T.Text -> Int -> [T.Text]
+sliceOnN t n =
+    let (body, rest) = foldl' step ([], mempty) $ T.lines t
+     in body ++ [rest]
+  where
+    step (acc, l') l =
+        let (done, rest) = try_unlining l' l
+         in if rest == mempty
+                then (acc, done)
+                else (acc ++ [done], rest)
+    try_unlining l_acc l_v =
+        let unlined = T.unlines [l_acc, l_v]
+         in if T.length unlined > n
+                then (l_acc, l_v)
+                else (unlined, mempty)
+
+sliceIfAboveTelegramMax :: T.Text -> [T.Text]
+sliceIfAboveTelegramMax msg
+    | T.length msg <= 4096 = pure msg
+    | otherwise = sliceOnN msg 4096
