@@ -179,3 +179,13 @@ refreshCache (Just feeds) =
                     `T.append` msg
                     `T.append` "Proceededing nonetheless"
         _ -> pure ()
+
+rewriteFeeds :: (MonadIO m, HasMongo m, MonadReader AppConfig m) => [(FeedLink, FeedLink)] -> m (Either T.Text ())
+rewriteFeeds flinks_pairs = do
+    env <- ask
+    res <- mapM (\(f1, f2) -> evalDb env (ReplaceFeedLink f1 f2)) flinks_pairs
+    if null $ failed res then pure $ Right () else pure . Left . head . failed $ res
+  where
+    failed = foldr step []
+    step (DbErr err) _ = pure $ renderDbError err
+    step _ acc = acc

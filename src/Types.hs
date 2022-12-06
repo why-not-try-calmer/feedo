@@ -406,6 +406,7 @@ data DbAction
     | DbSearch Keywords Scope (Maybe UTCTime)
     | PruneOld UTCTime
     | ReadDigest T.Text
+    | ReplaceFeedLink FeedLink FeedLink
     | UpsertChat SubChat
     | UpsertChats SubChats
     | UpsertFeeds [Feed]
