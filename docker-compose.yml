@@ -1,12 +1,13 @@
 version: "3"
-services:
-    feedfarer:
+
+services:    
+    
+    feedo:
       image: ghcr.io/why-not-try-calmer/feedo:latest
       depends_on: [redis]
       restart: on-failure
       build: .
       command: ./feefarer-exe
-      ports: [80:80]
       environment:
         API_KEY: ${API_KEY}
         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
@@ -14,10 +15,27 @@ services:
         ALERT_CHATID: ${ALERT_CHATID}
         WEBHOOK_URL: ${WEBHOOK_URL}
         MONGO_CONN_STRING: ${MONGO_CONN_STRING}
+        PORT: 8000
+    
     redis:
-        image: redis:latest
-        expose: [6379]
-        restart: on-failure
-        command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
-        volumes:
-          - /data/redis-store
+      image: redis:latest
+      expose: [6379]
+      restart: on-failure
+      command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
+      volumes:
+        - /data/redis-store
+
+    nginx:
+      image: nginx:latest
+      restart: on-failure
+      volumes:
+        - ./nginx.conf:/etc/nginx/nginx.conf:ro
+        - ./private.key:/etc/nginx/private.key:ro
+        - ./cert.pem:/etc/nginx/cert.pem:ro
+      ports:
+        - "80:80"
+        - "443:443"
+      depends_on:
+      - redis
+      - feedo
+  

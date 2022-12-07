@@ -169,7 +169,10 @@ startApp = do
         else do
             dir <- getCurrentDirectory
             print $ "WARNING: Missing SSL keys from " <> dir
-            print $ "Server (PLAIN HTTP) now listening to port " <> show port
+            print $
+                "TLS will need to rely on gateway (if any). \
+                \ Server (PLAIN HTTP) now listening to port "
+                    <> show port
             run port $ withServer config
   where
     warpOpts p
