@@ -17,6 +17,7 @@ import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
 import Types
+import Utils (sliceIfAboveTelegramMax)
 
 {- Interface -}
 
@@ -51,12 +52,24 @@ reqSend tok postMeth encodedMsg =
         Left (SomeException err) ->
             let msg = "Tried to send a request, but failed for this reason: " `T.append` (T.pack . show $ err)
              in pure . Left $ msg
-        Right resp -> pure . Right $ resp
+        Right resps -> pure . Right . head $ resps
   where
-    action = withReqManager $ runReq defaultHttpConfig . pure request
-    request =
+    action =
+        mapM
+            ( \outbound -> withReqManager $
+                \manager ->
+                    runReq defaultHttpConfig $
+                        pure request manager outbound
+            )
+            outbounds
+    outbounds = case encodedMsg of
+        OutboundMessage{..} -> map (\part -> encodedMsg{out_text = part}) (sliceIfAboveTelegramMax out_text)
+        EditMessage{..} -> map (\part -> encodedMsg{out_text = part}) (sliceIfAboveTelegramMax out_text)
+        _ -> pure encodedMsg
+    -- request :: (TgReqM m, FromJSON a) => Outbound -> m (JsonResponse a)
+    request outbound =
         let reqUrl = https "api.telegram.org" /: tok /: postMeth
-         in req Network.HTTP.Req.POST reqUrl (ReqBodyJson encodedMsg) jsonResponse mempty
+         in req Network.HTTP.Req.POST reqUrl (ReqBodyJson outbound) jsonResponse mempty
 
 reqSend_ :: TgReqM m => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
 reqSend_ a b c =
