@@ -281,7 +281,16 @@ sliceOnN t n =
                 then (l_acc, l_v)
                 else (unlined, mempty)
 
+removeAllEmptyLines :: T.Text -> T.Text
+removeAllEmptyLines = fst . T.foldl' step tuple_acc
+  where
+    tuple_acc = (mempty, 0) :: (T.Text, Int)
+    step (acc, counter) val
+        | val == '\n' && counter == 0 = (acc `T.append` T.singleton val, 1)
+        | val == '\n' && counter == 1 = (acc, 0)
+        | otherwise = (acc `T.append` T.singleton val, counter)
+
 sliceIfAboveTelegramMax :: T.Text -> [T.Text]
 sliceIfAboveTelegramMax msg
     | T.length msg <= 4096 = pure msg
-    | otherwise = sliceOnN msg 4096
+    | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096
