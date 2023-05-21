@@ -144,7 +144,8 @@ rebuildFeed key = case eitherUrlScheme key of
                 buildFeed Atom url >>= \case
                     Left build_error ->
                         pure . Left $
-                            renderUrl url `T.append` " ran into this error: "
+                            renderUrl url
+                                `T.append` " ran into this error: "
                                 `T.append` renderUserError build_error
                     Right (feed, _) -> done feed
             Right (feed, _) -> done feed

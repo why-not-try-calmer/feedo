@@ -17,8 +17,11 @@ class Monad m => HasRedis m where
 instance MonadIO m => HasRedis (App m) where
     withRedis = withRedis'
 
-singleK :: T.Text -> B.ByteString
-singleK = B.append "feeds:" . T.encodeUtf8
+singleK :: T.Text -> T.Text -> B.ByteString
+singleK collection item = collection' `B.append` ":" `B.append` item'
+  where
+    item' = T.encodeUtf8 item
+    collection' = T.encodeUtf8 collection
 
 pageKeys :: Int64 -> Int -> (B.ByteString, B.ByteString)
 pageKeys cid mid = (lk, k)

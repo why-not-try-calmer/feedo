@@ -459,6 +459,8 @@ data PageOne = PageOne
 data CacheAction
     = CacheDeleteFeeds [T.Text]
     | CachePullFeed T.Text
+    | CachePullChats
+    | CachePushChats [SubChat]
     | CachePullFeeds [T.Text]
     | CachePushFeeds [Feed]
     | CacheRefresh
@@ -469,6 +471,7 @@ data CacheAction
 data FromCache
     = CacheOk
     | CacheNothing
+    | CacheChats [SubChat]
     | CacheFeed Feed
     | CacheFeeds [Feed]
     | CacheMissed [FeedLink]
@@ -682,6 +685,8 @@ data ServerConfig = ServerConfig
     deriving (Show, Eq)
 
 type FeedsMap = HMS.HashMap T.Text Feed
+
+type SubchatsMap = HMS.HashMap Int64 SubChat
 
 data AppConfig = AppConfig
     { api_key :: APIKey

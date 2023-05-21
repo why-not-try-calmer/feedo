@@ -4,7 +4,7 @@ module Mongo (saveToLog, HasMongo (..), checkDbMapper) where
 
 import Control.Concurrent (writeChan)
 import Control.Exception
-import Control.Monad (unless, when)
+import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import Data.Aeson (eitherDecodeStrict')
@@ -166,13 +166,15 @@ withMongo AppConfig{..} action = liftIO $ do
     alert err =
         liftIO $
             writeChan postjobs . JobTgAlert $
-                "withMongo failed with " `T.append` (T.pack . show $ err)
+                "withMongo failed with "
+                    `T.append` (T.pack . show $ err)
                     `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Actions -}
 
 buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
 buildSearchQuery ws mb_last_time =
+    -- requires updating MongoDB driver, currently fails
     let search =
             [ "$search"
                 =: [ "index" =: ("default" :: T.Text)
@@ -223,7 +225,7 @@ evalMongo env (DbAskForLogin uid cid) = do
                     _ <- withMongo env (write_doc h now)
                     pure $ DbToken h
                 Right (Just doc) -> do
-                    when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (withMongo env delete_doc >> pure ())
+                    when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) $ void (withMongo env delete_doc)
                     pure $ DbToken . admin_token . readDoc $ doc
   where
     mkSafeHash =
@@ -636,7 +638,7 @@ logToBson (LogCouldNotArchive feeds t err) =
      in ["log_at " =: t, "log_error" =: err, "log_flinks" =: flinks, "log_items" =: map (T.pack . show) items]
 
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env logitem = withMongo env (insert "logs" $ writeDoc logitem) >> pure ()
+saveToLog env logitem = void (withMongo env (insert "logs" $ writeDoc logitem))
 
 {-
 cleanLogs :: (HasMongo m, MonadIO m) => AppConfig -> m (Either String ())

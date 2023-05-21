@@ -15,6 +15,7 @@ import Data.Foldable (foldl')
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
+import Data.Int (Int64)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
@@ -37,7 +38,7 @@ instance MonadIO m => HasCache (App m) where
 
 writeManyFeeds :: [Feed] -> Redis (TxResult ([Status], Integer))
 writeManyFeeds fs =
-    let write_to_keys f = set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
+    let write_to_keys f = set (singleK "feeds" . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
         write_to_sets = sadd "feeds" . map (B.encodeUtf8 . f_link) $ fs
         action = do
             q1 <- sequence <$> mapM write_to_keys fs
@@ -45,9 +46,19 @@ writeManyFeeds fs =
             pure $ (,) <$> q1 <*> q2
      in multiExec action
 
+writeManyChats :: [SubChat] -> Redis (TxResult ([Status], Integer))
+writeManyChats chats =
+    let write_to_keys c = set (singleK "chats" . T.pack . show . sub_chatid $ c) . B.concat . LB.toChunks . encode $ c
+        write_to_sets = sadd "chats" . map (B.encodeUtf8 . T.pack . show . sub_chatid) $ chats
+        action = do
+            q1 <- sequence <$> mapM write_to_keys chats
+            q2 <- write_to_sets
+            pure $ (,) <$> q1 <*> q2
+     in multiExec action
+
 deleteManyFeeds :: [T.Text] -> Redis (TxResult Integer)
 deleteManyFeeds fs = multiExec $ do
-    _ <- del (map singleK fs)
+    _ <- del (map (singleK "feeds") fs)
     srem "feeds" $ map B.encodeUtf8 fs
 
 getAllFeeds :: HasRedis m => AppConfig -> m (Either T.Text FeedsMap)
@@ -71,8 +82,32 @@ getAllFeeds env =
                     Nothing -> pure $ Left "Unable to decode feeds"
                     Just feeds -> pure . Right . feedsHmap $ feeds
 
+getAllSubChats :: HasRedis m => AppConfig -> m (Either T.Text SubchatsMap)
+getAllSubChats env =
+    let action =
+            withRedis env $
+                smembers "chats" >>= \case
+                    Left _ -> pure $ Left "Unable to find keys"
+                    Right ks ->
+                        mapM (get . B.append "chats:") ks
+                            >>= ( \case
+                                    Left _ -> pure $ Left "Unable to find chats"
+                                    Right xs -> pure $ Right xs
+                                )
+                                . sequence
+     in action >>= \case
+            Left err -> pure $ Left err
+            Right bs -> case sequence bs of
+                Nothing -> pure $ Left "Unable to decode chats"
+                Just bs' -> case mapM decodeStrict' bs' :: Maybe [SubChat] of
+                    Nothing -> pure $ Left "Unable to decode feeds"
+                    Just chats -> pure . Right . subchatsHmap $ chats
+
 feedsHmap :: [Feed] -> HMS.HashMap FeedLink Feed
 feedsHmap = HMS.fromList . map (\f -> (f_link f, f))
+
+subchatsHmap :: [SubChat] -> HMS.HashMap Int64 SubChat
+subchatsHmap = HMS.fromList . map (\c -> (sub_chatid c, c))
 
 rebuildUpdate ::
     (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
@@ -137,32 +172,9 @@ withBroker (CacheGetPage cid mid n) = do
             DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
             DbErr err -> pure . Left $ renderDbError err
             _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
-withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
-withBroker (CacheSetPages cid mid pages mb_link) =
-    ask >>= \env ->
-        let (lk, k) = pageKeys cid mid
-            action = case mb_link of
-                Nothing ->
-                    withRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
-                        Right _ -> pure $ Right CacheOk
-                        Left _ -> pure $ Left "Nothing"
-                Just l ->
-                    withRedis
-                        env
-                        ( multiExec $ do
-                            q1 <- set k $ B.encodeUtf8 l
-                            q1' <- expire k 86400
-                            q2 <- lpush lk $ map B.encodeUtf8 pages
-                            q2' <- expire lk 86400
-                            pure $ (,,,) <$> q1 <*> q2 <*> q1' <*> q2'
-                        )
-                        >>= \case
-                            TxSuccess _ -> pure $ Right CacheOk
-                            _ -> pure $ Left "Nothing"
-         in action
 withBroker (CachePullFeed flink) = do
     env <- ask
-    withRedis env (get . singleK $ flink) >>= \case
+    withRedis env (get . singleK "feeds" $ flink) >>= \case
         Left _ -> pure $ Left "Redis ran into an error"
         Right Nothing -> pure $ Left "Cache miss"
         Right (Just doc) -> case decodeStrict' doc :: Maybe Feed of
@@ -189,12 +201,27 @@ withBroker (CachePullFeeds flinks) = do
             let misses = missing_from_cache feeds
              in pure . Left $ "Missing these feeds: " `T.append` T.intercalate "," misses
   where
-    red_get_one_s = get . singleK
+    red_get_one_s = get . singleK "feeds"
     red_get_all_s fs = sequence . sequence <$> mapM red_get_one_s fs
     missing_from_cache feeds =
         if null feeds
             then flinks
             else filter (\fl -> fl `notElem` map f_link feeds) flinks
+withBroker CachePullChats =
+    ask
+        >>= ( getAllSubChats
+                >=> ( \case
+                        Left err -> pure . Left $ "Unable to pull chats from cache: " `T.append` err
+                        Right chatsmap ->
+                            pure . Right . CacheChats $ map snd $ HMS.toList chatsmap
+                    )
+            )
+withBroker (CachePushChats chats) =
+    ask >>= \env ->
+        withRedis env $
+            writeManyChats chats >>= \case
+                TxSuccess _ -> pure . Right $ CacheOk
+                _ -> pure . Left $ "Unable to push Chats!"
 withBroker (CachePushFeeds []) = pure $ Left "No feed to push!"
 withBroker (CachePushFeeds fs) =
     let flinks = map f_link fs
@@ -202,6 +229,29 @@ withBroker (CachePushFeeds fs) =
             withRedis env (writeManyFeeds fs) >>= \case
                 TxSuccess _ -> pure . Right $ CacheOk
                 _ -> pure . Left $ "Unable to push these feeds: " `T.append` T.intercalate ", " flinks
+withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
+withBroker (CacheSetPages cid mid pages mb_link) =
+    ask >>= \env ->
+        let (lk, k) = pageKeys cid mid
+            action = case mb_link of
+                Nothing ->
+                    withRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
+                        Right _ -> pure $ Right CacheOk
+                        Left _ -> pure $ Left "Nothing"
+                Just l ->
+                    withRedis
+                        env
+                        ( multiExec $ do
+                            q1 <- set k $ B.encodeUtf8 l
+                            q1' <- expire k 86400
+                            q2 <- lpush lk $ map B.encodeUtf8 pages
+                            q2' <- expire lk 86400
+                            pure $ (,,,) <$> q1 <*> q2 <*> q1' <*> q2'
+                        )
+                        >>= \case
+                            TxSuccess _ -> pure $ Right CacheOk
+                            _ -> pure $ Left "Nothing"
+         in action
 withBroker CacheRefresh = do
     env <- ask
     (chats, now, last_run) <- liftIO $ do
