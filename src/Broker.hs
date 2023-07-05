@@ -25,7 +25,7 @@ import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotifie
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
 import Types hiding (Reply)
-import Utils (freshLastXDays, partitionEither, renderDbError, sortItems)
+import Utils (freshLastXDays, getUrls, partitionEither, renderDbError, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -92,22 +92,21 @@ rebuildUpdate flinks now =
         unless (null failed) $ do
             _ <- updated_blacklist env failed
             writeChan (postjobs env) . JobTgAlert $
-                "Failed to update these feeds: " `T.append` T.intercalate ", " failed
+                "Failed to update these feeds: " `T.append` T.intercalate ", " (getUrls failed)
 
         writeChan (postjobs env) $ JobArchive succeeded now
     as_list = HMS.fromList . map (\f -> (f_link f, f))
     updated_blacklist env failed = withMVar (blacklist env) $ \hmap -> pure $ updateWith hmap failed
     updateWith = foldl' step
-    step acc url =
+    step hmap (EndpointError u st_code er_msg _) =
         HMS.alter
             ( \case
-                Nothing -> Just (BlackListedUrl now "" 403 1) -- FIXME: This needs to be replaced with actual data
-                Just bl ->
-                    let previous_offenses = offenses bl
-                     in Just $ bl{last_attempt = now, offenses = previous_offenses + 1}
+                Nothing -> Just (BlackListedUrl now er_msg st_code 1)
+                Just bl -> Just $ bl{last_attempt = now, offenses = offenses bl + 1}
             )
-            url
-            acc
+            u
+            hmap
+    step hmap _ = hmap
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"

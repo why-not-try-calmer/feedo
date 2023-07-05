@@ -164,7 +164,7 @@ regenFeeds = do
         report err = writeChan (postjobs env) . JobTgAlert $ "Failed to regen feeds for this reason: " `T.append` err
     liftIO $ do
         (failed, feeds) <- partitionEither <$> forConcurrently urls (rebuildFeed env)
-        unless (null failed) (report $ "regenFeeds: Unable to rebuild these feeds" `T.append` T.intercalate ", " failed)
+        unless (null failed) (report $ "regenFeeds: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map (T.pack . show) failed))
         if null feeds
             then pure Nothing
             else pure $ Just . map sortItems $ feeds

@@ -26,7 +26,7 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Types
-import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs, getUrls)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -655,7 +655,7 @@ evalTgAct uid TestDigest cid =
                                     then
                                         pure . Right . mkReply $
                                             FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
-                                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " failed
+                                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " (getUrls failed)
   where
     new_since_last_week now =
         let last_week = addUTCTime (-604800)

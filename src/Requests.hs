@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (for_)
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
@@ -219,14 +220,17 @@ reply tok cid rep chan =
 
 {- Feeds -}
 
-fetchFeed :: MonadIO m => Url scheme -> m (Either T.Text LB.ByteString)
+fetchFeed :: MonadIO m => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =
     liftIO (try action :: IO (Either SomeException LbsResponse)) >>= \case
-        Left err -> pure $ Left (T.pack . show $ err)
+        Left err -> pure . Left . OtherError . T.pack . show $ err
         Right resp ->
-            let contents = responseBody resp
-                code = responseStatusCode resp :: Int
-             in if code /= 200 then pure (Left "Response code is not 200, could not reach server!") else pure . Right $ contents
+            let code = responseStatusCode resp :: Int
+                status_message = T.decodeUtf8 $ responseStatusMessage resp
+                contents = responseBody resp
+             in if code /= 200
+                    then pure . Left $ EndpointError (renderUrl url) code status_message mempty
+                    else pure . Right $ contents
   where
     action = withReqManager $ runReq defaultHttpConfig . pure request
     request = req GET url NoReqBody lbsResponse mempty
