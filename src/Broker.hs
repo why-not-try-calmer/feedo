@@ -3,7 +3,7 @@
 
 module Broker where
 
-import Control.Concurrent (readMVar, writeChan)
+import Control.Concurrent (readMVar, withMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -76,26 +76,38 @@ feedsHmap = HMS.fromList . map (\f -> (f_link f, f))
 
 rebuildUpdate ::
     (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
-    AppConfig ->
     [FeedLink] ->
     UTCTime ->
     m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildUpdate env flinks now =
-    liftIO $
-        fetch_feeds >>= \(failed, succeeded) ->
-            if null succeeded
-                then pure $ Left "Failed to fetch feeds"
-                else log_or_archive failed succeeded >> pure (Right . as_list $ succeeded)
+rebuildUpdate flinks now =
+    ask >>= \env ->
+        liftIO $
+            fetch_feeds env >>= \(failed, succeeded) ->
+                if null succeeded
+                    then pure $ Left "Failed to fetch feeds"
+                    else log_or_archive env failed succeeded >> pure (Right . as_list $ succeeded)
   where
-    fetch_feeds = partitionEither <$> mapConcurrently rebuildFeed flinks
-    log_or_archive failed succeeded = do
-        unless
-            (null failed)
-            ( writeChan (postjobs env) . JobTgAlert $
+    fetch_feeds env = partitionEither <$> mapConcurrently (rebuildFeed env) flinks
+    log_or_archive env failed succeeded = do
+        unless (null failed) $ do
+            _ <- updated_blacklist env failed
+            writeChan (postjobs env) . JobTgAlert $
                 "Failed to update these feeds: " `T.append` T.intercalate ", " failed
-            )
+
         writeChan (postjobs env) $ JobArchive succeeded now
     as_list = HMS.fromList . map (\f -> (f_link f, f))
+    updated_blacklist env failed = withMVar (blacklist env) $ \hmap -> pure $ updateWith hmap failed
+    updateWith = foldl' step
+    step acc url =
+        HMS.alter
+            ( \case
+                Nothing -> Just (BlackListedUrl now "" 403 1)
+                Just bl ->
+                    let previous_offenses = offenses bl
+                     in Just $ bl{last_attempt = now, offenses = previous_offenses + 1}
+            )
+            url
+            acc
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
@@ -215,7 +227,7 @@ withBroker CacheRefresh = do
     if null $ feeds_to_refresh pre
         then pure $ Right CacheOk
         else
-            rebuildUpdate env (feeds_to_refresh pre) now >>= \case
+            rebuildUpdate (feeds_to_refresh pre) now >>= \case
                 Left err -> pure $ Left err
                 Right rebuilt -> do
                     -- sometimes a digest would contain items with the same timestamps, but

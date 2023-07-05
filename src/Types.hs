@@ -683,8 +683,18 @@ data ServerConfig = ServerConfig
 
 type FeedsMap = HMS.HashMap T.Text Feed
 
+data BlackListedUrl = BlackListedUrl
+    { last_attempt :: UTCTime
+    , error_message :: T.Text
+    , status_code :: Int
+    , offenses :: Int
+    }
+
+type BlacklistMap = MVar (HMS.HashMap FeedLink BlackListedUrl)
+
 data AppConfig = AppConfig
     { api_key :: APIKey
+    , blacklist :: BlacklistMap
     , last_worker_run :: IORef (Maybe UTCTime)
     , mongo_creds :: MongoCreds
     , connectors :: Connectors
