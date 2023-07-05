@@ -13,8 +13,14 @@ import Test.Hspec
 import Types
 import Utils
 
+getConns :: IO AppConfig
+getConns = do
+    env <- getEnvironment
+    (config, _) <- makeConfig env
+    pure config
+
 spec :: Spec
-spec = go1 >> go2 >> go3
+spec = runIO getConns >>= \env -> go1 >> go2 env >> go3
   where
     go1 =
         let desc = describe "test digests"
@@ -58,7 +64,7 @@ spec = go1 >> go2 >> go3
              in if length is == 1 && initial == final
                     then "2"
                     else T.pack . show . length $ filter (\i -> i_pubdate i == initial) is
-    go2 =
+    go2 env =
         let desc = describe "validate equivalence between notifiers"
             as = it "proves that the two notifiers are equivalent"
             target = do
@@ -67,7 +73,7 @@ spec = go1 >> go2 >> go3
                     settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
                     -- last 31th of May
                     chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
-                (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
+                (failed, done) <- partitionEither <$> mapConcurrently (rebuildFeed env) feedlinks
                 now <- getCurrentTime
                 let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
                     -- due = collectDue (HMS.singleton 123 chat) Nothing now
@@ -79,7 +85,7 @@ spec = go1 >> go2 >> go3
                     sumItems = length . get_items
                     get_batch (Follows fs) = fs
                     get_batch (Digests fs) = fs
-                --only_on_batch1 = filter (\i -> i_link i `notElem` map i_link (get_items batch2)) $ get_items batch1
+                -- only_on_batch1 = filter (\i -> i_link i `notElem` map i_link (get_items batch2)) $ get_items batch1
                 -- only_on_batch2 = filter (\i -> i_link i `notElem` map i_link (get_items batch1)) $ get_items batch2
                 -- print $ "First batch: " ++ show (sumItems batch1)
                 print $ "Second batch: " ++ show (sumItems batch2)
