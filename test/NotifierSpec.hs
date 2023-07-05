@@ -20,9 +20,9 @@ getConns = do
     pure config
 
 spec :: Spec
-spec = runIO getConns >>= \env -> go1 >> go2 env >> go3
+spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
   where
-    go1 =
+    go1 env =
         let desc = describe "test digests"
             as = it "creates a digest"
             target = do
@@ -32,7 +32,7 @@ spec = runIO getConns >>= \env -> go1 >> go2 env >> go3
                     -- last 31th of May
                     chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
                     chats_recipes = HMS.singleton 123 (chat, DigestFeedLinks feedlinks)
-                (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
+                (failed, done) <- partitionEither <$> mapConcurrently (rebuildFeed env) feedlinks
                 now <- getCurrentTime
                 let notifs = postNotifier (HMS.fromList $ map (\f -> (f_link f, f)) done) feedlinks (Pre feedlinks chats_recipes Nothing)
                     only_feeds =
@@ -99,13 +99,13 @@ spec = runIO getConns >>= \env -> go1 >> go2 env >> go3
                 print $ "Discarded: " ++ (show . length . discarded_items_links $ notifier)
                 sumItems batch2 `shouldSatisfy` (> 0)
          in desc $ as target
-    go3 =
+    go3 env =
         let desc = describe "makes sure 'only_search_notif' filters out items as desired"
             as = it "filters out items based on chat settings 'only_search_notif' and 'search_notif'"
             target = do
                 let feedlinks = ["https://news.ycombinator.com/rss"]
                 now <- getCurrentTime
-                (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
+                (failed, done) <- partitionEither <$> mapConcurrently (rebuildFeed env) feedlinks
                 now <- getCurrentTime
                 let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
                     sub_to = S.singleton "haskell"
