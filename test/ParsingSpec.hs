@@ -10,6 +10,7 @@ import Data.Time (getCurrentTime)
 import Network.HTTP.Req (renderUrl)
 import Notifications (collectDue, postNotifier, preNotifier)
 import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
+import System.Environment (getEnvironment)
 import Test.Hspec
 import Types (Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_desc, f_items, f_link, f_title, f_type), Item (i_desc, i_feed_link, i_link, i_pubdate), Notifier (Post, Pre, batch_recipes, batches, discarded_items_links), ParsingSettings (PDigestAt), Settings (Settings, settings_digest_interval), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), i_title)
 import Utils (defaultChatSettings, mbTime, partitionEither)

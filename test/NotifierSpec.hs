@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import Data.Time
 import Notifications
 import Parsing
+import System.Environment (getEnvironment)
 import Test.Hspec
 import Types
 import Utils
