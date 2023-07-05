@@ -166,7 +166,8 @@ withMongo AppConfig{..} action = liftIO $ do
     alert err =
         liftIO $
             writeChan postjobs . JobTgAlert $
-                "withMongo failed with " `T.append` (T.pack . show $ err)
+                "withMongo failed with "
+                    `T.append` (T.pack . show $ err)
                     `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Actions -}
