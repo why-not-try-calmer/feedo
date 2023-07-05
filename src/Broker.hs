@@ -101,7 +101,7 @@ rebuildUpdate flinks now =
     step acc url =
         HMS.alter
             ( \case
-                Nothing -> Just (BlackListedUrl now "" 403 1)
+                Nothing -> Just (BlackListedUrl now "" 403 1) -- FIXME: This needs to be replaced with actual data
                 Just bl ->
                     let previous_offenses = offenses bl
                      in Just $ bl{last_attempt = now, offenses = previous_offenses + 1}
