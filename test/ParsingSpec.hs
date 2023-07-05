@@ -13,7 +13,7 @@ import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
-import Types (Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_desc, f_items, f_link, f_title, f_type), Item (i_desc, i_feed_link, i_link, i_pubdate), Notifier (Post, Pre, batch_recipes, batches, discarded_items_links), ParsingSettings (PDigestAt), Settings (Settings, settings_digest_interval), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), i_title)
+import Types (AppConfig, Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_desc, f_items, f_link, f_title, f_type), Item (i_desc, i_feed_link, i_link, i_pubdate), Notifier (Post, Pre, batch_recipes, batches, discarded_items_links), ParsingSettings (PDigestAt), Settings (Settings, settings_digest_interval), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), i_title)
 import Utils (defaultChatSettings, mbTime, partitionEither)
 
 getConns :: IO AppConfig
@@ -44,7 +44,7 @@ spec = go >> go1 >> runIO getConns >>= \env -> go2 env
             as = it "fetches and parses the given web feeds"
             target = do
                 let feeds = ["https://hnrss.org/frontpage", "https://planetpython.org/rss20.xml", "https://talkpython.fm/episodes/rss", "https://www.blog.pythonlibrary.org/feed"]
-                res <- mapConcurrently (rebuildFeed feeds env)
+                res <- mapConcurrently (rebuildFeed env) feeds
                 let (failed, done) = partitionEither res
                 length done `shouldSatisfy` (> length failed)
          in desc $ as target

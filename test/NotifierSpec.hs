@@ -9,7 +9,7 @@ import qualified Data.Text as T
 import Data.Time
 import Notifications
 import Parsing
-impot Server (makeConfig)
+import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import Types
