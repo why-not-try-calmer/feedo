@@ -1,10 +1,13 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Parsing (eitherUrlScheme, rebuildFeed, getFeedFromUrlScheme, parseSettings) where
 
+import Control.Concurrent (readMVar)
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
+import qualified Data.HashMap.Internal.Strict as HMS
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -16,6 +19,8 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Types (
+    AppConfig (blacklist),
+    BlackListedUrl (..),
     Feed (..),
     FeedType (..),
     Item (Item, i_pubdate),
@@ -134,21 +139,33 @@ getFeedFromUrlScheme scheme =
   where
     finish_successfully = pure . Right
 
-rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
--- updates one single feed
-rebuildFeed key = case eitherUrlScheme key of
+rebuildFeed :: MonadIO m => AppConfig -> T.Text -> m (Either T.Text Feed)
+-- updates a single feed
+rebuildFeed env key = case eitherUrlScheme key of
     Left err -> pure . Left $ key `T.append` " ran into this error: " `T.append` renderUserError err
     Right url ->
+        liftIO $
+            readMVar (blacklist env) >>= \hmap ->
+                case HMS.lookup (renderUrl url) hmap of
+                    Nothing -> build url
+                    Just bl ->
+                        pure . Left $
+                            "This web feed has been blacklisted for too many failed attempts. Last status code was "
+                                `T.append` (T.pack . show . status_code $ bl)
+                                `T.append` " with error message "
+                                `T.append` error_message bl
+  where
+    build url =
         buildFeed Rss url >>= \case
             Left _ ->
                 buildFeed Atom url >>= \case
                     Left build_error ->
                         pure . Left $
-                            renderUrl url `T.append` " ran into this error: "
+                            renderUrl url
+                                `T.append` " ran into this error: "
                                 `T.append` renderUserError build_error
                     Right (feed, _) -> done feed
             Right (feed, _) -> done feed
-  where
     done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed{f_last_refresh = Just now}
 
 {- Settings -}
