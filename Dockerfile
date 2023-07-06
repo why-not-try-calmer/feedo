@@ -1,5 +1,5 @@
 # stack-ready ghc 9.0.2 compiled against musl
-FROM nycticoracs/ghc-musl-with-stack as builder
+FROM nycticoracs/ghc-musl-with-stack:9.0.2 as builder
 WORKDIR /opt/app/
 # build dependencies
 COPY ./feedfarer.cabal ./stack.yaml ./
