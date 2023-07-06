@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Redis where
 
 import Control.Concurrent (threadDelay)

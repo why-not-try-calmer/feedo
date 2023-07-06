@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.2.
+-- This file has been generated from package.yaml by hpack version 0.35.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -63,6 +63,7 @@ library
     , directory
     , hedis
     , hspec
+    , http-client
     , mongoDB
     , mtl
     , req
@@ -105,6 +106,7 @@ executable feedfarer-exe
     , feedfarer
     , hedis
     , hspec
+    , http-client
     , mongoDB
     , mtl
     , req
@@ -156,6 +158,7 @@ test-suite feedfarer-test
     , feedfarer
     , hedis
     , hspec
+    , http-client
     , mongoDB
     , mtl
     , req

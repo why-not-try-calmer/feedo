@@ -19,29 +19,30 @@ default-extensions:
 
 dependencies:
 - base >= 4.7 && < 5
-- xml-conduit
-- req
-- text
-- bytestring
-- unordered-containers
-- containers
-- mtl
-- directory
-- time
 - async
 - aeson
+- blaze-html
+- blaze-markup
+- bytestring
+- containers
+- cryptonite
+- directory
+- hedis
+- http-client
+- hspec
+- mongoDB
+- mtl
+- req
+- servant-blaze
 - servant-server
+- text
+- time
+- unordered-containers
+- uri-encode
 - wai
 - warp
 - warp-tls
-- mongoDB
-- hedis
-- servant-blaze
-- blaze-markup
-- blaze-html
-- uri-encode
-- cryptonite
-- hspec
+- xml-conduit
 
 library:
   source-dirs: src

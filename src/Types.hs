@@ -321,7 +321,7 @@ data UserAction
 data FeedError
     = EndpointError
         { r_url :: T.Text
-        , r_status_code :: Int
+        , r_status_code :: Maybe Int
         , r_error_message :: T.Text
         , r_user_message :: T.Text
         }
@@ -699,7 +699,7 @@ type FeedsMap = HMS.HashMap T.Text Feed
 data BlackListedUrl = BlackListedUrl
     { last_attempt :: UTCTime
     , error_message :: T.Text
-    , status_code :: Int
+    , status_code :: Maybe Int
     , offenses :: Int
     }
 
