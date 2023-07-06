@@ -85,10 +85,10 @@ rebuildUpdate flinks now =
             fetch_feeds env >>= \(failed, succeeded) ->
                 if null succeeded
                     then pure $ Left "Failed to fetch feeds"
-                    else log_or_archive env failed succeeded >> pure (Right . as_list $ succeeded)
+                    else act_on_failed env failed succeeded >> pure (Right . as_list $ succeeded)
   where
     fetch_feeds env = partitionEither <$> mapConcurrently (rebuildFeed env) flinks
-    log_or_archive env failed succeeded = do
+    act_on_failed env failed succeeded = do
         unless (null failed) $ do
             punishable <- update_blacklist env failed
             void $ update_subchats env punishable
