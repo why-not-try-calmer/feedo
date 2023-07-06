@@ -3,9 +3,9 @@
 
 module Broker where
 
-import Control.Concurrent (readMVar, withMVar, writeChan)
+import Control.Concurrent (modifyMVar, readMVar, withMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
-import Control.Monad (unless, (>=>))
+import Control.Monad (unless, void, (>=>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import Data.Aeson
@@ -90,23 +90,32 @@ rebuildUpdate flinks now =
     fetch_feeds env = partitionEither <$> mapConcurrently (rebuildFeed env) flinks
     log_or_archive env failed succeeded = do
         unless (null failed) $ do
-            _ <- updated_blacklist env failed
+            punishable <- update_blacklist env failed
+            void $ update_subchats env punishable
             writeChan (postjobs env) . JobTgAlert $
-                "Failed to update these feeds: " `T.append` T.intercalate ", " (getUrls failed)
+                let offending_urls = getUrls failed
+                    report = "Failed to update these feeds: " `T.append` T.intercalate ", " offending_urls
+                 in report `T.append` ". Blacklist was updated accordingly."
 
         writeChan (postjobs env) $ JobArchive succeeded now
     as_list = HMS.fromList . map (\f -> (f_link f, f))
-    updated_blacklist env failed = withMVar (blacklist env) $ \hmap -> pure $ updateWith hmap failed
-    updateWith = foldl' step
-    step hmap (EndpointError u st_code er_msg _) =
-        HMS.alter
-            ( \case
-                Nothing -> Just (BlackListedUrl now er_msg st_code 1)
-                Just bl -> Just $ bl{last_attempt = now, offenses = offenses bl + 1}
-            )
-            u
-            hmap
-    step hmap _ = hmap
+    update_blacklist env failed = modifyMVar (blacklist env) $ \hmap -> pure (updateBlackList hmap failed, get_punishable hmap)
+      where
+        updateBlackList = foldl' edit_blacklist
+        edit_blacklist hmap (EndpointError u st_code er_msg _) =
+            HMS.alter
+                ( \case
+                    Nothing -> Just (BlackListedUrl now er_msg st_code 1)
+                    Just bl -> Just $ bl{last_attempt = now, offenses = offenses bl + 1}
+                )
+                u
+                hmap
+        edit_blacklist hmap _ = hmap
+    get_punishable = map fst . HMS.toList . HMS.filter (\bl -> offenses bl >= 3)
+    update_subchats env urls = withMVar (subs_state env) $ \hmap -> pure $ updateSubChats hmap urls
+      where
+        updateSubChats = foldl' edit_subchats
+        edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
