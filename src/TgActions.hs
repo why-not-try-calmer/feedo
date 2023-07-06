@@ -26,7 +26,7 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Types
-import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs, getUrls)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -354,7 +354,7 @@ evalTgAct uid (Announce txt) admin_chat =
                     fetch_chat_types >>= \resp -> do
                         let (failed, succeeded) = partitionEither resp
                             non_channels = are_non_channels succeeded
-                        unless (null failed) (liftIO $ writeChan (postjobs env) (JobTgAlert $ "Telegram didn't told us the type of these chats: " `T.append` (T.pack . show $ failed)))
+                        unless (null failed) (liftIO $ writeChan (postjobs env) (JobTgAlertAdmin $ "Telegram didn't told us the type of these chats: " `T.append` (T.pack . show $ failed)))
                         if null non_channels
                             then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
                             else
@@ -649,13 +649,13 @@ evalTgAct uid TestDigest cid =
                                 let feeds = sub_feeds_links c
                                 (now, failed, succeeded) <- liftIO $ do
                                     now <- getCurrentTime
-                                    (failed, succeeded) <- partitionEither <$> mapConcurrently rebuildFeed (S.toList feeds)
+                                    (failed, succeeded) <- partitionEither <$> mapConcurrently (rebuildFeed env) (S.toList feeds)
                                     pure (now, failed, succeeded)
                                 if null failed
                                     then
                                         pure . Right . mkReply $
                                             FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
-                                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " failed
+                                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " (getUrls failed)
   where
     new_since_last_week now =
         let last_week = addUTCTime (-604800)
@@ -685,7 +685,7 @@ processCbq cbq =
                  in reply (bot_token . tg_config $ env) cid rep (postjobs env)
             send_result _ (Left err) = report err
             send_result _ _ = pure ()
-            report err = liftIO $ writeChan (postjobs env) $ JobTgAlert err
+            report err = liftIO $ writeChan (postjobs env) $ JobTgAlertAdmin err
             send_answer =
                 answer (bot_token . tg_config $ env) mkAnswer >>= \case
                     Left err -> report err

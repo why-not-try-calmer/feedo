@@ -3,7 +3,7 @@
 
 module Broker where
 
-import Control.Concurrent (readMVar, writeChan)
+import Control.Concurrent (modifyMVar, readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -25,7 +25,7 @@ import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotifie
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
 import Types hiding (Reply)
-import Utils (freshLastXDays, partitionEither, renderDbError, sortItems)
+import Utils (freshLastXDays, getUrls, partitionEither, renderDbError, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -76,26 +76,50 @@ feedsHmap = HMS.fromList . map (\f -> (f_link f, f))
 
 rebuildUpdate ::
     (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
-    AppConfig ->
     [FeedLink] ->
     UTCTime ->
     m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildUpdate env flinks now =
-    liftIO $
-        fetch_feeds >>= \(failed, succeeded) ->
-            if null succeeded
-                then pure $ Left "Failed to fetch feeds"
-                else log_or_archive failed succeeded >> pure (Right . as_list $ succeeded)
+rebuildUpdate flinks now =
+    ask >>= \env ->
+        liftIO $
+            fetch_feeds env >>= \(failed, succeeded) ->
+                if null succeeded
+                    then pure $ Left "Failed to fetch feeds"
+                    else act_on_failed env failed succeeded >> pure (Right . as_list $ succeeded)
   where
-    fetch_feeds = partitionEither <$> mapConcurrently rebuildFeed flinks
-    log_or_archive failed succeeded = do
-        unless
-            (null failed)
-            ( writeChan (postjobs env) . JobTgAlert $
-                "Failed to update these feeds: " `T.append` T.intercalate ", " failed
-            )
+    fetch_feeds env = partitionEither <$> mapConcurrently (rebuildFeed env) flinks
+    act_on_failed env failed succeeded = do
+        unless (null failed) $ do
+            punishable <- update_blacklist env failed
+            punished <- update_subchats env punishable
+            writeChan (postjobs env) . JobTgAlertAdmin $
+                let offending_urls = getUrls failed
+                    report = "Failed to update these feeds: " `T.append` T.intercalate ", " offending_urls
+                 in report `T.append` ". Blacklist was updated accordingly."
+            unless (null punishable) $
+                let msg = "This chat has been found to use a faulty RSS endpoint. It will be removed from your subscriptions."
+                 in writeChan (postjobs env) $ JobTgAlertChats punished msg
+
         writeChan (postjobs env) $ JobArchive succeeded now
     as_list = HMS.fromList . map (\f -> (f_link f, f))
+    update_blacklist env failed = modifyMVar (blacklist env) $ \hmap -> pure (updateBlackList hmap failed, get_punishable hmap)
+      where
+        updateBlackList = foldl' edit_blacklist
+        edit_blacklist hmap (EndpointError u st_code er_msg _) =
+            HMS.alter
+                ( \case
+                    Nothing -> Just (BlackListedUrl now er_msg st_code 1)
+                    Just bl -> Just $ bl{last_attempt = now, offenses = offenses bl + 1}
+                )
+                u
+                hmap
+        edit_blacklist hmap _ = hmap
+    get_punishable = map fst . HMS.toList . HMS.filter (\bl -> offenses bl >= 3)
+    update_subchats env urls = modifyMVar (subs_state env) $ \hmap -> pure (updateSubChats hmap urls, get_offending_chats hmap)
+      where
+        get_offending_chats = foldl' (\acc subchat -> if any (`S.member` sub_feeds_links subchat) urls then sub_chatid subchat : acc else acc) []
+        updateSubChats = foldl' edit_subchats
+        edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
@@ -215,7 +239,7 @@ withBroker CacheRefresh = do
     if null $ feeds_to_refresh pre
         then pure $ Right CacheOk
         else
-            rebuildUpdate env (feeds_to_refresh pre) now >>= \case
+            rebuildUpdate (feeds_to_refresh pre) now >>= \case
                 Left err -> pure $ Left err
                 Right rebuilt -> do
                     -- sometimes a digest would contain items with the same timestamps, but
@@ -231,7 +255,7 @@ withBroker CacheRefresh = do
                     liftIO $ do
                         -- ensuring caching worked
                         case recached of
-                            Left e -> writeChan (postjobs env) . JobTgAlert $ e
+                            Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ e
                             _ -> pure ()
                         -- logging due chats with no digest
                         unless (null no_digest) $ do

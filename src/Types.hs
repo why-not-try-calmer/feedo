@@ -318,10 +318,22 @@ data UserAction
     | UnSubChannel ChatId [FeedRef]
     deriving (Eq, Show)
 
+data FeedError
+    = EndpointError
+        { r_url :: T.Text
+        , r_status_code :: Int
+        , r_error_message :: T.Text
+        , r_user_message :: T.Text
+        }
+    | BlacklistedError T.Text
+    | OtherError T.Text
+    deriving (Show, Eq)
+
 data UserError
     = BadFeedUrl T.Text
     | BadInput T.Text
     | BadRef T.Text
+    | BadFeed FeedError
     | NotAdmin T.Text
     | NotFoundChat
     | NotFoundFeed T.Text
@@ -530,7 +542,8 @@ data Job
     | JobPurge ChatId
     | JobRemoveMsg ChatId Int Int
     | JobSetPagination ChatId Int [T.Text] (Maybe T.Text)
-    | JobTgAlert T.Text
+    | JobTgAlertAdmin T.Text
+    | JobTgAlertChats [ChatId] T.Text
     deriving (Eq, Show)
 
 {- Mong API Requests -}
@@ -683,8 +696,18 @@ data ServerConfig = ServerConfig
 
 type FeedsMap = HMS.HashMap T.Text Feed
 
+data BlackListedUrl = BlackListedUrl
+    { last_attempt :: UTCTime
+    , error_message :: T.Text
+    , status_code :: Int
+    , offenses :: Int
+    }
+
+type BlacklistMap = MVar (HMS.HashMap FeedLink BlackListedUrl)
+
 data AppConfig = AppConfig
     { api_key :: APIKey
+    , blacklist :: BlacklistMap
     , last_worker_run :: IORef (Maybe UTCTime)
     , mongo_creds :: MongoCreds
     , connectors :: Connectors

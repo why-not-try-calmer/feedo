@@ -1,10 +1,13 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Parsing (eitherUrlScheme, rebuildFeed, getFeedFromUrlScheme, parseSettings) where
 
+import Control.Concurrent (readMVar)
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
+import qualified Data.HashMap.Internal.Strict as HMS
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -16,12 +19,15 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Types (
+    AppConfig (blacklist),
+    BlackListedUrl (..),
     Feed (..),
+    FeedError (BlacklistedError, OtherError),
     FeedType (..),
     Item (Item, i_pubdate),
     ParsingSettings (..),
     Settings (settings_digest_title),
-    UserError (BadFeedUrl, BadInput, ParseError),
+    UserError (BadFeed, BadInput, ParseError),
  )
 import Utils (averageInterval, defaultChatSettings, mbTime, renderUserError, sortTimePairs)
 
@@ -33,7 +39,7 @@ buildFeed :: MonadIO m => FeedType -> Url scheme -> m (Either UserError (Feed, M
 buildFeed ty url = do
     now <- liftIO getCurrentTime
     fetchFeed url >>= \case
-        Left err -> pure . Left . BadFeedUrl $ err
+        Left other -> pure . Left $ BadFeed other
         Right feed -> case parseLBS def feed of
             Left (SomeException ex) ->
                 pure . Left . ParseError $
@@ -134,21 +140,30 @@ getFeedFromUrlScheme scheme =
   where
     finish_successfully = pure . Right
 
-rebuildFeed :: MonadIO m => T.Text -> m (Either T.Text Feed)
--- updates one single feed
-rebuildFeed key = case eitherUrlScheme key of
-    Left err -> pure . Left $ key `T.append` " ran into this error: " `T.append` renderUserError err
+rebuildFeed :: MonadIO m => AppConfig -> T.Text -> m (Either FeedError Feed)
+-- updates a single feed
+rebuildFeed env key = case eitherUrlScheme key of
+    Left err -> pure . Left . OtherError $ renderUserError err
     Right url ->
+        liftIO $
+            readMVar (blacklist env) >>= \hmap ->
+                case HMS.lookup (renderUrl url) hmap of
+                    Nothing -> build url
+                    Just bl ->
+                        let message =
+                                "This web feed has been blacklisted for too many failed attempts. Last status code was "
+                                    `T.append` (T.pack . show . status_code $ bl)
+                                    `T.append` " with error message "
+                                    `T.append` error_message bl
+                         in pure . Left $ BlacklistedError message
+  where
+    build url =
         buildFeed Rss url >>= \case
             Left _ ->
                 buildFeed Atom url >>= \case
-                    Left build_error ->
-                        pure . Left $
-                            renderUrl url `T.append` " ran into this error: "
-                                `T.append` renderUserError build_error
+                    Left build_error -> pure . Left . OtherError $ renderUserError build_error
                     Right (feed, _) -> done feed
             Right (feed, _) -> done feed
-  where
     done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed{f_last_refresh = Just now}
 
 {- Settings -}

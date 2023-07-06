@@ -9,7 +9,7 @@ import Control.Concurrent (
     threadDelay,
     writeChan,
  )
-import Control.Concurrent.Async (async, forConcurrently)
+import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -43,7 +43,7 @@ procNotif = do
         interval = worker_interval env
         onError (SomeException err) = do
             let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
-            writeChan (postjobs env) . JobTgAlert $ report
+            writeChan (postjobs env) . JobTgAlertAdmin $ report
         -- sending digests + follows
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
             \(cid, (c, batch)) ->
@@ -112,7 +112,7 @@ procNotif = do
                     modifyIORef' (last_worker_run env) $ \_ -> Just now
                 Left err ->
                     writeChan (postjobs env) $
-                        JobTgAlert $
+                        JobTgAlertAdmin $
                             "notifier: \
                             \ failed to acquire notification package and got this error: "
                                 `T.append` err
@@ -141,7 +141,7 @@ postProcJobs =
                     JobPin cid mid -> fork $ do
                         runSend_ tok "pinChatMessage" (PinMessage cid mid) >>= \case
                             Left _ ->
-                                writeChan jobs . JobTgAlert . with_cid_txt "Tried to pin a message in (chat_id) " cid $
+                                writeChan jobs . JobTgAlertAdmin . with_cid_txt "Tried to pin a message in (chat_id) " cid $
                                     " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
                             _ -> pure ()
                     JobPurge cid -> fork . runApp env $ withChat Purge cid
@@ -152,7 +152,7 @@ postProcJobs =
                             threadDelay checked_delay
                             runSend_ tok "deleteMessage" (DeleteMessage cid mid) >>= \case
                                 Left _ ->
-                                    writeChan jobs . JobTgAlert . with_cid_txt "Tried to delete a message in (chat_id) " cid $
+                                    writeChan jobs . JobTgAlertAdmin . with_cid_txt "Tried to delete a message in (chat_id) " cid $
                                         " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
                                 _ -> pure ()
                     JobSetPagination cid mid pages mb_link ->
@@ -163,15 +163,16 @@ postProcJobs =
                                     Right _ -> pure ()
                                     _ ->
                                         let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
-                                         in writeChan (postjobs env) (JobTgAlert report)
-                    JobTgAlert contents -> fork $ do
+                                         in writeChan (postjobs env) (JobTgAlertAdmin report)
+                    JobTgAlertAdmin contents -> fork $ do
                         let msg = ServiceReply $ "feedfarer2 is sending an alert: " `T.append` contents
-                        print $ "postProcJobs: JobTgAlert " `T.append` (T.pack . show $ contents)
                         reply tok (alert_chat . tg_config $ env) msg jobs
+                    JobTgAlertChats chat_ids contents -> fork $
+                        let msg = ServiceReply contents
+                        in  forConcurrently_ chat_ids $ \cid -> reply tok cid msg jobs 
             handler (SomeException e) = do
                 let report = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
-                writeChan (postjobs env) . JobTgAlert $ report
-                print $ "postProcJobs bumped on exception " `T.append` (T.pack . show $ report) `T.append` "Rescheduling postProcJobs now."
+                writeChan (postjobs env) . JobTgAlertAdmin $ report
          in liftIO $ runForever_ action handler
   where
     fork = void . async

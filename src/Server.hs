@@ -84,7 +84,7 @@ server =
                             Left (SomeException err) ->
                                 liftIO $
                                     writeChan (postjobs env) $
-                                        JobTgAlert $
+                                        JobTgAlertAdmin $
                                             "Exception thrown against handler: " `T.append` (T.pack . show $ err)
                             Right _ -> pure ()
                     else liftIO $ putStrLn "Secrets do not match."
@@ -118,6 +118,7 @@ makeConfig env =
         interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
      in do
             mvar <- newMVar HMS.empty
+            mvar2 <- newMVar HMS.empty
             chan <- newChan
             conn <-
                 setupRedis >>= \case
@@ -132,6 +133,7 @@ makeConfig env =
             pure
                 ( AppConfig
                     { api_key = key
+                    , blacklist = mvar2
                     , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
                     , base_url = base
                     , mongo_creds = creds

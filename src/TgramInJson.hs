@@ -28,66 +28,70 @@ instance FromJSON ChatType where
   parseJSON _ = fail "Failed to parse ChatType"
 
 data Chat = Chat
-  { chat_id :: Int64,
-    chat_type :: ChatType
-  } deriving (Show)
+  { chat_id :: Int64
+  , chat_type :: ChatType
+  }
+  deriving (Show)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 5} ''Chat)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''Chat)
 
 data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: Chat} deriving (Show)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 5} ''TgGetChatResponse)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''TgGetChatResponse)
 
 data User = User
-  { 
-    user_id :: Int64,
-    user_is_bot :: Bool,
-    user_first_name :: Text,
-    user_last_name :: Maybe Text,
-    user_username :: Maybe Text
-  } deriving (Show)
+  { user_id :: Int64
+  , user_is_bot :: Bool
+  , user_first_name :: Text
+  , user_last_name :: Maybe Text
+  , user_username :: Maybe Text
+  }
+  deriving (Show)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 5} ''User)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''User)
 
 data ChatMember = ChatMember
-  { cm_user :: User,
-    cm_status :: Text
+  { cm_user :: User
+  , cm_status :: Text
   }
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 3} ''ChatMember)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 3} ''ChatMember)
 
 data TgGetChatMembersResponse = TgGetChatMembersResponse {resp_cm_ok :: Bool, resp_cm_result :: [ChatMember]}
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 8} ''TgGetChatMembersResponse)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 8} ''TgGetChatMembersResponse)
 
 data Message = Message
-  { message_id :: Int,
-    from :: Maybe User,
-    chat :: Chat,
-    text :: Maybe Text,
-    reply_to_message :: Maybe Message
-  } deriving (Show)
+  { message_id :: Int
+  , from :: Maybe User
+  , chat :: Chat
+  , text :: Maybe Text
+  , reply_to_message :: Maybe Message
+  }
+  deriving (Show)
 
 $(deriveJSON defaultOptions ''Message)
 
-data CallbackQuery = CallbackQuery {
-    cbq_id :: Text,
-    cbq_from :: User,
-    cbq_message :: Maybe Message,
-    cbq_chat_instance :: Text,
-    cbq_data :: Maybe Text
-} deriving (Show)
+data CallbackQuery = CallbackQuery
+  { cbq_id :: Text
+  , cbq_from :: User
+  , cbq_message :: Maybe Message
+  , cbq_chat_instance :: Text
+  , cbq_data :: Maybe Text
+  }
+  deriving (Show)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 4, omitNothingFields = True} ''CallbackQuery)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 4, omitNothingFields = True} ''CallbackQuery)
 
 data Update = Update
-  { update_id :: Int,
-    message :: Maybe Message,
-    callback_query :: Maybe CallbackQuery
-  } deriving (Show)
+  { update_id :: Int
+  , message :: Maybe Message
+  , callback_query :: Maybe CallbackQuery
+  }
+  deriving (Show)
 
-$(deriveJSON defaultOptions {omitNothingFields = True} ''Update)
+$(deriveJSON defaultOptions{omitNothingFields = True} ''Update)
 
 data TgGetMessageResponse = TgGetMessageResponse {resp_msg_ok :: Bool, resp_msg_result :: Message} deriving (Show)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 9} ''TgGetMessageResponse)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 9} ''TgGetMessageResponse)

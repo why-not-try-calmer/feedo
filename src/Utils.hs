@@ -106,6 +106,7 @@ toFeedRef ss
 
 renderUserError :: UserError -> T.Text
 renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
+renderUserError (BadFeed feederror) = T.append "Unable to fetch this feed: " (T.pack . show $ feederror)
 renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t
 renderUserError (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
 renderUserError (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
@@ -294,3 +295,11 @@ sliceIfAboveTelegramMax :: T.Text -> [T.Text]
 sliceIfAboveTelegramMax msg
     | T.length msg <= 4096 = pure msg
     | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096
+
+{- Urls from FeedError -}
+getUrls :: [FeedError] -> [T.Text]
+getUrls = map getUrl
+  where
+    getUrl (EndpointError url _ _ _) = url
+    getUrl (BlacklistedError url) = url
+    getUrl (OtherError url) = url
