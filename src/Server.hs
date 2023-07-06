@@ -84,7 +84,7 @@ server =
                             Left (SomeException err) ->
                                 liftIO $
                                     writeChan (postjobs env) $
-                                        JobTgAlert $
+                                        JobTgAlertAdmin $
                                             "Exception thrown against handler: " `T.append` (T.pack . show $ err)
                             Right _ -> pure ()
                     else liftIO $ putStrLn "Secrets do not match."

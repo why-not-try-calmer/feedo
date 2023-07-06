@@ -161,7 +161,7 @@ regenFeeds = do
     env <- ask
     chats <- liftIO . readMVar $ subs_state env
     let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
-        report err = writeChan (postjobs env) . JobTgAlert $ "Failed to regen feeds for this reason: " `T.append` err
+        report err = writeChan (postjobs env) . JobTgAlertAdmin $ "Failed to regen feeds for this reason: " `T.append` err
     liftIO $ do
         (failed, feeds) <- partitionEither <$> forConcurrently urls (rebuildFeed env)
         unless (null failed) (report $ "regenFeeds: Unable to rebuild these feeds" `T.append` T.intercalate ", " (getUrls failed))

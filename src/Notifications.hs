@@ -216,7 +216,7 @@ markNotified env notified_chats now = liftIO $
          in evalDb env (UpsertChats updated_chats) >>= \case
                 DbErr err -> do
                     writeChan (postjobs env) $
-                        JobTgAlert $
+                        JobTgAlertAdmin $
                             "notifier: failed to \
                             \ save updated chats to db because of this error"
                                 `T.append` renderDbError err

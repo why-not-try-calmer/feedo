@@ -181,7 +181,7 @@ reply tok cid rep chan =
             has_markdown = if markdown then Just "Markdown" else Nothing
         report err =
             let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
-             in liftIO . writeChan chan $ JobTgAlert err_msg
+             in liftIO . writeChan chan $ JobTgAlertAdmin err_msg
         non_empty txt = if T.null txt then "No result for this command." else txt
         outbound msg@ChatReply{..} =
             let jobs mid =

@@ -3,9 +3,9 @@
 
 module Broker where
 
-import Control.Concurrent (modifyMVar, readMVar, withMVar, writeChan)
+import Control.Concurrent (modifyMVar, readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
-import Control.Monad (unless, void, (>=>))
+import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import Data.Aeson
@@ -91,11 +91,14 @@ rebuildUpdate flinks now =
     act_on_failed env failed succeeded = do
         unless (null failed) $ do
             punishable <- update_blacklist env failed
-            void $ update_subchats env punishable
-            writeChan (postjobs env) . JobTgAlert $
+            punished <- update_subchats env punishable
+            writeChan (postjobs env) . JobTgAlertAdmin $
                 let offending_urls = getUrls failed
                     report = "Failed to update these feeds: " `T.append` T.intercalate ", " offending_urls
                  in report `T.append` ". Blacklist was updated accordingly."
+            unless (null punishable) $
+                let msg = "This chat has been found to use a faulty RSS endpoint. It will be removed from your subscriptions."
+                 in writeChan (postjobs env) $ JobTgAlertChats punished msg
 
         writeChan (postjobs env) $ JobArchive succeeded now
     as_list = HMS.fromList . map (\f -> (f_link f, f))
@@ -112,8 +115,9 @@ rebuildUpdate flinks now =
                 hmap
         edit_blacklist hmap _ = hmap
     get_punishable = map fst . HMS.toList . HMS.filter (\bl -> offenses bl >= 3)
-    update_subchats env urls = withMVar (subs_state env) $ \hmap -> pure $ updateSubChats hmap urls
+    update_subchats env urls = modifyMVar (subs_state env) $ \hmap -> pure (updateSubChats hmap urls, get_offending_chats hmap)
       where
+        get_offending_chats = foldl' (\acc subchat -> if any (`S.member` sub_feeds_links subchat) urls then sub_chatid subchat : acc else acc) []
         updateSubChats = foldl' edit_subchats
         edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
 
@@ -251,7 +255,7 @@ withBroker CacheRefresh = do
                     liftIO $ do
                         -- ensuring caching worked
                         case recached of
-                            Left e -> writeChan (postjobs env) . JobTgAlert $ e
+                            Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ e
                             _ -> pure ()
                         -- logging due chats with no digest
                         unless (null no_digest) $ do

@@ -354,7 +354,7 @@ evalTgAct uid (Announce txt) admin_chat =
                     fetch_chat_types >>= \resp -> do
                         let (failed, succeeded) = partitionEither resp
                             non_channels = are_non_channels succeeded
-                        unless (null failed) (liftIO $ writeChan (postjobs env) (JobTgAlert $ "Telegram didn't told us the type of these chats: " `T.append` (T.pack . show $ failed)))
+                        unless (null failed) (liftIO $ writeChan (postjobs env) (JobTgAlertAdmin $ "Telegram didn't told us the type of these chats: " `T.append` (T.pack . show $ failed)))
                         if null non_channels
                             then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
                             else
@@ -685,7 +685,7 @@ processCbq cbq =
                  in reply (bot_token . tg_config $ env) cid rep (postjobs env)
             send_result _ (Left err) = report err
             send_result _ _ = pure ()
-            report err = liftIO $ writeChan (postjobs env) $ JobTgAlert err
+            report err = liftIO $ writeChan (postjobs env) $ JobTgAlertAdmin err
             send_answer =
                 answer (bot_token . tg_config $ env) mkAnswer >>= \case
                     Left err -> report err

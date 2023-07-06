@@ -542,7 +542,8 @@ data Job
     | JobPurge ChatId
     | JobRemoveMsg ChatId Int Int
     | JobSetPagination ChatId Int [T.Text] (Maybe T.Text)
-    | JobTgAlert T.Text
+    | JobTgAlertAdmin T.Text
+    | JobTgAlertChats [ChatId] T.Text
     deriving (Eq, Show)
 
 {- Mong API Requests -}
