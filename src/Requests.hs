@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -14,6 +15,7 @@ import Data.Foldable (for_)
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
@@ -36,7 +38,7 @@ instance TgReqM IO where
 
 {- Telegram -}
 
-setWebhook :: MonadIO m => BotToken -> T.Text -> m ()
+setWebhook :: BotToken -> T.Text -> IO ()
 setWebhook tok webhook = do
     resp <- withReqManager $ runReq defaultHttpConfig . pure request
     let code = responseStatusCode (resp :: JsonResponse Value) :: Int
@@ -222,15 +224,18 @@ reply tok cid rep chan =
 
 fetchFeed :: MonadIO m => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =
-    liftIO (try action :: IO (Either SomeException LbsResponse)) >>= \case
-        Left err -> pure . Left . OtherError . T.pack . show $ err
+    liftIO (try action :: IO (Either HttpException LbsResponse)) >>= \case
+        Left (VanillaHttpException exc) -> case exc of
+            HTTP.HttpExceptionRequest _ content -> pure . Left $ EndpointError (renderUrl url) Nothing (T.pack . show $ content) "Invalid request."
+            HTTP.InvalidUrlException url' reason -> pure . Left $ EndpointError (T.pack url') Nothing (T.pack reason) "Invalid URL."
+        Left (JsonHttpException msg) -> pure . Left $ EndpointError (renderUrl url) Nothing (T.pack msg) "Invalid JSON."
         Right resp ->
             let code = responseStatusCode resp :: Int
                 status_message = T.decodeUtf8 $ responseStatusMessage resp
                 contents = responseBody resp
-             in if code /= 200
-                    then pure . Left $ EndpointError (renderUrl url) code status_message mempty
-                    else pure . Right $ contents
+             in if code == 200
+                    then pure . Right $ contents
+                    else pure . Left $ EndpointError (renderUrl url) (Just code) status_message "Response received but non-200 status code."
   where
     action = withReqManager $ runReq defaultHttpConfig . pure request
     request = req GET url NoReqBody lbsResponse mempty
