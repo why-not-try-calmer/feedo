@@ -3,11 +3,9 @@
 
 module Parsing (eitherUrlScheme, rebuildFeed, getFeedFromUrlScheme, parseSettings) where
 
-import Control.Concurrent (readMVar)
 import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
-import qualified Data.HashMap.Internal.Strict as HMS
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -19,10 +17,8 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Types (
-    AppConfig (blacklist),
-    BlackListedUrl (..),
     Feed (..),
-    FeedError (BlacklistedError, OtherError),
+    FeedError (OtherError),
     FeedType (..),
     Item (Item, i_pubdate),
     ParsingSettings (..),
@@ -121,7 +117,7 @@ eitherUrlScheme s
     | T.null s = Left . BadInput $ s
     | head split /= "https:" = Left . BadInput $ s
     | length body >= 2 = Right toScheme
-    | otherwise = Left . BadInput $ "Unable to parse this input." `T.append` s
+    | otherwise = Left . BadInput $ "Unable to parse this url: " `T.append` s
   where
     s' = if T.last s == T.last "/" then T.dropEnd 1 s else s
     split = T.splitOn "/" s'
@@ -140,22 +136,12 @@ getFeedFromUrlScheme scheme =
   where
     finish_successfully = pure . Right
 
-rebuildFeed :: MonadIO m => AppConfig -> T.Text -> m (Either FeedError Feed)
+rebuildFeed :: MonadIO m => T.Text -> m (Either FeedError Feed)
 -- updates a single feed
-rebuildFeed env key = case eitherUrlScheme key of
+rebuildFeed key = case eitherUrlScheme key of
     Left err -> pure . Left . OtherError $ renderUserError err
     Right url ->
-        liftIO $
-            readMVar (blacklist env) >>= \hmap ->
-                case HMS.lookup (renderUrl url) hmap of
-                    Nothing -> build url
-                    Just bl ->
-                        let message =
-                                "This web feed has been blacklisted for too many failed attempts. Last status code was "
-                                    `T.append` (T.pack . show . status_code $ bl)
-                                    `T.append` " with error message "
-                                    `T.append` error_message bl
-                         in pure . Left $ BlacklistedError message
+        liftIO $ build url
   where
     build url =
         buildFeed Rss url >>= \case

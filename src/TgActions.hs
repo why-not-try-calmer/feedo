@@ -649,7 +649,7 @@ evalTgAct uid TestDigest cid =
                                 let feeds = sub_feeds_links c
                                 (now, failed, succeeded) <- liftIO $ do
                                     now <- getCurrentTime
-                                    (failed, succeeded) <- partitionEither <$> mapConcurrently (rebuildFeed env) (S.toList feeds)
+                                    (failed, succeeded) <- partitionEither <$> mapConcurrently rebuildFeed (S.toList feeds)
                                     pure (now, failed, succeeded)
                                 if null failed
                                     then
