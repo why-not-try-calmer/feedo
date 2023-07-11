@@ -226,16 +226,16 @@ fetchFeed :: MonadIO m => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =
     liftIO (try action :: IO (Either HttpException LbsResponse)) >>= \case
         Left (VanillaHttpException exc) -> case exc of
-            HTTP.HttpExceptionRequest _ content -> pure . Left $ EndpointError (renderUrl url) Nothing (T.pack . show $ content) "Invalid request."
-            HTTP.InvalidUrlException url' reason -> pure . Left $ EndpointError (T.pack url') Nothing (T.pack reason) "Invalid URL."
-        Left (JsonHttpException msg) -> pure . Left $ EndpointError (renderUrl url) Nothing (T.pack msg) "Invalid JSON."
+            HTTP.HttpExceptionRequest _ content -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack . show $ content) "Invalid request."
+            HTTP.InvalidUrlException url' reason -> pure . Left $ FeedError (T.pack url') Nothing (T.pack reason) "Invalid URL."
+        Left (JsonHttpException msg) -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack msg) "Invalid JSON."
         Right resp ->
             let code = responseStatusCode resp :: Int
                 status_message = T.decodeUtf8 $ responseStatusMessage resp
                 contents = responseBody resp
              in if code == 200
                     then pure . Right $ contents
-                    else pure . Left $ EndpointError (renderUrl url) (Just code) status_message "Response received but non-200 status code."
+                    else pure . Left $ FeedError (renderUrl url) (Just code) status_message "Response received but non-200 status code."
   where
     action = withReqManager $ runReq defaultHttpConfig . pure request
     request = req GET url NoReqBody lbsResponse mempty

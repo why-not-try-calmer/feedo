@@ -319,14 +319,12 @@ data UserAction
     deriving (Eq, Show)
 
 data FeedError
-    = EndpointError
+    = FeedError
         { r_url :: T.Text
         , r_status_code :: Maybe Int
         , r_error_message :: T.Text
         , r_user_message :: T.Text
         }
-    | BlacklistedError T.Text
-    | OtherError T.Text
     deriving (Show, Eq)
 
 data UserError

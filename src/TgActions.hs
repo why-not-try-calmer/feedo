@@ -26,7 +26,7 @@ import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Types
-import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs, getUrls)
+import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -649,13 +649,13 @@ evalTgAct uid TestDigest cid =
                                 let feeds = sub_feeds_links c
                                 (now, failed, succeeded) <- liftIO $ do
                                     now <- getCurrentTime
-                                    (failed, succeeded) <- partitionEither <$> mapConcurrently (rebuildFeed env) (S.toList feeds)
+                                    (failed, succeeded) <- partitionEither <$> mapConcurrently rebuildFeed (S.toList feeds)
                                     pure (now, failed, succeeded)
                                 if null failed
                                     then
                                         pure . Right . mkReply $
                                             FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
-                                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " (getUrls failed)
+                                    else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " (map r_url failed)
   where
     new_since_last_week now =
         let last_week = addUTCTime (-604800)

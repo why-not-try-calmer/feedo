@@ -20,12 +20,12 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
 import Data.Time (UTCTime, getCurrentTime)
 import Database.Redis
+import Parsing (rebuildFeed)
 import Mongo (HasMongo (evalDb))
 import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotified, postNotifier, preNotifier)
-import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
 import Types hiding (Reply)
-import Utils (feedsFromList, freshLastXDays, getUrls, partitionEither, renderDbError, sortItems)
+import Utils (feedsFromList, freshLastXDays, partitionEither, renderDbError, sortItems)
 
 type CacheRes = Either T.Text FromCache
 
@@ -78,14 +78,14 @@ rebuildUpdate ::
     m (Either T.Text (HMS.HashMap T.Text Feed))
 rebuildUpdate flinks now =
     ask >>= \env -> liftIO $ do
-        (failed, succeeded) <- fetch_feeds env
+        (failed, succeeded) <- fetch_feeds
         -- if any failed, 'punish' offenders
         -- that is, increment blacklist and remove urls guilty of more 3 failures
         unless (null failed) (act_on_failed env failed succeeded)
         -- bubble up failure if no feed could be rebuilt, else return the feeds
         if null succeeded then pure $ Left "Failed to fetch feeds" else pure (Right . feedsFromList $ succeeded)
   where
-    fetch_feeds env = partitionEither <$> mapConcurrently (rebuildFeed env) flinks
+    fetch_feeds = partitionEither <$> mapConcurrently rebuildFeed flinks
     act_on_failed env failed succeeded = punish env failed >> writeChan (postjobs env) (JobArchive succeeded now)
     punish env failed = do
         -- get all failing URLs
@@ -93,16 +93,15 @@ rebuildUpdate flinks now =
         -- get all ids of chats subscribed to a failing URL
         punished <- update_subchats env punishable
         -- alert admin
-        let offending_urls = getUrls failed
-            report = "Failed to update these feeds: " `T.append` T.intercalate ", " offending_urls
+        let report = "Failed to update these feeds: " `T.append` T.intercalate ", " punishable
         writeChan (postjobs env) $ JobTgAlertAdmin (report `T.append` ". Blacklist was updated accordingly.")
         -- alert chats
         let msg = "This chat has been found to use a faulty RSS endpoint. It will be removed from your subscriptions."
         writeChan (postjobs env) (JobTgAlertChats punished msg)
-    update_blacklist env failed = modifyMVar (blacklist env) $ \hmap -> pure (updateBlackList hmap failed, get_punishable hmap)
+    update_blacklist env failed = modifyMVar (blacklist env) $ \hmap -> pure (updateBlackList hmap failed, get_faulty_urls hmap)
       where
         updateBlackList = foldl' edit_blacklist
-        edit_blacklist hmap (EndpointError u st_code er_msg _) =
+        edit_blacklist hmap (FeedError u st_code er_msg _) =
             HMS.alter
                 ( \case
                     Nothing -> Just (BlackListedUrl now er_msg st_code 1)
@@ -110,8 +109,7 @@ rebuildUpdate flinks now =
                 )
                 u
                 hmap
-        edit_blacklist hmap _ = hmap
-    get_punishable = map fst . HMS.toList . HMS.filter (\bl -> offenses bl >= 3)
+    get_faulty_urls = map fst . HMS.toList . HMS.filter (\bl -> offenses bl == 3)
     update_subchats env urls = modifyMVar (subs_state env) $ \hmap -> pure (updateSubChats hmap urls, get_offending_chats hmap)
       where
         get_offending_chats = foldl' (\acc subchat -> if any (`S.member` sub_feeds_links subchat) urls then sub_chatid subchat : acc else acc) []

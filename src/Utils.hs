@@ -298,11 +298,3 @@ sliceIfAboveTelegramMax :: T.Text -> [T.Text]
 sliceIfAboveTelegramMax msg
   | T.length msg <= 4096 = pure msg
   | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096
-
-{- Urls from FeedError -}
-getUrls :: [FeedError] -> [T.Text]
-getUrls = map getUrl
- where
-  getUrl (EndpointError url _ _ _) = url
-  getUrl (BlacklistedError url) = url
-  getUrl (OtherError url) = url
