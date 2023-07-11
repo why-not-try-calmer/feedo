@@ -44,7 +44,7 @@ spec = go >> go1 >> runIO getConns >>= \env -> go2 env
             as = it "fetches and parses the given web feeds"
             target = do
                 let feeds = ["https://hnrss.org/frontpage", "https://planetpython.org/rss20.xml", "https://talkpython.fm/episodes/rss", "https://www.blog.pythonlibrary.org/feed"]
-                res <- mapConcurrently (rebuildFeed env) feeds
+                res <- mapConcurrently rebuildFeed feeds
                 let (failed, done) = partitionEither res
                 length done `shouldSatisfy` (> length failed)
          in desc $ as target

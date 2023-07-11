@@ -34,7 +34,7 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
                     -- last 31th of May
                     chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
                     chats_recipes = HMS.singleton 123 (chat, DigestFeedLinks feedlinks)
-                (failed, done) <- partitionEither <$> mapConcurrently (rebuildFeed env) feedlinks
+                (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
                 now <- getCurrentTime
                 let notifs = postNotifier (HMS.fromList $ map (\f -> (f_link f, f)) done) feedlinks (Pre feedlinks chats_recipes Nothing)
                     only_feeds =
@@ -75,7 +75,7 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
                     settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
                     -- last 31th of May
                     chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
-                (failed, done) <- partitionEither <$> mapConcurrently (rebuildFeed env) feedlinks
+                (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
                 now <- getCurrentTime
                 let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
                     -- due = collectDue (HMS.singleton 123 chat) Nothing now
@@ -107,7 +107,7 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
             target = do
                 let feedlinks = ["https://news.ycombinator.com/rss"]
                 now <- getCurrentTime
-                (failed, done) <- partitionEither <$> mapConcurrently (rebuildFeed env) feedlinks
+                (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
                 now <- getCurrentTime
                 let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
                     sub_to = S.singleton "haskell"
