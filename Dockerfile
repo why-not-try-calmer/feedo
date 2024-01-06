@@ -7,7 +7,7 @@ RUN ghcup install stack
 RUN stack --resolver lts-20.11 build --system-ghc --only-dependencies --no-library-profiling
 # build package
 COPY . .
-RUN stack install --system-ghc --local-bin-path .
+RUN stack --resolver lts-20.11 install --system-ghc --local-bin-path .
 # runner
 FROM alpine:latest as runner
 WORKDIR /opt/app/

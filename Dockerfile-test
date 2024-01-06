@@ -9,6 +9,6 @@ COPY ./feedfarer.cabal ./stack.yaml /opt/app/
 RUN stack --resolver lts-20.11 build --only-dependencies --no-library-profiling --fast
 
 COPY . /opt/app/
-RUN stack build --fast
+RUN stack --resolver lts-20.11 build --fast
 
 COPY /static /var/www/feedfarer-webui
