@@ -6,7 +6,7 @@ WORKDIR /opt/app
 RUN stack upgrade
 
 COPY ./feedfarer.cabal ./stack.yaml /opt/app/
-RUN stack build --only-dependencies --no-library-profiling --fast
+RUN stack --resolver lts-20.11 build --only-dependencies --no-library-profiling --fast
 
 COPY . /opt/app/
 RUN stack build --fast
