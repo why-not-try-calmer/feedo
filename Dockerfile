@@ -7,7 +7,7 @@ RUN ghcup install stack
 RUN stack build --only-dependencies --no-library-profiling
 # build package
 COPY . .
-RUN stack install --local-bin-path .
+RUN stack install --local-bin-path . --ghc-options '-fPIC -O2 -static -optl-static -optl-pthread' 
 # runner
 FROM alpine:latest as runner
 WORKDIR /opt/app/

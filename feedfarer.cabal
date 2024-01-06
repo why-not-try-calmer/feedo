@@ -90,9 +90,7 @@ executable feedfarer-exe
       OverloadedStrings
       StrictData
       BangPatterns
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2 -static
-  cc-options: -static
-  ld-options: -static
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       aeson
     , async
