@@ -2,7 +2,25 @@ version: "3"
 
 services:    
     
+    feedo-test:
+      profiles: [test]
+      container_name: feedfarer-test
+      depends_on: [redis]
+      restart: "no"
+      build: 
+        context: .
+        dockerfile: Dockerfile-test
+      command: stack test --fast
+      environment:
+        - API_KEY
+        - TELEGRAM_TOKEN
+        - BASE_URL
+        - ALERT_CHATID
+        - WEBHOOK_URL
+        - MONGO_CONN_STRING
+    
     feedo:
+      profiles: [prod]
       image: ghcr.io/why-not-try-calmer/feedo:latest
       depends_on: [redis]
       restart: on-failure
@@ -26,6 +44,7 @@ services:
         - /data/redis-store
 
     nginx:
+      profiles: [prod]
       image: nginx:latest
       restart: on-failure
       volumes:
