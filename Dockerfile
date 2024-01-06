@@ -1,8 +1,9 @@
-# stack-ready ghc 9.4.4 compiled against musl
-FROM utdemir/ghc-musl:v25-ghc944 as builder
+# stack-ready ghc 9.2.5 compiled against musl
+FROM utdemir/ghc-musl:v25-ghc925 as builder
 WORKDIR /opt/app/
 # build dependencies
 COPY ./feedfarer.cabal ./stack.yaml ./
+RUN ghcup install stack
 RUN stack build --system-ghc --only-dependencies --no-library-profiling
 # build package
 COPY . .
