@@ -91,7 +91,7 @@ _Environment variables_. Also, make sure you have an `.env` file in the root dir
 `cd` to a parent directory. Then:
 ```
 git clone https://github.com/why-not-try-calmer/feedfarer2.git
-docker-compose -f test-build.yml up
+docker-compose -f docker-compose-test.yml up
 ```
 
 ### Deploying

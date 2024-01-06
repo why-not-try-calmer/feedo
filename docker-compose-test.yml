@@ -6,7 +6,7 @@ services:
       restart: "no"
       build: 
         context: .
-        dockerfile: Dockerfile_test
+        dockerfile: Dockerfile-test
       command: stack test --fast
       environment:
         - API_KEY
