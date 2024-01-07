@@ -1,14 +1,18 @@
-FROM haskell:9.2.5
-
-EXPOSE 80
-
+FROM haskell:9.0.2
+# Toolchain
 WORKDIR /opt/app
 RUN stack upgrade
-
+# Dependencies
 COPY ./feedfarer.cabal ./stack.yaml /opt/app/
-RUN stack build --only-dependencies --no-library-profiling --fast
 
+RUN stack --resolver lts-19.33 build --only-dependencies --no-library-profiling --fast --system-ghc
+
+# Test build
 COPY . /opt/app/
-RUN stack test --fast --no-run-tests
 
+RUN stack --resolver lts-19.33 test --fast --no-run-tests --system-ghc
+
+# Static assets
 COPY /static /var/www/feedfarer-webui
+# Run tests
+CMD ["stack", "test", "--fast"]
