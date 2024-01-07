@@ -1,18 +1,14 @@
 FROM haskell:9.0.2
-# Toolchain
-WORKDIR /opt/app
 RUN stack upgrade
-# Dependencies
-COPY ./feedfarer.cabal ./stack.yaml /opt/app/
+WORKDIR /opt/app
 
-RUN stack --resolver lts-19.33 build --only-dependencies --no-library-profiling --fast --system-ghc
-
-# Test build
 COPY . /opt/app/
-
-RUN stack --resolver lts-19.33 test --fast --no-run-tests --system-ghc
-
-# Static assets
+RUN stack --resolver lts-19.33 test \
+  --fast \
+  --no-run-tests \
+  --no-library-profiling \
+  --system-ghc \
+  --no-install-ghc
+  
 COPY /static /var/www/feedfarer-webui
-# Run tests
 CMD ["stack", "test", "--fast"]

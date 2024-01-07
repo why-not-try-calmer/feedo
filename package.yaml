@@ -58,6 +58,15 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     - -O2
+    when:
+    - condition: flag(static)
+      ghc-options:
+      - -static 
+      ld-options:
+      - -static
+      - -pthread
+      cc-options:
+      - -static
     dependencies:
     - feedfarer
 
@@ -71,3 +80,9 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - feedfarer
+
+flags:
+  static:
+    description: Enable static linking
+    manual: true
+    default: false
