@@ -8,4 +8,4 @@ RUN stack --resolver lts-19.33 test \
   --install-ghc
   
 COPY /static /var/www/feedfarer-webui
-CMD ["stack", "--resolver lts-19.33", "test", "--fast"]
+CMD ["stack", "--resolver", "lts-19.33", "test", "--fast"]

@@ -107,15 +107,15 @@ instance FromJSON Digest where
   parseJSON = withObject "APIDigest" $ \o ->
     Digest
       <$> o
-      .:? "_id"
+        .:? "_id"
       <*> o
-      .: "digest_created"
+        .: "digest_created"
       <*> o
-      .: "digest_items"
+        .: "digest_items"
       <*> o
-      .: "digest_flinks"
+        .: "digest_flinks"
       <*> o
-      .: "digest_ftitles"
+        .: "digest_ftitles"
 
 $(deriveToJSON defaultOptions{omitNothingFields = True} ''Digest)
 
@@ -204,48 +204,48 @@ instance FromJSON Settings where
             _ -> pure Nothing
      in Settings
           <$> o
-          .:? "settings_digest_collapse"
+            .:? "settings_digest_collapse"
           <*> (DigestInterval <$> digest_every <*> _digest_at)
           <*> o
-          .:? "settings_digest_size"
-          .!= 10
+            .:? "settings_digest_size"
+            .!= 10
           <*> o
-          .:? "settings_digest_start"
+            .:? "settings_digest_start"
           <*> o
-          .:? "settings_digest_title"
-          .!= mempty
+            .:? "settings_digest_title"
+            .!= mempty
           <*> o
-          .:? "settings_disable_web_view"
-          .!= False
+            .:? "settings_disable_web_view"
+            .!= False
           <*> o
-          .:? "settings_follow"
-          .!= False
+            .:? "settings_follow"
+            .!= False
           <*> o
-          .:? "settings_pagination"
-          .!= True
+            .:? "settings_pagination"
+            .!= True
           <*> o
-          .:? "settings_paused"
-          .!= False
+            .:? "settings_paused"
+            .!= False
           <*> o
-          .:? "settings_pin"
-          .!= False
+            .:? "settings_pin"
+            .!= False
           <*> o
-          .:? "settings_share_link"
-          .!= True
+            .:? "settings_share_link"
+            .!= True
           <*> (WordMatches <$> blacklisted <*> search_search_keywords <*> search_only_results_flinks)
           <*> o
-          .:? "settings_digest_no_collapse"
-          .!= mempty
+            .:? "settings_digest_no_collapse"
+            .!= mempty
    where
     memptyOrList o = case o of
       Nothing -> pure mempty
       Just l -> pure $ S.fromList l
     mbNom :: String -> Maybe NominalDiffTime
     mbNom s =
-      maybe second_pass pure
-        $ iso8601ParseM s
-        >>= \t ->
-          pure . diffUTCTime t $ posixSecondsToUTCTime 0
+      maybe second_pass pure $
+        iso8601ParseM s
+          >>= \t ->
+            pure . diffUTCTime t $ posixSecondsToUTCTime 0
      where
       second_pass = foldr step Nothing formats
       step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
@@ -643,13 +643,13 @@ instance FromJSON Pages where
   parseJSON = withObject "Pages" $ \o ->
     Pages
       <$> o
-      .: "chat_id"
+        .: "chat_id"
       <*> o
-      .: "message_id"
+        .: "message_id"
       <*> o
-      .: "pages"
+        .: "pages"
       <*> o
-      .:? "url"
+        .:? "url"
 
 $(deriveToJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 6} ''Pages)
 
@@ -669,20 +669,20 @@ instance FromJSON APIFeed where
             Just s -> pure $ readMaybe s :: Parser (Maybe NominalDiffTime)
      in APIFeed
           <$> o
-          .: "f_type"
+            .: "f_type"
           <*> o
-          .: "f_desc"
+            .: "f_desc"
           <*> o
-          .: "f_title"
+            .: "f_title"
           <*> o
-          .: "f_link"
+            .: "f_link"
           <*> o
-          .: "f_items"
+            .: "f_items"
           <*> parsed_interval
           <*> o
-          .: "f_last_refresh"
+            .: "f_last_refresh"
           <*> o
-          .: "f_reads"
+            .: "f_reads"
 
 fromAPIFeed :: APIFeed -> Feed
 fromAPIFeed (APIFeed a b c d e f g h) = Feed a b c d e f g h
