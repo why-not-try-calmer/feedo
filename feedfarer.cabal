@@ -22,6 +22,11 @@ source-repository head
   type: git
   location: https://github.com/githubuser/feedfarer
 
+flag static
+  description: Enable static linking
+  manual: True
+  default: False
+
 library
   exposed-modules:
       Backend
@@ -119,6 +124,10 @@ executable feedfarer-exe
     , warp-tls
     , xml-conduit
   default-language: Haskell2010
+  if flag(static)
+    ghc-options: -static
+    cc-options: -static
+    ld-options: -static -pthread
 
 test-suite feedfarer-test
   type: exitcode-stdio-1.0

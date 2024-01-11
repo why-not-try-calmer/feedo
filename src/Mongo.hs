@@ -102,12 +102,16 @@ primaryOrSecondary rep =
 
 authWith :: (MonadIO m) => MongoCreds -> Pipe -> m (Either DbError Pipe)
 authWith creds pipe = do
-  isAuth <- access pipe master "admin" $ auth (user_name creds) (password creds)
+  isAuth <- access pipe master admin $ auth (user_name creds) (password creds)
   if isAuth
     then liftIO (putStrLn "Authenticated now.") >> pure (Right pipe)
     else liftIO (putStrLn "Authentication failed.") >> pure (Left PipeNotAcquired)
 
 initConnectionMongo :: (MonadIO m) => MongoCreds -> m (Either DbError Pipe)
+initConnectionMongo creds@MongoCredsServer{..} = liftIO $ do
+  pipe <- Tls.connect host_name db_port
+  verdict <- isClosed pipe
+  if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
 initConnectionMongo creds@MongoCredsTls{..} = liftIO $ do
   pipe <- Tls.connect host_name db_port
   verdict <- isClosed pipe
@@ -129,8 +133,8 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
 
 setupMongo :: (MonadIO m) => String -> m (Either DbError (Pipe, MongoCreds))
 setupMongo connection_string =
-  let [h, db, user, passwd] = T.splitOn ":" . T.pack $ connection_string
-      creds = MongoCredsReplicaSrv (T.unpack h) db user passwd
+  let [h, p, db, user, passwd] = T.splitOn ":" . T.pack $ connection_string
+      creds = MongoCredsServer (T.unpack h) (PortNumber $ read . T.unpack $ p) db user passwd
    in initConnectionMongo creds >>= \case
         Left err -> pure $ Left err
         Right pipe -> pure $ Right (pipe, creds)
@@ -165,11 +169,12 @@ withMongo AppConfig{..} action = liftIO $ do
   runMongo pipe = access pipe master (database_name mongo_creds)
   alertGiveUp err = alert err >> pure (Left ())
   alert err =
-    liftIO $
-      writeChan postjobs . JobTgAlertAdmin $
-        "withMongo failed with "
-          `T.append` (T.pack . show $ err)
-          `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+    liftIO
+      $ writeChan postjobs
+        . JobTgAlertAdmin
+      $ "withMongo failed with "
+        `T.append` (T.pack . show $ err)
+        `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Actions -}
 
@@ -230,7 +235,11 @@ evalMongo env (DbAskForLogin uid cid) = do
  where
   mkSafeHash =
     liftIO getSystemTime
-      <&> T.pack . show . hashWith SHA256 . B.pack . show
+      <&> T.pack
+        . show
+        . hashWith SHA256
+        . B.pack
+        . show
 evalMongo env (CheckLogin h) =
   let r = findOne (select ["admin_token" =: h] "admins")
       del = deleteOne (select ["admin_token" =: h] "admins")
