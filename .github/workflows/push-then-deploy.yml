@@ -26,6 +26,6 @@ jobs:
           key: ${{ secrets.PROD_KEY }}
           script: |
             cd /opt/app
-            docker-compose --profile prod down --remove-orphans
+            docker-compose down --remove-orphans
             docker-compose --profile prod pull   
             docker-compose --profile prod up -d

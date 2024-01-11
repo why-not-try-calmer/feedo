@@ -1,12 +1,10 @@
-version: "3"
-
 services:    
     
-    feedo-test:
+    test:
       profiles: [test]
+      depends_on: [mongo, redis]
       container_name: feedfarer-test
-      depends_on: [redis]
-      restart: "no"
+      restart: no
       build: 
         context: .
         dockerfile: Dockerfile-test
@@ -16,12 +14,13 @@ services:
         - BASE_URL
         - ALERT_CHATID
         - WEBHOOK_URL
-        - MONGO_CONN_STRING
-    
-    feedo:
+        - MONGO_INITDB_ROOT_PASSWORD
+        - MONGO_INITDB_ROOT_USERNAME
+
+    app:
       profiles: [prod]
+      depends_on: [mongo, redis]
       image: ghcr.io/why-not-try-calmer/feedo:latest
-      depends_on: [redis]
       restart: on-failure
       build: .
       command: ./feefarer-exe
@@ -31,7 +30,8 @@ services:
         BASE_URL: ${BASE_URL}
         ALERT_CHATID: ${ALERT_CHATID}
         WEBHOOK_URL: ${WEBHOOK_URL}
-        MONGO_CONN_STRING: ${MONGO_CONN_STRING}
+        MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD} 
+        MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
         PORT: 8000
     
     mongo:
@@ -45,6 +45,7 @@ services:
 
     nginx:
       profiles: [prod]
+      depends_on: [app]
       image: nginx:latest
       restart: on-failure
       volumes:
@@ -54,9 +55,6 @@ services:
       ports:
         - "80:80"
         - "443:443"
-      depends_on:
-      - redis
-      - feedo
   
     redis:
       image: redis:latest

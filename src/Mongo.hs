@@ -70,19 +70,19 @@ instance MongoDoc AdminUser where
 class HasMongo m where
   evalDb :: AppConfig -> DbAction -> m DbRes
   loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
-  setupDb :: String -> m (Either DbError (Pipe, MongoCreds))
+  setupDb :: MongoCreds -> m (Either DbError (Pipe, MongoCreds))
   fetch :: APIKey -> APIReq -> m (Either T.Text BsResponse)
 
 instance (MonadIO m) => HasMongo (App m) where
   evalDb = evalMongo
   loginDb = authWith
-  setupDb = setupMongo
+  setupDb = makePipe
   fetch = fetchApi
 
 instance HasMongo IO where
   evalDb = evalMongo
   loginDb = authWith
-  setupDb = setupMongo
+  setupDb = makePipe
   fetch = fetchApi
 
 {- Connection -}
@@ -91,10 +91,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print $
-        "Failed to acquire primary replica, reason:"
-          ++ show err
-          ++ ". Moving to second."
+      print
+        $ "Failed to acquire primary replica, reason:"
+        ++ show err
+        ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -109,11 +109,11 @@ authWith creds pipe = do
 
 initConnectionMongo :: (MonadIO m) => MongoCreds -> m (Either DbError Pipe)
 initConnectionMongo creds@MongoCredsServer{..} = liftIO $ do
-  pipe <- Tls.connect host_name db_port
+  pipe <- connect $ host (T.unpack host_name)
   verdict <- isClosed pipe
   if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
 initConnectionMongo creds@MongoCredsTls{..} = liftIO $ do
-  pipe <- Tls.connect host_name db_port
+  pipe <- Tls.connect (T.unpack host_name) db_port
   verdict <- isClosed pipe
   if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
 initConnectionMongo creds@MongoCredsReplicaTls{..} = liftIO $ do
@@ -124,20 +124,18 @@ initConnectionMongo creds@MongoCredsReplicaTls{..} = liftIO $ do
     (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
     mb_pipe
 initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
-  repset <- openReplicaSetSRV' host_name
+  repset <- openReplicaSetSRV' (T.unpack host_name)
   mb_pipe <- primaryOrSecondary repset
   maybe
     (pure . Left $ PipeNotAcquired)
     (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
     mb_pipe
 
-setupMongo :: (MonadIO m) => String -> m (Either DbError (Pipe, MongoCreds))
-setupMongo connection_string =
-  let [h, p, db, user, passwd] = T.splitOn ":" . T.pack $ connection_string
-      creds = MongoCredsServer (T.unpack h) (PortNumber $ read . T.unpack $ p) db user passwd
-   in initConnectionMongo creds >>= \case
-        Left err -> pure $ Left err
-        Right pipe -> pure $ Right (pipe, creds)
+makePipe :: (MonadIO m) => MongoCreds -> m (Either DbError (Pipe, MongoCreds))
+makePipe creds =
+  initConnectionMongo creds >>= \case
+    Left err -> pure $ Left err
+    Right pipe -> pure $ Right (pipe, creds)
 
 {- Evaluation -}
 
@@ -171,10 +169,10 @@ withMongo AppConfig{..} action = liftIO $ do
   alert err =
     liftIO
       $ writeChan postjobs
-        . JobTgAlertAdmin
+      . JobTgAlertAdmin
       $ "withMongo failed with "
-        `T.append` (T.pack . show $ err)
-        `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+      `T.append` (T.pack . show $ err)
+      `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Actions -}
 
@@ -236,10 +234,10 @@ evalMongo env (DbAskForLogin uid cid) = do
   mkSafeHash =
     liftIO getSystemTime
       <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
+      . show
+      . hashWith SHA256
+      . B.pack
+      . show
 evalMongo env (CheckLogin h) =
   let r = findOne (select ["admin_token" =: h] "admins")
       del = deleteOne (select ["admin_token" =: h] "admins")
@@ -277,8 +275,8 @@ evalMongo env (DbSearch keywords scope last_time) =
                  in if or nothings
                       then Nothing
                       else
-                        Just $
-                          SearchResult
+                        Just
+                          $ SearchResult
                             { sr_title = fromJust title
                             , sr_link = fromJust link
                             , sr_pubdate = fromJust pubdate

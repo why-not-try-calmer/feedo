@@ -82,10 +82,11 @@ server =
               liftIO (try . runApp env . handle $ update) >>= \case
                 -- catching all leftover exceptions if any
                 Left (SomeException err) ->
-                  liftIO $
-                    writeChan (postjobs env) $
-                      JobTgAlertAdmin $
-                        "Exception thrown against handler: " `T.append` (T.pack . show $ err)
+                  liftIO
+                    $ writeChan (postjobs env)
+                    $ JobTgAlertAdmin
+                    $ "Exception thrown against handler: "
+                    `T.append` (T.pack . show $ err)
                 Right _ -> pure ()
             else liftIO $ putStrLn "Secrets do not match."
 
@@ -109,7 +110,9 @@ makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
       key = T.encodeUtf8 . T.pack . fromJust $ lookup "API_KEY" env
       base = T.pack . fromJust $ lookup "BASE_URL" env
-      mongo_connection_string = fromJust $ lookup "MONGO_CONN_STRING" env
+      creds =
+        let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
+         in MongoCredsServer "mongo" "feedfarer" user pwd
       port = maybe 80 read (lookup "PORT" env)
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
       webhook =
@@ -124,8 +127,8 @@ makeConfig env =
           setupRedis >>= \case
             Left err -> throwIO . userError $ T.unpack err
             Right c -> putStrLn "Redis...OK" >> pure c
-        (pipe, creds) <-
-          setupDb mongo_connection_string >>= \case
+        (pipe, connected_creds) <-
+          setupDb creds >>= \case
             Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
             Right p -> putStrLn "Mongo...OK" >> pure p
         pipe_ioref <- newIORef pipe
@@ -136,7 +139,7 @@ makeConfig env =
               , blacklist = mvar2
               , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
               , base_url = base
-              , mongo_creds = creds
+              , mongo_creds = connected_creds
               , last_worker_run = last_run_ioref
               , subs_state = mvar
               , postjobs = chan
@@ -171,10 +174,10 @@ startApp = do
     else do
       dir <- getCurrentDirectory
       print $ "WARNING: Missing SSL keys from " <> dir
-      print $
-        "TLS will need to rely on gateway (if any). \
-        \ Server (PLAIN HTTP) now listening to port "
-          <> show port
+      print
+        $ "TLS will need to rely on gateway (if any). \
+          \ Server (PLAIN HTTP) now listening to port "
+        <> show port
       run port $ withServer config
  where
   warpOpts p
