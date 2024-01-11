@@ -203,19 +203,39 @@ instance FromJSON Settings where
                   arr
             _ -> pure Nothing
      in Settings
-          <$> o .:? "settings_digest_collapse"
+          <$> o
+            .:? "settings_digest_collapse"
           <*> (DigestInterval <$> digest_every <*> _digest_at)
-          <*> o .:? "settings_digest_size" .!= 10
-          <*> o .:? "settings_digest_start"
-          <*> o .:? "settings_digest_title" .!= mempty
-          <*> o .:? "settings_disable_web_view" .!= False
-          <*> o .:? "settings_follow" .!= False
-          <*> o .:? "settings_pagination" .!= True
-          <*> o .:? "settings_paused" .!= False
-          <*> o .:? "settings_pin" .!= False
-          <*> o .:? "settings_share_link" .!= True
+          <*> o
+            .:? "settings_digest_size"
+            .!= 10
+          <*> o
+            .:? "settings_digest_start"
+          <*> o
+            .:? "settings_digest_title"
+            .!= mempty
+          <*> o
+            .:? "settings_disable_web_view"
+            .!= False
+          <*> o
+            .:? "settings_follow"
+            .!= False
+          <*> o
+            .:? "settings_pagination"
+            .!= True
+          <*> o
+            .:? "settings_paused"
+            .!= False
+          <*> o
+            .:? "settings_pin"
+            .!= False
+          <*> o
+            .:? "settings_share_link"
+            .!= True
           <*> (WordMatches <$> blacklisted <*> search_search_keywords <*> search_only_results_flinks)
-          <*> o .:? "settings_digest_no_collapse" .!= mempty
+          <*> o
+            .:? "settings_digest_no_collapse"
+            .!= mempty
    where
     memptyOrList o = case o of
       Nothing -> pure mempty
@@ -223,8 +243,9 @@ instance FromJSON Settings where
     mbNom :: String -> Maybe NominalDiffTime
     mbNom s =
       maybe second_pass pure $
-        iso8601ParseM s >>= \t ->
-          pure . diffUTCTime t $ posixSecondsToUTCTime 0
+        iso8601ParseM s
+          >>= \t ->
+            pure . diffUTCTime t $ posixSecondsToUTCTime 0
      where
       second_pass = foldr step Nothing formats
       step f acc = maybe acc pure $ parseTimeM True defaultTimeLocale f s
@@ -394,6 +415,13 @@ data MongoCreds
       }
   | MongoCredsReplicaSrv
       { host_name :: String
+      , database_name :: T.Text
+      , user_name :: T.Text
+      , password :: T.Text
+      }
+  | MongoCredsServer
+      { host_name :: String
+      , db_port :: PortID
       , database_name :: T.Text
       , user_name :: T.Text
       , password :: T.Text
