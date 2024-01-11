@@ -67,5 +67,5 @@ services:
         - redis-data:/data/redis-store
 
 volumes:
-  mongdb-data:
+  mongo-data:
   redis-data:
