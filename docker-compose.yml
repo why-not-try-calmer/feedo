@@ -34,13 +34,14 @@ services:
         MONGO_CONN_STRING: ${MONGO_CONN_STRING}
         PORT: 8000
     
-    redis:
-      image: redis:latest
-      expose: [6379]
+    mongo:
+      image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
       restart: on-failure
-      command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
+      environment:
+        - MONGO_INITDB_ROOT_USERNAME
+        - MONGO_INITDB_ROOT_PASSWORD
       volumes:
-        - /data/redis-store
+       - mongo-data:/data/db
 
     nginx:
       profiles: [prod]
@@ -57,3 +58,14 @@ services:
       - redis
       - feedo
   
+    redis:
+      image: redis:latest
+      expose: [6379]
+      restart: on-failure
+      command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
+      volumes:
+        - redis-data:/data/redis-store
+
+volumes:
+  mongdb-data:
+  redis-data:
