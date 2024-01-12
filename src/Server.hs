@@ -82,11 +82,11 @@ server =
               liftIO (try . runApp env . handle $ update) >>= \case
                 -- catching all leftover exceptions if any
                 Left (SomeException err) ->
-                  liftIO
-                    $ writeChan (postjobs env)
-                    $ JobTgAlertAdmin
-                    $ "Exception thrown against handler: "
-                    `T.append` (T.pack . show $ err)
+                  liftIO $
+                    writeChan (postjobs env) $
+                      JobTgAlertAdmin $
+                        "Exception thrown against handler: "
+                          `T.append` (T.pack . show $ err)
                 Right _ -> pure ()
             else liftIO $ putStrLn "Secrets do not match."
 
@@ -177,10 +177,10 @@ startApp = do
     else do
       dir <- getCurrentDirectory
       print $ "WARNING: Missing SSL keys from " <> dir
-      print
-        $ "TLS will need to rely on gateway (if any). \
-          \ Server (PLAIN HTTP) now listening to port "
-        <> show port
+      print $
+        "TLS will need to rely on gateway (if any). \
+        \ Server (PLAIN HTTP) now listening to port "
+          <> show port
       run port $ withServer config
  where
   warpOpts p
