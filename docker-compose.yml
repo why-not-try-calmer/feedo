@@ -16,6 +16,7 @@ services:
         - WEBHOOK_URL
         - MONGO_INITDB_ROOT_PASSWORD
         - MONGO_INITDB_ROOT_USERNAME
+        - TEST=1
 
     app:
       profiles: [prod]
@@ -42,6 +43,8 @@ services:
         - MONGO_INITDB_ROOT_PASSWORD
       volumes:
        - mongo-data:/data/db
+      ports:
+       - 27017:27017
 
     nginx:
       profiles: [prod]

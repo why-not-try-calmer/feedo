@@ -11,7 +11,7 @@ import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Jobs
@@ -82,11 +82,11 @@ server =
               liftIO (try . runApp env . handle $ update) >>= \case
                 -- catching all leftover exceptions if any
                 Left (SomeException err) ->
-                  liftIO $
-                    writeChan (postjobs env) $
-                      JobTgAlertAdmin $
-                        "Exception thrown against handler: "
-                          `T.append` (T.pack . show $ err)
+                  liftIO
+                    $ writeChan (postjobs env)
+                    $ JobTgAlertAdmin
+                    $ "Exception thrown against handler: "
+                    `T.append` (T.pack . show $ err)
                 Right _ -> pure ()
             else liftIO $ putStrLn "Secrets do not match."
 
@@ -110,9 +110,12 @@ makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
       key = T.encodeUtf8 . T.pack . fromJust $ lookup "API_KEY" env
       base = T.pack . fromJust $ lookup "BASE_URL" env
+      dbName = case lookup "TEST" env of
+        Just "1" -> "feedfarer-test"
+        _ -> "feedfarer"
       creds =
         let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
-         in MongoCredsServer "mongo" "feedfarer" user pwd
+         in MongoCredsServer "mongo" dbName user pwd
       port = maybe 80 read (lookup "PORT" env)
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
       webhook =
@@ -174,10 +177,10 @@ startApp = do
     else do
       dir <- getCurrentDirectory
       print $ "WARNING: Missing SSL keys from " <> dir
-      print $
-        "TLS will need to rely on gateway (if any). \
-        \ Server (PLAIN HTTP) now listening to port "
-          <> show port
+      print
+        $ "TLS will need to rely on gateway (if any). \
+          \ Server (PLAIN HTTP) now listening to port "
+        <> show port
       run port $ withServer config
  where
   warpOpts p
