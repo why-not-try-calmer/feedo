@@ -36,5 +36,5 @@ jobs:
 
       - name: Build
         run: |
-          docker compose --profile prod build
-          docker compose --profile prod push
+          docker compose build
+          docker compose push

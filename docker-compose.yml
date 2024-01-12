@@ -4,7 +4,7 @@ services:
       profiles: [test]
       depends_on: [mongo, redis]
       container_name: feedfarer-test
-      restart: no
+      restart: "no"
       build: 
         context: .
         dockerfile: Dockerfile-test
@@ -19,12 +19,13 @@ services:
         - TEST=1
 
     app:
-      profiles: [prod]
       depends_on: [mongo, redis]
       image: ghcr.io/why-not-try-calmer/feedo:latest
-      restart: on-failure
-      build: .
-      command: ./feefarer-exe
+      restart: "on-failure"
+      build:
+        context: .
+        dockerfile: Dockerfile
+      command: ./feedfarer-exe
       environment:
         API_KEY: ${API_KEY}
         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
@@ -37,20 +38,17 @@ services:
     
     mongo:
       image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
-      restart: on-failure
+      restart: "on-failure"
       environment:
         - MONGO_INITDB_ROOT_USERNAME
         - MONGO_INITDB_ROOT_PASSWORD
       volumes:
        - mongo-data:/data/db
-      ports:
-       - 27017:27017
-
+       
     nginx:
-      profiles: [prod]
       depends_on: [app]
       image: nginx:latest
-      restart: on-failure
+      restart: "on-failure"
       volumes:
         - ./nginx.conf:/etc/nginx/nginx.conf:ro
         - ./private.key:/etc/nginx/private.key:ro
@@ -61,8 +59,7 @@ services:
   
     redis:
       image: redis:latest
-      expose: [6379]
-      restart: on-failure
+      restart: "on-failure"
       command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
       volumes:
         - redis-data:/data/redis-store

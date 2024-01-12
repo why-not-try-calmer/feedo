@@ -169,21 +169,21 @@ startApp = do
   -- no longer using registerWebhook as it needs updating to use TLS certification
   -- registerWebhook config
   runApp config initStart
-  finds_ssl_keys <- (&&) <$> doesFileExist sslCert <*> doesFileExist sslKey
-  if finds_ssl_keys
-    then do
-      print $ "Server (HTTPS) now listening to port " <> show port
-      runTLS tlsOpts (warpOpts port) . withServer $ config
-    else do
-      dir <- getCurrentDirectory
-      print $ "WARNING: Missing SSL keys from " <> dir
-      print $
-        "TLS will need to rely on gateway (if any). \
-        \ Server (PLAIN HTTP) now listening to port "
-          <> show port
-      run port $ withServer config
- where
-  warpOpts p
-    | p == 80 = setPort 443 defaultSettings
-    | otherwise = setPort p defaultSettings
-  tlsOpts = tlsSettings sslCert sslKey
+  -- finds_ssl_keys <- (&&) <$> doesFileExist sslCert <*> doesFileExist sslKey
+  -- if finds_ssl_keys
+  --   then do
+  --     print $ "Server (HTTPS) now listening to port " <> show port
+  --     runTLS tlsOpts (warpOpts port) . withServer $ config
+  --   else do
+  --     dir <- getCurrentDirectory
+  --     print $ "WARNING: Missing SSL keys from " <> dir
+  --     print $
+  --       "TLS will need to rely on gateway (if any). \
+  --       \ Server (PLAIN HTTP) now listening to port "
+  --         <> show port
+  run port $ withServer config
+--  where
+--   warpOpts p
+--     | p == 80 = setPort 443 defaultSettings
+--     | otherwise = setPort p defaultSettings
+--   tlsOpts = tlsSettings sslCert sslKey

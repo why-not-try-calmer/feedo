@@ -4,3 +4,5 @@
 playgrounds/
 .vscode/settings.json
 .venv/
+cert.pem
+private.key
