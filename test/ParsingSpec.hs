@@ -18,33 +18,33 @@ import Utils (defaultChatSettings, mbTime, partitionEither)
 
 getConns :: IO AppConfig
 getConns = do
-    env <- getEnvironment
-    (config, _) <- makeConfig env
-    pure config
+  env <- getEnvironment
+  (config, _) <- makeConfig env
+  pure config
 
 spec :: Spec
 spec = go >> go1 >> runIO getConns >>= \env -> go2 env
-  where
-    go =
-        let desc = describe "parseSettings"
-            as = it "parse settings sent over Telegram in view of updating a Settings value"
-            target = parseSettings ["digest_at: 08:00"] `shouldBe` Right [PDigestAt [(8, 0)]]
-         in desc $ as target
-    go1 =
-        let desc = describe "eitherUrlScheme"
-            as = it "parse url sent over Telegram in view of fetching a web feed"
-            target = case eitherUrlScheme "https://this-week-in-rust.org/atom.xml" of
-                Left _ -> undefined
-                Right res ->
-                    let s = renderUrl res
-                     in s `shouldSatisfy` (not . T.null)
-         in desc $ as target
-    go2 env =
-        let desc = describe "rebuildFeed"
-            as = it "fetches and parses the given web feeds"
-            target = do
-                let feeds = ["https://hnrss.org/frontpage", "https://planetpython.org/rss20.xml", "https://talkpython.fm/episodes/rss", "https://www.blog.pythonlibrary.org/feed"]
-                res <- mapConcurrently rebuildFeed feeds
-                let (failed, done) = partitionEither res
-                length done `shouldSatisfy` (> length failed)
-         in desc $ as target
+ where
+  go =
+    let desc = describe "parseSettings"
+        as = it "parse settings sent over Telegram in view of updating a Settings value"
+        target = parseSettings ["digest_at: 08:00"] `shouldBe` Right [PDigestAt [(8, 0)]]
+     in desc $ as target
+  go1 =
+    let desc = describe "eitherUrlScheme"
+        as = it "parse url sent over Telegram in view of fetching a web feed"
+        target = case eitherUrlScheme "https://this-week-in-rust.org/atom.xml" of
+          Left _ -> undefined
+          Right res ->
+            let s = renderUrl res
+             in s `shouldSatisfy` (not . T.null)
+     in desc $ as target
+  go2 env =
+    let desc = describe "rebuildFeed"
+        as = it "fetches and parses the given web feeds"
+        target = do
+          let feeds = ["https://hnrss.org/frontpage", "https://planetpython.org/rss20.xml", "https://talkpython.fm/episodes/rss", "https://www.blog.pythonlibrary.org/feed"]
+          res <- mapConcurrently rebuildFeed feeds
+          let (failed, done) = partitionEither res
+          length done `shouldSatisfy` (> length failed)
+     in desc $ as target

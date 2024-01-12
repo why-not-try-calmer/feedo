@@ -1,10 +1,27 @@
-version: "3"
-
 services:    
     
-    feedo:
+    test:
+      profiles: [test]
+      depends_on: [mongo, redis]
+      container_name: feedfarer-test
+      restart: no
+      build: 
+        context: .
+        dockerfile: Dockerfile-test
+      environment:
+        - API_KEY
+        - TELEGRAM_TOKEN
+        - BASE_URL
+        - ALERT_CHATID
+        - WEBHOOK_URL
+        - MONGO_INITDB_ROOT_PASSWORD
+        - MONGO_INITDB_ROOT_USERNAME
+        - TEST=1
+
+    app:
+      profiles: [prod]
+      depends_on: [mongo, redis]
       image: ghcr.io/why-not-try-calmer/feedo:latest
-      depends_on: [redis]
       restart: on-failure
       build: .
       command: ./feefarer-exe
@@ -14,18 +31,24 @@ services:
         BASE_URL: ${BASE_URL}
         ALERT_CHATID: ${ALERT_CHATID}
         WEBHOOK_URL: ${WEBHOOK_URL}
-        MONGO_CONN_STRING: ${MONGO_CONN_STRING}
+        MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD} 
+        MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
         PORT: 8000
     
-    redis:
-      image: redis:latest
-      expose: [6379]
+    mongo:
+      image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
       restart: on-failure
-      command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
+      environment:
+        - MONGO_INITDB_ROOT_USERNAME
+        - MONGO_INITDB_ROOT_PASSWORD
       volumes:
-        - /data/redis-store
+       - mongo-data:/data/db
+      ports:
+       - 27017:27017
 
     nginx:
+      profiles: [prod]
+      depends_on: [app]
       image: nginx:latest
       restart: on-failure
       volumes:
@@ -35,7 +58,15 @@ services:
       ports:
         - "80:80"
         - "443:443"
-      depends_on:
-      - redis
-      - feedo
   
+    redis:
+      image: redis:latest
+      expose: [6379]
+      restart: on-failure
+      command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
+      volumes:
+        - redis-data:/data/redis-store
+
+volumes:
+  mongo-data:
+  redis-data:

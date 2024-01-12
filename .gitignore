@@ -1,4 +1,6 @@
 .stack-work/
+*.lock
 .env
 playgrounds/
 .vscode/settings.json
+.venv/

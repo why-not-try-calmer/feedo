@@ -1,0 +1,11 @@
+FROM haskell:latest
+WORKDIR /opt/app
+COPY . .
+RUN stack --resolver lts-19.33 test \
+  --fast \
+  --no-run-tests \
+  --no-library-profiling \
+  --install-ghc
+  
+COPY /static /var/www/feedfarer-webui
+CMD ["stack", "--resolver", "lts-19.33", "test", "--fast"]

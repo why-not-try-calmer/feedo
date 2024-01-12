@@ -1,6 +1,6 @@
 name: Tests
 
-on: 
+on:
   pull_request:
     branches: [master]
   push:
@@ -13,20 +13,29 @@ concurrency:
 
 jobs:
   build:
-    runs-on: 'ubuntu-latest'
-    
+    runs-on: "ubuntu-latest"
+
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
 
-    - name: Build & run tests
-      env:
-        api: ${{ secrets.API_KEY }}
-        tg: ${{ secrets.TELEGRAM_TOKEN }}
-        bu: ${{ secrets.BASE_URL }}
-        acid: ${{ secrets.ALERT_CHATID }}
-        wh: ${{ secrets.WEBHOOK_URL }}
-        mon: ${{ secrets.MONGO_CONN_STRING }}
-      run: API_KEY=$api TELEGRAM_TOKEN=$tg BASE_URL=$bu ALERT_CHATID=$acid WEBHOOK_URL=$wh MONGO_CONN_STRING=$mon docker-compose -f test-build.yml up --build --exit-code-from feedfarer-test
+      - name: Build & run tests
+        env:
+          api_key: ${{ secrets.API_KEY }}
+          telegram_token: ${{ secrets.TELEGRAM_TOKEN }}
+          base_url: ${{ secrets.BASE_URL }}
+          alert_chat_id: ${{ secrets.ALERT_CHATID }}
+          webhook_url: ${{ secrets.WEBHOOK_URL }}
+          mongo_user: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
+          mongo_password: $ {{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
+        run: |
+          API_KEY=$api_key \
+          TELEGRAM_TOKEN=$telegram_token \
+          BASE_URL=$base_url \
+          ALERT_CHATID=$alert_chat_id \
+          WEBHOOK_URL=$webhook_url \
+          MONGO_INITDB_ROOT_USERNAME=$mongo_user \
+          MONGO_INITDB_ROOT_PASSWORD=$mongo_password \
+          docker compose run test
