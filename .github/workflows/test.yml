@@ -52,7 +52,7 @@ jobs:
           mongo_user: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
           mongo_password: $ {{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
         run: |
-          docker compose pull feedo-test
+          docker compose pull test
 
           API_KEY=$api_key \
           TELEGRAM_TOKEN=$telegram_token \
