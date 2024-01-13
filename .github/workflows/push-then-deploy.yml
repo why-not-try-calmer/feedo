@@ -22,10 +22,9 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.PROD_HOST }}
-          username: root
+          username: ${{ secrets.PROD_USERNAME }}
           key: ${{ secrets.PROD_KEY }}
           script: |
             cd /opt/app
-            docker-compose down --remove-orphans
             docker-compose pull   
-            docker-compose up -d
+            docker-compose up -d --force-recreate
