@@ -26,5 +26,5 @@ jobs:
           key: ${{ secrets.PROD_KEY }}
           script: |
             cd /opt/app
-            docker-compose pull   
-            docker-compose up -d --force-recreate
+            # docker-compose pull   
+            # docker-compose up -d --force-recreate
