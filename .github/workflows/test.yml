@@ -32,7 +32,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push to GitHub registry
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -42,7 +42,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build & run tests
+      - name: Pull and run tests
         env:
           api_key: ${{ secrets.API_KEY }}
           telegram_token: ${{ secrets.TELEGRAM_TOKEN }}
@@ -52,6 +52,8 @@ jobs:
           mongo_user: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
           mongo_password: $ {{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
         run: |
+          docker compose pull feedo-test
+
           API_KEY=$api_key \
           TELEGRAM_TOKEN=$telegram_token \
           BASE_URL=$base_url \
@@ -59,4 +61,4 @@ jobs:
           WEBHOOK_URL=$webhook_url \
           MONGO_INITDB_ROOT_USERNAME=$mongo_user \
           MONGO_INITDB_ROOT_PASSWORD=$mongo_password \
-          docker compose run test
+            docker compose run test
