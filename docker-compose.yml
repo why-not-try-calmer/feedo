@@ -1,6 +1,7 @@
 services:    
     
     test:
+      image: ghcr.io/why-not-try-calmer/feedo-test:latest
       profiles: [test]
       depends_on: [mongo, redis]
       container_name: feedfarer-test
@@ -19,13 +20,12 @@ services:
         - TEST=1
 
     app:
-      depends_on: [mongo, redis]
       image: ghcr.io/why-not-try-calmer/feedo:latest
+      depends_on: [mongo, redis]
       restart: "on-failure"
       build:
         context: .
         dockerfile: Dockerfile
-      command: ./feedfarer-exe
       environment:
         API_KEY: ${API_KEY}
         TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
