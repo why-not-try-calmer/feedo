@@ -1,6 +1,7 @@
 services:    
     
     test:
+      image: ghcr.io/feedo-test:latest
       profiles: [test]
       depends_on: [mongo, redis]
       container_name: feedfarer-test
