@@ -43,8 +43,3 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Build
-        run: |
-          docker compose build
-          docker compose push
