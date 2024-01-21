@@ -20,7 +20,7 @@ import TgramOutJson (ChatId)
 import Types
 import Utils (defaultChatSettings, partitionEither, removeByUserIdx, renderDbError, sortItems, updateSettings)
 
-withChat :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either UserError ChatRes)
+withChat :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either Error ChatRes)
 withChat action cid = do
   env <- ask
   res <- liftIO $ modifyMVar (subs_state env) (`afterDb` env)
