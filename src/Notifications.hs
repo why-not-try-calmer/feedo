@@ -7,6 +7,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (foldl')
 import qualified Data.HashMap.Strict as HMS
 import Data.List (sortOn)
+import Data.Maybe (fromJust, isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDayTime), addUTCTime)
@@ -96,34 +97,29 @@ collectDue ::
 {-# INLINEABLE collectDue #-}
 -- Peeling off conditions for notifications:
 -- new start or new digest or new follow
-collectDue chats last_run now =
-  foldl'
-    ( \hmap c@SubChat{..} ->
-        let interval = settings_digest_interval sub_settings
-         in if settings_paused sub_settings
-              then hmap
-              else case settings_digest_start sub_settings of
-                Nothing ->
-                  if nextWasNow sub_next_digest sub_last_digest interval
-                    then -- 'digests' take priority over 'follow notifications'
-                      HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-                    else
-                      if settings_follow sub_settings
-                        then case last_run of
-                          Nothing -> HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
-                          Just t ->
-                            if addUTCTime 1200 t < now
-                              then HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
-                              else hmap
-                        else hmap
-                Just new ->
-                  if new < now
-                    then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-                    else hmap
-    )
-    HMS.empty
-    chats
+collectDue chats last_run now = foldl' step HMS.empty chats
  where
+  step hmap c@SubChat{..}
+    | settings_paused sub_settings = hmap
+    | isNothing sub_next_digest =
+        -- no last_digest; checking if the settings mandate
+        -- considering the chat as in need of an update
+        if nextWasNow Nothing sub_last_digest $ settings_digest_interval sub_settings
+          then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
+          else -- 'digests' take priority over 'follow notifications'
+
+            if settings_follow sub_settings
+              then case last_run of
+                Nothing -> HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
+                Just t ->
+                  if addUTCTime 1200 t < now
+                    then HMS.insert sub_chatid (c, FollowFeedLinks $ S.toList sub_feeds_links) hmap
+                    else hmap
+              else hmap
+    | otherwise =
+        if fromJust sub_next_digest < now
+          then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
+          else hmap
   nextWasNow Nothing Nothing _ = True
   nextWasNow (Just next_t) _ _ = next_t < now
   nextWasNow Nothing (Just last_t) i = findNextTime last_t i < now
@@ -211,18 +207,19 @@ partitionDigests =
 markNotified :: (MonadIO m) => AppConfig -> [ChatId] -> UTCTime -> m ()
 -- marking input chats as notified
 markNotified env notified_chats now = liftIO $
-  modifyMVar_ (subs_state env) $ \subs ->
-    let updated_chats = updated_notified_chats notified_chats subs
-     in evalDb env (UpsertChats updated_chats) >>= \case
-          DbErr err -> do
-            writeChan (postjobs env) $
-              JobTgAlertAdmin $
-                "notifier: failed to \
-                \ save updated chats to db because of this error"
-                  `T.append` renderDbError err
-            pure subs
-          DbOk -> pure updated_chats
-          _ -> pure subs
+  modifyMVar_ (subs_state env) $
+    \subs ->
+      let updated_chats = updated_notified_chats notified_chats subs
+       in evalDb env (UpsertChats updated_chats) >>= \case
+            DbErr err -> do
+              writeChan (postjobs env) $
+                JobTgAlertAdmin $
+                  "notifier: failed to \
+                  \ save updated chats to db because of this error"
+                    `T.append` renderDbError err
+              pure subs
+            DbOk -> pure updated_chats
+            _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey

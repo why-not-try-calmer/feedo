@@ -38,8 +38,10 @@ buildFeed ty url = do
     Left other -> pure . Left $ BadFeed other
     Right feed -> case parseLBS def feed of
       Left (SomeException ex) ->
-        pure . Left . ParseError $
-          "Unable to parse feed at "
+        pure
+          . Left
+          . ParseError
+          $ "Unable to parse feed at "
             `T.append` (T.pack . show $ url)
             `T.append` ", bumped on this exception: "
             `T.append` (T.pack . show $ ex)

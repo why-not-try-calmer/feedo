@@ -11,19 +11,17 @@ import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Jobs
 import Mongo (setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Network.Wai.Handler.WarpTLS
 import Redis (setupRedis)
 import Requests (reply)
 import Servant
 import Servant.HTML.Blaze
-import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getEnvironment)
 import Text.Blaze
 import TgActions
@@ -99,12 +97,6 @@ initServer config = hoistServer botApi (runApp config) server
 withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
 
-sslCert :: FilePath
-sslCert = "./cert.pem"
-
-sslKey :: FilePath
-sslKey = "./private.key"
-
 makeConfig :: [(String, String)] -> IO (AppConfig, Int)
 makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
@@ -166,24 +158,5 @@ startApp :: IO ()
 startApp = do
   env <- getEnvironment
   (config, port) <- makeConfig env
-  -- no longer using registerWebhook as it needs updating to use TLS certification
-  -- registerWebhook config
   runApp config initStart
-  -- finds_ssl_keys <- (&&) <$> doesFileExist sslCert <*> doesFileExist sslKey
-  -- if finds_ssl_keys
-  --   then do
-  --     print $ "Server (HTTPS) now listening to port " <> show port
-  --     runTLS tlsOpts (warpOpts port) . withServer $ config
-  --   else do
-  --     dir <- getCurrentDirectory
-  --     print $ "WARNING: Missing SSL keys from " <> dir
-  --     print $
-  --       "TLS will need to rely on gateway (if any). \
-  --       \ Server (PLAIN HTTP) now listening to port "
-  --         <> show port
   run port $ withServer config
---  where
---   warpOpts p
---     | p == 80 = setPort 443 defaultSettings
---     | otherwise = setPort p defaultSettings
---   tlsOpts = tlsSettings sslCert sslKey
