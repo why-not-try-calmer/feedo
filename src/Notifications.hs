@@ -102,11 +102,14 @@ collectDue chats last_run now = foldl' step HMS.empty chats
   step hmap c@SubChat{..}
     | settings_paused sub_settings = hmap
     | isNothing sub_next_digest =
-        -- no last_digest; checking if the settings mandate
+        -- checking if (via ettings) the last digest timestamp mandates
         -- considering the chat as in need of an update
-        if nextWasNow Nothing sub_last_digest $ settings_digest_interval sub_settings
+        if isDue Nothing sub_last_digest $ settings_digest_interval sub_settings
           then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
-          else -- 'digests' take priority over 'follow notifications'
+          else {-
+                 Neither future nor past digest timestamp, but maybe because using the 'follow' feature?
+                 if so the current time is used for reference
+               -}
 
             if settings_follow sub_settings
               then case last_run of
@@ -120,9 +123,9 @@ collectDue chats last_run now = foldl' step HMS.empty chats
         if fromJust sub_next_digest < now
           then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
           else hmap
-  nextWasNow Nothing Nothing _ = True
-  nextWasNow (Just next_t) _ _ = next_t < now
-  nextWasNow Nothing (Just last_t) i = findNextTime last_t i < now
+  isDue Nothing Nothing _ = True
+  isDue (Just next_t) _ _ = next_t < now
+  isDue Nothing (Just last_t) i = findNextTime last_t i < now
 
 findNextTime :: UTCTime -> DigestInterval -> UTCTime
 {-# INLINEABLE findNextTime #-}
