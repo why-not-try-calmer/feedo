@@ -102,7 +102,7 @@ collectDue chats last_run now = foldl' step HMS.empty chats
   step hmap c@SubChat{..}
     | settings_paused sub_settings = hmap
     | isNothing sub_next_digest =
-        -- checking if (via ettings) the last digest timestamp mandates
+        -- checking if (via settings) the last digest timestamp mandates
         -- considering the chat as in need of an update
         if isDue Nothing sub_last_digest $ settings_digest_interval sub_settings
           then HMS.insert sub_chatid (c, DigestFeedLinks $ S.toList sub_feeds_links) hmap
