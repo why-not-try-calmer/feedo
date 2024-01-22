@@ -178,7 +178,7 @@ withMongo AppConfig{..} action = liftIO $ do
 
 buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
 buildSearchQuery ws mb_last_time =
-  let search =
+  let searchExpr =
         [ "$search"
             =: [ "index" =: ("default" :: T.Text)
                , "text"
@@ -188,8 +188,12 @@ buildSearchQuery ws mb_last_time =
                      ]
                ]
         ]
-      match t = ["$match" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]]]
-      project =
+      matchStage Nothing =
+        ["$match" =: ["$text" =: searchExpr]]
+      matchStage (Just t) =
+        ["$match" =: ["$and" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]], "$text" =: searchExpr]]
+      sortLimitStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]], "$limit" =: (20 :: Int)]
+      projectStage =
         [ "$project"
             =: [ "_id" =: (0 :: Int)
                , "i_title" =: (1 :: Int)
@@ -199,9 +203,7 @@ buildSearchQuery ws mb_last_time =
                , "score" =: ["$meta" =: ("searchScore" :: T.Text)]
                ]
         ]
-   in case mb_last_time of
-        Nothing -> [search, project]
-        Just t -> [search, match t, project]
+   in [matchStage mb_last_time, sortLimitStage, projectStage]
 
 evalMongo :: (HasMongo m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (DbAskForLogin uid cid) = do
