@@ -43,7 +43,9 @@ services:
         - MONGO_INITDB_ROOT_USERNAME
         - MONGO_INITDB_ROOT_PASSWORD
       volumes:
-       - mongo-data:/data/db
+        - mongo-data:/data/db
+      ports:
+        - "27017:27017" 
        
     nginx:
       depends_on: [app]
