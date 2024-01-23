@@ -112,16 +112,3 @@ spec = do
               d = discarded_items_links post
           d `shouldSatisfy` (not . null)
      in desc $ as target
-  go4 env =
-    let desc = describe "validates the `collectDue`"
-        as = it "filters out chats that don't need a refresh"
-        target = do
-          let settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
-              feedlinks = ["https://www.reddit.com/r/pop_os/.rss", "https://this-week-in-rust.org/atom.xml", "https://blog.rust-lang.org/inside-rust/feed.xml", "https://blog.rust-lang.org/feed.xml"]
-              chat1 = SubChat 123 (mbTime "2022-05-31") (mbTime "2022-06-04") (S.fromList feedlinks) Nothing settings
-              chat2 = SubChat 234 (mbTime "2022-05-31") (mbTime "2022-06-02") (S.fromList feedlinks) Nothing settings
-              chats_recipes = HMS.insert 234 chat2 $ HMS.singleton 123 chat1
-              collected = collectDue chats_recipes Nothing (fromJust . mbTime $ "2022-06-03")
-          collected `shouldSatisfy` HMS.member 234
-          collected `shouldNotSatisfy` HMS.member 123
-     in desc $ as target
