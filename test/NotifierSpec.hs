@@ -4,6 +4,7 @@ module NotifierSpec where
 
 import Control.Concurrent.Async
 import qualified Data.HashMap.Internal.Strict as HMS
+import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
@@ -22,7 +23,9 @@ getConns = do
   pure config
 
 spec :: Spec
-spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
+spec = do
+  env <- runIO getConns
+  mapM_ (\t -> t env) [go1, go2, go3, go4]
  where
   go1 env =
     let desc = describe "test digests"
@@ -78,28 +81,17 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
           (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
           now <- getCurrentTime
           let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
-              -- due = collectDue (HMS.singleton 123 chat) Nothing now
-              -- batch1 = notifFrom (Just now) feedlinks feedsmap due
               pre = preNotifier now (Just now) (HMS.singleton 123 chat)
               notifier = postNotifier feedsmap mempty pre
-              batch2 = batches notifier
+              batch = batches notifier
               get_items ba = foldMap f_items $ foldMap (get_batch . snd) ba
               sumItems = length . get_items
               get_batch (Follows fs) = fs
               get_batch (Digests fs) = fs
-          -- only_on_batch1 = filter (\i -> i_link i `notElem` map i_link (get_items batch2)) $ get_items batch1
-          -- only_on_batch2 = filter (\i -> i_link i `notElem` map i_link (get_items batch1)) $ get_items batch2
-          -- print $ "First batch: " ++ show (sumItems batch1)
-          print $ "Second batch: " ++ show (sumItems batch2)
-          -- print "Items from batch 1:"
-          -- print $ map (\i -> (i_link i, i_pubdate i)) $ get_items batch1
-          -- print "Items only on batch 1"
-          -- print $ map (\i -> (i_link i, i_pubdate i)) only_on_batch1
+          print $ "Second batch: " ++ show (sumItems batch)
           print "Items only on batch 2"
-          -- print $ map i_pubdate only_on_batch2
-          -- print $ map (\i -> (i_link i, i_pubdate i)) only_on_batch2
           print $ "Discarded: " ++ (show . length . discarded_items_links $ notifier)
-          sumItems batch2 `shouldSatisfy` (> 0)
+          sumItems batch `shouldSatisfy` (> 0)
      in desc $ as target
   go3 env =
     let desc = describe "makes sure 'only_search_notif' filters out items as desired"
@@ -119,4 +111,17 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env >> go3 env
               post = postNotifier feedsmap [] pre
               d = discarded_items_links post
           d `shouldSatisfy` (not . null)
+     in desc $ as target
+  go4 env =
+    let desc = describe "validates the `collectDue`"
+        as = it "filters out chats that don't need a refresh"
+        target = do
+          let settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
+              feedlinks = ["https://www.reddit.com/r/pop_os/.rss", "https://this-week-in-rust.org/atom.xml", "https://blog.rust-lang.org/inside-rust/feed.xml", "https://blog.rust-lang.org/feed.xml"]
+              chat1 = SubChat 123 (mbTime "2022-05-31") (mbTime "2022-06-04") (S.fromList feedlinks) Nothing settings
+              chat2 = SubChat 234 (mbTime "2022-05-31") (mbTime "2022-06-02") (S.fromList feedlinks) Nothing settings
+              chats_recipes = HMS.insert 234 chat2 $ HMS.singleton 123 chat1
+              collected = collectDue chats_recipes Nothing (fromJust . mbTime $ "2022-06-03")
+          collected `shouldSatisfy` HMS.member 234
+          collected `shouldNotSatisfy` HMS.member 123
      in desc $ as target
