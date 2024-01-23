@@ -17,19 +17,19 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Types (
+  Error (BadFeed, BadInput, ParseError),
   Feed (..),
   FeedError (..),
   FeedType (..),
   Item (Item, i_pubdate),
   ParsingSettings (..),
   Settings (settings_digest_title),
-  UserError (BadFeed, BadInput, ParseError),
  )
 import Utils (averageInterval, defaultChatSettings, mbTime, renderUserError, sortTimePairs)
 
 {- Feeds, Items -}
 
-buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either UserError (Feed, Maybe T.Text))
+buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either Error (Feed, Maybe T.Text))
 -- tries parsing bytes into a Feed
 -- tries as Atom if Rss fails
 buildFeed ty url = do
@@ -38,8 +38,10 @@ buildFeed ty url = do
     Left other -> pure . Left $ BadFeed other
     Right feed -> case parseLBS def feed of
       Left (SomeException ex) ->
-        pure . Left . ParseError $
-          "Unable to parse feed at "
+        pure
+          . Left
+          . ParseError
+          $ "Unable to parse feed at "
             `T.append` (T.pack . show $ url)
             `T.append` ", bumped on this exception: "
             `T.append` (T.pack . show $ ex)
@@ -111,7 +113,7 @@ buildFeed ty url = do
           then Right (f, render_optional)
           else Left . ParseError $ render_required
 
-eitherUrlScheme :: T.Text -> Either UserError (Url 'Https)
+eitherUrlScheme :: T.Text -> Either Error (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
 eitherUrlScheme s
   | T.null s = Left . BadInput $ s

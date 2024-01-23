@@ -196,7 +196,7 @@ response    | all the items available from the target feed
 
 - /changelog: Show the latest changelog
 - /pause `<optional: channel_id>`: Suspend notification to the chat or channel.
-- /link `<channel_id>`: allow the current chat to access all the data of the referenced channel with these commands: /feed, /fresh, /list and /search
+- /link `<channel_id>`: allow the current chat to manage the referenced chat or channel. NB: if the current chat is already subscribed to the bot, the subscription will be cancelled.
 - /resume `<optional: channel_id>`:  Whether the bot is allowed to send notification messages to the chat or channel.
 - /migrate `<from: chat or channel_id> <to: chat or channel id>`: Copies the settings defined for the first chat or channel, to the second. Then runs '/purge' on the first.
 - /purge `<optional: channel_id>` (chat admins only): Make the database forget entirely about the chat or channel.

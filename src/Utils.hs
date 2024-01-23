@@ -91,7 +91,7 @@ unFeedRef (ById s) = T.pack $ show s
 unFeedRefs :: [FeedRef] -> [T.Text]
 unFeedRefs = map unFeedRef
 
-toFeedRef :: [T.Text] -> Either UserError [FeedRef]
+toFeedRef :: [T.Text] -> Either Error [FeedRef]
 {-# INLINE toFeedRef #-}
 toFeedRef ss
   | all_valid_urls = Right intoUrls
@@ -107,7 +107,7 @@ toFeedRef ss
 
 {- Errors -}
 
-renderUserError :: UserError -> T.Text
+renderUserError :: Error -> T.Text
 renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
 renderUserError (BadFeed feederror) = T.append "Unable to fetch this feed: " (T.pack . show $ feederror)
 renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t
@@ -119,7 +119,7 @@ renderUserError (NotFoundFeed feed) = T.append "The feed you were looking for do
 renderUserError NotFoundChat = "The chat you called from is not subscribed to any feed yet."
 renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
-renderUserError TelegramErr = "Telegram responded with an error. Are you sure you're using the right chat_id?"
+renderUserError (TelegramErr err) = "Telegram responded with an error: " `T.append` err
 renderUserError (Ignore input) = "Ignoring " `T.append` input
 renderUserError ChatNotPrivate = "Unwilling to share authentication credentials in a non-private chat. Please use this command in a private conversation with to the bot."
 renderUserError UserNotAdmin = "Only admins can change settings."

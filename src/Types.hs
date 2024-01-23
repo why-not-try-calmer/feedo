@@ -347,7 +347,7 @@ data FeedError = FeedError
   }
   deriving (Show, Eq)
 
-data UserError
+data Error
   = BadFeedUrl T.Text
   | BadInput T.Text
   | BadRef T.Text
@@ -359,7 +359,7 @@ data UserError
   | MaxFeedsAlready T.Text
   | ParseError T.Text
   | UpdateError T.Text
-  | TelegramErr
+  | TelegramErr T.Text
   | Ignore T.Text
   | ChatNotPrivate
   | UserNotAdmin

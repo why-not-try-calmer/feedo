@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
-module TgActions (registerWebhook, checkIfAdmin, interpretCmd, processCbq, evalTgAct) where
+module TgActions (registerWebhook, isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
 
 import Backend (withChat)
 import Broker (HasCache (withCache), getAllFeeds)
@@ -25,7 +25,60 @@ import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhoo
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
-import Types
+import Types (
+  App,
+  AppConfig (base_url, postjobs, subs_state, tg_config),
+  BotToken,
+  CacheAction (
+    CacheGetPage,
+    CachePullFeeds,
+    CachePushFeeds,
+    CacheXDays
+  ),
+  ChatRes (ChatUpdated),
+  DbAction (DbAskForLogin, DbSearch),
+  DbRes (DbSearchRes, DbToken),
+  Error (
+    BadInput,
+    BadRef,
+    ChatNotPrivate,
+    Ignore,
+    MaxFeedsAlready,
+    NotAdmin,
+    NotFoundChat,
+    NotFoundFeed,
+    NotSubscribed,
+    TelegramErr,
+    UserNotAdmin
+  ),
+  Feed (f_items, f_link),
+  FeedError (r_url),
+  FeedLink,
+  FeedRef (ById, ByUrl),
+  FromCache (CacheFeeds, CacheLinkDigest, CachePage),
+  Item (i_pubdate),
+  Job (JobIncReadsJob, JobRemoveMsg, JobTgAlertAdmin),
+  Replies (
+    FromAdmin,
+    FromAnnounce,
+    FromChangelog,
+    FromChat,
+    FromChatFeeds,
+    FromCmds,
+    FromDigest,
+    FromFeedDetails,
+    FromFeedItems,
+    FromFeedLinkItems,
+    FromSearchRes,
+    FromStart
+  ),
+  Reply (EditReply, ServiceReply),
+  ServerConfig (alert_chat, bot_token, webhook_url),
+  SettingsUpdater (Parsed),
+  SubChat (sub_feeds_links, sub_linked_to, sub_settings),
+  UserAction (..),
+  runApp,
+ )
 import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
 
 registerWebhook :: AppConfig -> IO ()
@@ -36,22 +89,20 @@ registerWebhook config =
         >> setWebhook tok webhook
         >> print ("Webhook successfully set at " `T.append` webhook)
 
-checkIfAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Maybe Bool)
-checkIfAdmin tok uid cid =
-  checkIfPrivate tok cid >>= \case
-    Nothing -> pure Nothing
-    Just ok ->
+isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either Error Bool)
+isUserAdmin tok uid cid =
+  isChatOfType tok cid Private >>= \case
+    Left err -> pure $ Left err
+    Right ok ->
       if ok
-        then pure $ Just True
+        then pure . Right $ ok
         else
           getChatAdmins >>= \case
-            Left err -> do
-              liftIO $ print err
-              pure Nothing
+            Left err -> pure . Left . TelegramErr $ err
             Right res_chat_type ->
               let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
                   chat_members = resp_cm_result res_cms :: [ChatMember]
-               in pure . Just $ if_admin chat_members
+               in pure . Right $ if_admin chat_members
  where
   getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
   if_admin = foldr is_admin False
@@ -60,24 +111,23 @@ checkIfAdmin tok uid cid =
     | "administrator" == cm_status member || "creator" == cm_status member = True
     | otherwise = False
 
-checkIfPrivate :: (MonadIO m) => BotToken -> ChatId -> m (Maybe Bool)
-checkIfPrivate tok cid =
+isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either Error Bool)
+isChatOfType tok cid ty =
   liftIO $
-    getChatType >>= \case
-      Left err -> do
-        liftIO $ print err
-        pure Nothing
-      Right res_chat ->
-        let chat_resp = responseBody res_chat :: TgGetChatResponse
-            c = resp_result chat_resp :: Chat
-         in pure . Just $ chat_type c == Private
+    getChatType
+      >>= \case
+        Left err -> pure . Left . TelegramErr $ err
+        Right res_chat ->
+          let chat_resp = responseBody res_chat :: TgGetChatResponse
+              c = resp_result chat_resp :: Chat
+           in pure . Right $ chat_type c == ty
  where
   getChatType = runSend tok "getChat" $ GetChat cid
 
-exitNotAuth :: (Applicative f, Show a) => a -> f (Either UserError b)
+exitNotAuth :: (Applicative f, Show a) => a -> f (Either Error b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
-interpretCmd :: T.Text -> Either UserError UserAction
+interpretCmd :: T.Text -> Either Error UserAction
 interpretCmd contents
   | cmd == "/admin" =
       if length args /= 1
@@ -141,9 +191,10 @@ interpretCmd contents
   | cmd == "/migrate" =
       if null args
         then
-          Left . BadInput $
-            "/migrate takes at least one argument, standing for the chat_id of the destination you want to migrate this chat's settings to. \
-            \ If you call /migrate with 2 arguments, the first should be the chat_id of the origin and the second the chat_id of the destination."
+          Left
+            . BadInput
+            $ "/migrate takes at least one argument, standing for the chat_id of the destination you want to migrate this chat's settings to. \
+              \ If you call /migrate with 2 arguments, the first should be the chat_id of the origin and the second the chat_id of the destination."
         else
           let (x : xs) = args
            in case readMaybe . T.unpack $ x :: Maybe ChatId of
@@ -249,7 +300,7 @@ interpretCmd contents
         (h : _) = T.splitOn "@" h'
      in (h, t)
 
-testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either UserError ())
+testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either Error ())
 testChannel tok chan_id jobs =
   -- tries sending a message to the given channel
   -- if the response rewards the test with a message_id, it's won.
@@ -259,7 +310,7 @@ testChannel tok chan_id jobs =
       let res = responseBody resp :: TgGetMessageResponse
           mid = message_id . resp_msg_result $ res
        in if not $ resp_msg_ok res
-            then pure $ Left TelegramErr
+            then pure . Left . TelegramErr $ "Telegram didn't respond with an `ok` field. Aborting."
             else -- tries removing the test message
             do
               liftIO $ writeChan jobs . JobRemoveMsg chan_id mid $ 30
@@ -285,7 +336,8 @@ subFeed cid feeds_urls = do
                 if null new_url_schemes
                   then
                     respondWith $
-                      "Successfully subscribed to " `T.append` T.intercalate ", " old_keys
+                      "Successfully subscribed to "
+                        `T.append` T.intercalate ", " old_keys
                   else -- fetches feeds at remaining urls
 
                     liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
@@ -318,7 +370,7 @@ evalTgAct ::
   UserId ->
   UserAction ->
   ChatId ->
-  App m (Either UserError Reply)
+  App m (Either Error Reply)
 evalTgAct _ (About ref) cid =
   ask >>= \env -> do
     chats_hmap <- liftIO . readMVar $ subs_state env
@@ -377,23 +429,26 @@ evalTgAct uid (Announce txt) admin_chat =
 evalTgAct uid (AskForLogin target_id) cid = do
   env <- ask
   let tok = bot_token . tg_config $ env
-  checkIfPrivate tok cid >>= \case
-    Nothing -> pure . Left $ TelegramErr
-    Just private ->
+  isChatOfType tok cid Private >>= \case
+    Left err -> pure . Left $ err
+    Right private ->
       if not private
         then pure . Left $ ChatNotPrivate
         else
-          checkIfAdmin tok uid target_id >>= \case
-            Nothing -> pure . Left $ TelegramErr
-            Just ok ->
+          isUserAdmin tok uid target_id >>= \case
+            Left err -> pure . Left $ err
+            Right ok ->
               if not ok
                 then pure . Left $ UserNotAdmin
                 else do
                   evalDb env (DbAskForLogin uid cid) >>= \case
                     DbToken h -> pure . Right . mkReply . FromAdmin (base_url env) $ h
                     _ ->
-                      pure . Right . mkReply . FromAdmin (base_url env) $
-                        "Unable to log you in. Are you sure you are an admin of this chat?"
+                      pure
+                        . Right
+                        . mkReply
+                        . FromAdmin (base_url env)
+                        $ "Unable to log you in. Are you sure you are an admin of this chat?"
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
 evalTgAct _ Changelog _ = pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
@@ -465,19 +520,25 @@ evalTgAct _ ListSubs cid = do
             else
               getAllFeeds env >>= \case
                 Left _ ->
-                  pure . Left . NotFoundFeed $
-                    "Unable to find these feeds " `T.append` T.intercalate " " subs
+                  pure
+                    . Left
+                    . NotFoundFeed
+                    $ "Unable to find these feeds "
+                      `T.append` T.intercalate " " subs
                 Right fs -> case mapM (`HMS.lookup` fs) subs of
                   Nothing ->
-                    pure . Left . NotFoundFeed $
-                      "Unable to find these feeds " `T.append` T.intercalate " " subs
+                    pure
+                      . Left
+                      . NotFoundFeed
+                      $ "Unable to find these feeds "
+                        `T.append` T.intercalate " " subs
                   Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
 evalTgAct uid (Link target_id) cid = do
   env <- ask
-  verdict <- liftIO $ mapConcurrently (checkIfAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
+  verdict <- liftIO $ mapConcurrently (isUserAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
   case and <$> sequence verdict of
-    Nothing -> pure . Left $ TelegramErr
-    Just authorized ->
+    Left err -> pure . Left $ err
+    Right authorized ->
       if not authorized
         then exitNotAuth uid
         else
@@ -491,16 +552,18 @@ evalTgAct uid (Migrate to) cid = do
   env <- ask
   let tok = bot_token . tg_config $ env
   mb_ok <- liftIO $ do
-    (one, two) <- concurrently (checkIfAdmin tok uid cid) (checkIfAdmin tok uid to)
+    (one, two) <- concurrently (isUserAdmin tok uid cid) (isUserAdmin tok uid to)
     pure $ (&&) <$> one <*> two
   case mb_ok of
-    Nothing -> pure . Left $ TelegramErr
-    Just ok ->
+    Left err -> pure . Left $ err
+    Right ok ->
       if not ok
         then
-          pure . Right . ServiceReply $
-            "Not authorized. Make sure you have admin permissions \
-            \ in both the origin and the destination."
+          pure
+            . Right
+            . ServiceReply
+            $ "Not authorized. Make sure you have admin permissions \
+              \ in both the origin and the destination."
         else
           migrate >>= \case
             Left err -> restore >> onErr err
@@ -509,8 +572,10 @@ evalTgAct uid (Migrate to) cid = do
   migrate = sequence <$> sequence [withChat (Migrate to) cid, withChat Purge cid]
   restore = withChat (Migrate cid) to >> withChat Purge to
   onOk =
-    pure . Right . ServiceReply $
-      "Successfully migrated "
+    pure
+      . Right
+      . ServiceReply
+      $ "Successfully migrated "
         `T.append` (T.pack . show $ cid)
         `T.append` " to "
         `T.append` (T.pack . show $ to)
@@ -519,9 +584,9 @@ evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
 evalTgAct uid (Pause pause_or_resume) cid =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
-     in checkIfAdmin tok uid cid >>= \case
-          Nothing -> pure . Left $ TelegramErr
-          Just verdict ->
+     in isUserAdmin tok uid cid >>= \case
+          Left err -> pure . Left $ err
+          Right verdict ->
             if not verdict
               then exitNotAuth uid
               else
@@ -537,9 +602,9 @@ evalTgAct uid (PauseChannel chan_id pause_or_resume) _ = evalTgAct uid (Pause pa
 evalTgAct uid Purge cid = do
   env <- ask
   let tok = bot_token . tg_config $ env
-  checkIfAdmin tok uid cid >>= \case
-    Nothing -> pure . Left $ TelegramErr
-    Just verdict ->
+  isUserAdmin tok uid cid >>= \case
+    Left err -> pure . Left $ err
+    Right verdict ->
       if not verdict
         then exitNotAuth uid
         else
@@ -554,8 +619,9 @@ evalTgAct _ Start cid =
  where
   fresh_start = pure . Right . mkReply $ FromStart
   start_with_reload c =
-    pure . Right $
-      mkReply
+    pure
+      . Right
+      $ mkReply
         ( FromChat
             c
             "Welcome back! This chat was already using this bot in the past;\
@@ -569,9 +635,9 @@ evalTgAct uid (Sub feeds_urls) cid = do
   if tooManySubs 50 chats cid
     then exitTooMany
     else
-      checkIfAdmin tok uid cid >>= \case
-        Nothing -> pure . Left $ TelegramErr
-        Just verdict ->
+      isUserAdmin tok uid cid >>= \case
+        Left err -> pure . Left $ err
+        Right verdict ->
           if not verdict
             then exitNotAuth uid
             else subFeed cid feeds_urls <&> Right
@@ -581,9 +647,9 @@ evalTgAct _ RenderCmds _ = pure . Right $ mkReply FromCmds
 evalTgAct uid Reset cid = do
   env <- ask
   let tok = bot_token . tg_config $ env
-  checkIfAdmin tok uid cid >>= \case
-    Nothing -> pure . Left $ TelegramErr
-    Just verdict ->
+  isUserAdmin tok uid cid >>= \case
+    Left err -> pure . Left $ err
+    Right verdict ->
       if not verdict
         then exitNotAuth uid
         else
@@ -612,9 +678,9 @@ evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSe
 evalTgAct uid (SetChatSettings settings) cid =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
-     in checkIfAdmin tok uid cid >>= \case
-          Nothing -> pure . Left $ TelegramErr
-          Just verdict ->
+     in isUserAdmin tok uid cid >>= \case
+          Left err -> pure . Left $ err
+          Right verdict ->
             if not verdict
               then exitNotAuth uid
               else
@@ -626,9 +692,9 @@ evalTgAct uid (SubChannel chan_id urls) _ =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
         jobs = postjobs env
-     in checkIfAdmin tok uid chan_id >>= \case
-          Nothing -> pure . Left $ TelegramErr
-          Just verdict ->
+     in isUserAdmin tok uid chan_id >>= \case
+          Left err -> pure . Left $ err
+          Right verdict ->
             if not verdict
               then pure . Left . NotAdmin $ "Only users with administrative rights in the target channel is allowed to link the bot to the channel."
               else
@@ -637,9 +703,9 @@ evalTgAct uid (SubChannel chan_id urls) _ =
                   Right _ -> subFeed chan_id urls >>= \rep -> pure . Right $ rep
 evalTgAct uid TestDigest cid =
   ask >>= \env ->
-    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
-      Nothing -> pure . Right . ServiceReply $ "Unable to test the digest for this chat, as Telegram didn't let us check if you were an admin."
-      Just is_admin ->
+    isUserAdmin (bot_token . tg_config $ env) uid cid >>= \case
+      Left _ -> pure . Right . ServiceReply $ "Unable to test the digest for this chat, as Telegram didn't let us check if you were an admin."
+      Right is_admin ->
         if not is_admin
           then exitNotAuth uid
           else
@@ -653,8 +719,10 @@ evalTgAct uid TestDigest cid =
                   pure (now, failed, succeeded)
                 if null failed
                   then
-                    pure . Right . mkReply $
-                      FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
+                    pure
+                      . Right
+                      . mkReply
+                      $ FromDigest (new_since_last_week now succeeded) Nothing (sub_settings c)
                   else pure . Right . ServiceReply $ "Unable to construct these feeds: " `T.append` T.intercalate ", " (map r_url failed)
  where
   new_since_last_week now =
@@ -666,9 +734,9 @@ evalTgAct uid TestDigest cid =
 evalTgAct uid (TestDigestChannel chan_id) _ = evalTgAct uid TestDigest chan_id
 evalTgAct uid (UnSub feeds) cid =
   ask >>= \env ->
-    checkIfAdmin (bot_token . tg_config $ env) uid cid >>= \case
-      Nothing -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
-      Just is_admin ->
+    isUserAdmin (bot_token . tg_config $ env) uid cid >>= \case
+      Left _ -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
+      Right is_admin ->
         if not is_admin
           then exitNotAuth uid
           else
@@ -699,7 +767,8 @@ processCbq cbq =
           Just n ->
             liftIO $
               concurrently (runApp env $ get_page n) send_answer
-                >>= send_result n . fst
+                >>= send_result n
+                  . fst
  where
   cid = chat_id . chat . fromJust . cbq_message $ cbq
   mid = message_id . fromJust . cbq_message $ cbq

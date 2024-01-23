@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   deploy:
-    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: "ubuntu-latest"
     steps:
       - uses: actions/checkout@v3
@@ -26,5 +26,6 @@ jobs:
           key: ${{ secrets.PROD_KEY }}
           script: |
             cd /opt/app
-            # docker-compose pull   
-            # docker-compose up -d --force-recreate
+            docker-compose pull
+            docker-compose up -d --force-recreate
+            docker images prune -a

@@ -178,7 +178,7 @@ withMongo AppConfig{..} action = liftIO $ do
 
 buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
 buildSearchQuery ws mb_last_time =
-  let search =
+  let searchExpr =
         [ "$search"
             =: [ "index" =: ("default" :: T.Text)
                , "text"
@@ -188,8 +188,12 @@ buildSearchQuery ws mb_last_time =
                      ]
                ]
         ]
-      match t = ["$match" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]]]
-      project =
+      matchStage Nothing =
+        ["$match" =: ["$text" =: searchExpr]]
+      matchStage (Just t) =
+        ["$match" =: ["$and" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]], "$text" =: searchExpr]]
+      sortLimitStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]], "$limit" =: (20 :: Int)]
+      projectStage =
         [ "$project"
             =: [ "_id" =: (0 :: Int)
                , "i_title" =: (1 :: Int)
@@ -199,9 +203,7 @@ buildSearchQuery ws mb_last_time =
                , "score" =: ["$meta" =: ("searchScore" :: T.Text)]
                ]
         ]
-   in case mb_last_time of
-        Nothing -> [search, project]
-        Just t -> [search, match t, project]
+   in [matchStage mb_last_time, sortLimitStage, projectStage]
 
 evalMongo :: (HasMongo m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (DbAskForLogin uid cid) = do
@@ -572,6 +574,24 @@ digestToBson Digest{..} =
   , "digest_ftitles" =: digest_titles
   ]
 
+{- Admins -}
+
+bsonToAdmin :: Document -> AdminUser
+bsonToAdmin doc =
+  let uid = fromJust $ M.lookup "admin_uid" doc
+      token = fromJust $ M.lookup "admin_token" doc
+      cid = fromJust $ M.lookup "admin_chatid" doc
+      created = fromJust $ M.lookup "admin_created" doc
+   in AdminUser uid token cid created
+
+adminToBson :: AdminUser -> Document
+adminToBson AdminUser{..} =
+  [ "admin_uid" =: admin_uid
+  , "admin_chatid" =: admin_chatid
+  , "admin_token" =: admin_token
+  , "admin_created" =: admin_created
+  ]
+
 {- Logs -}
 
 bsonToLog :: Document -> LogItem
@@ -647,119 +667,7 @@ logToBson (LogCouldNotArchive feeds t err) =
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env logitem = void $ withMongo env (insert "logs" $ writeDoc logitem)
 
-{-
-cleanLogs :: (HasMongo m, MonadIO m) => AppConfig -> m (Either String ())
-cleanLogs env = do
-    now <- liftIO getCurrentTime
-    res <- withMongo env $ do
-        void $ deleteAll "logs" [(["log_at" =: ["$lt" =: (one_week_from now :: UTCTime)]], [])]
-        res_delete <- deleteAll "logs" [(["log_at" =: ["$exists" =: False]], [])]
-        res_found <- find (select ["log_at" =: ["$exists" =: False]] "logs") >>= rest
-        pure (res_delete, res_found)
-    case res of
-        Left _ -> pure . Left $ "Failed to cleanLogs"
-        Right (del, found) ->
-            if failed del
-                then pure . Left . show $ del
-                else
-                    if not $ null found
-                        then pure . Left . show $ found
-                        else pure $ Right ()
-  where
-    one_week_from = addUTCTime (-604800)
-
-collectLogStats :: (HasMongo m, MonadIO m) => AppConfig -> m T.Text
-collectLogStats env = do
-    res <- withMongo env $ do
-        logs <- rest =<< find (select ["log_total" =: ["$gte" =: (0.5 :: Double)]] "logs")
-        counts <- rest =<< find (select [] "feeds"){sort = ["f_reads" =: (-1 :: Int)], limit = 100}
-        pure (logs, counts)
-    case res of
-        Left _ -> pure "Failed to collectLogStats"
-        Right (docs_logs, feeds_docs) ->
-            let logs = List.sortOn log_at . filter (not . T.null . log_message) . map readDoc $ docs_logs
-                feeds_counts = map (\d -> let f = readDoc d in (f_link f, T.pack . show $ f_reads f)) feeds_docs
-             in pure $ foldl' (\acc (!k, !v) -> acc `T.append` " " `T.append` k `T.append` ": " `T.append` v) T.empty feeds_counts `T.append` mkStats logs
-  where
-    mkStats logs =
-        let values =
-                let (a, b, c, d) =
-                        foldl'
-                            ( \(!r, !s, !u, !t) (LogPerf _ _ r' s' u' t') ->
-                                (r' + r, s + s', u + u', t + t')
-                            )
-                            (0, 0, 0, 0)
-                            logs
-                 in [a, b, c, d]
-            keys = ["refreshing", "sending", "updating", "total"]
-         in showLength logs
-                `T.append` " logs. Averages for: "
-                `T.append` T.intercalate
-                    ", "
-                    ( zipWith
-                        ( \k v ->
-                            k `T.append` ": "
-                                `T.append` showAvgLength v logs
-                        )
-                        keys
-                        values
-                    )
-    showLength = T.pack . show . length
-    showAvgLength a l = T.pack . show $ fromIntegral a `div` length l
--}
-
-{- Admins -}
-
-bsonToAdmin :: Document -> AdminUser
-bsonToAdmin doc =
-  let uid = fromJust $ M.lookup "admin_uid" doc
-      token = fromJust $ M.lookup "admin_token" doc
-      cid = fromJust $ M.lookup "admin_chatid" doc
-      created = fromJust $ M.lookup "admin_created" doc
-   in AdminUser uid token cid created
-
-adminToBson :: AdminUser -> Document
-adminToBson AdminUser{..} =
-  [ "admin_uid" =: admin_uid
-  , "admin_chatid" =: admin_chatid
-  , "admin_token" =: admin_token
-  , "admin_created" =: admin_created
-  ]
-
-{- Pages -}
-{-
-bsonToPage :: Document -> Maybe PageOne
-bsonToPage doc =
-    let cid = M.lookup "chat_id" doc
-        mid = M.lookup "message_id" doc
-        pages = M.lookup "pages" doc
-        one = head <$> pages
-        n = length <$> pages
-        mb_url = M.lookup "url" doc
-     in PageOne <$> one <*> cid <*> mid <*> n <*> mb_url
--}
-
-{- Cleanup -}
-{-
-purgeCollections :: (HasMongo m, MonadIO m) => AppConfig -> [T.Text] -> m (Either String ())
-purgeCollections _ [] = pure . Left $ "Empty list of collection names!"
-purgeCollections env colls =
-    let action = withMongo env $ mapM (`deleteAll` [([], [])]) colls
-     in action >>= \case
-            Left _ -> pure . Left $ "Failed to purgeCollections."
-            Right res ->
-                if any failed res
-                    then pure . Left $ "Failed to purge collections " ++ show colls
-                    else pure $ Right ()
-
-{- Mapping -}
-
-remapChats :: (MonadIO m, HasMongo m) => AppConfig -> SubChats -> m (Either String ())
-remapChats env chats =
-    let selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) $ HMS.elems chats
-        action = updateAll "chats" selector
-     in withMongo env action >>= \case Left _ -> pure $ Left "Failed"; Right _ -> pure $ Right ()
--}
+{- Tests -}
 
 checkDbMapper :: (MonadIO m) => m ()
 checkDbMapper = do
@@ -772,14 +680,12 @@ checkDbMapper = do
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
       log' = LogPerf mempty now 0 0 0 0
       digest = Digest Nothing now [item] [mempty] [mempty]
-      admin_user = AdminUser 123 "just user" 456 now
       equalities =
         [ ("item", checks item)
         , ("digest", checks digest)
         , ("feed", checks feed)
         , ("chat", checks chat)
         , ("log", checks log')
-        , ("admin", checks admin_user)
         ] ::
           [(T.Text, Bool)]
   unless (all snd equalities) . liftIO $ do

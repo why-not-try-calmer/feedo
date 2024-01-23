@@ -35,6 +35,8 @@ services:
         MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD} 
         MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
         PORT: 8000
+      volumes:
+        - ./static:/var/www/feedfarer-webui
     
     mongo:
       image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
