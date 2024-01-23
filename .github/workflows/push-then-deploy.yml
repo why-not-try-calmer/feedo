@@ -28,4 +28,4 @@ jobs:
             cd /opt/app
             docker-compose pull
             docker-compose up -d --force-recreate
-            docker images prune -a
+            docker image prune -a --force
