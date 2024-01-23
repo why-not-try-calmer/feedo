@@ -14,7 +14,6 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Data.Time.Clock.System (getSystemTime)
 import Jobs
 import Mongo (setupDb)
 import Network.Wai
