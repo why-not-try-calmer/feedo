@@ -11,10 +11,9 @@ import Control.Concurrent (
  )
 import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
-import Control.Monad (forever, void, when)
+import Control.Monad (forever, void, when, unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
-import Data.Either (fromRight, isRight)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (modifyIORef')
 import qualified Data.Set as S
@@ -187,4 +186,4 @@ postProcJobs =
         jobs = postjobs env
      in forConcurrently_ chat_ids $ \cid -> do
           verdict <- isChatOfType tok cid Channel
-          when (verdict == Right True) $ reply tok cid msg jobs
+          unless (verdict == Right True) $ reply tok cid msg jobs
