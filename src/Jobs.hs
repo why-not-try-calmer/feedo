@@ -14,7 +14,6 @@ import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, void, when, unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
-import Data.Either (fromRight, isRight)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (modifyIORef')
 import qualified Data.Set as S
