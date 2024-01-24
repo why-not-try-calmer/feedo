@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -18,7 +17,6 @@ import Network.HTTP.Req (responseBody, responseStatusCode)
 import Network.Wai (Request (requestBody))
 import Requests (
   TgReqM (runSend, runSend_),
-  fetchApi,
   mkKeyboard,
   mkPagination,
   reply,
@@ -29,6 +27,7 @@ import Test.Hspec
 import Text.Read (readMaybe)
 import TgramOutJson
 import Types
+import Utils (sliceIfAboveTelegramMax)
 
 getConns :: IO AppConfig
 getConns = do
@@ -38,10 +37,7 @@ getConns = do
 
 spec :: Spec
 spec = do
-  sequence_ [go, go1, go2]
-  runIO getConns >>= \config ->
-    let key = api_key config
-     in sequence_ [go4 key, go5 key, go6 key]
+  runIO getConns >>= \config -> sequence_ [go, go1, go2 config]
  where
   go =
     let desc = describe "mkKeyboard"
@@ -62,83 +58,29 @@ spec = do
             length (head keyboard) `shouldBe` 2
             filter T.null texts `shouldBe` []
      in desc $ as target
-  go2 =
+  go2 env =
     let desc = describe "pagination live test"
         as = it "sends a Telegram message with pagination"
         target = do
           let (texts, keyboard) = fromJust $ mkPagination lorec Nothing
               rep = ChatReply lorec False False False True Nothing
-          env <- getConns
           res <- runApp env $ reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) rep (postjobs env)
           res `shouldBe` ()
      in desc $ as target
-  {-
   go3 =
-      let desc = describe "slicing replies to avoid running into Telegram's upper bound"
-          as = it "slices up messages to keep all of them under 4096 characters"
-          target = do
-              let lorecs = [lorec, lorec, lorec]
-                  lorecs_txt = T.concat lorecs
-                  reply = ChatReply lorecs_txt False False False False Nothing
-                  sliced = sliceReplies reply
-                  sliced_txts = map (T.length . reply_contents) sliced
-                  total_length = sum sliced_txts
-              print total_length
-              print sliced_txts
-              print sliced
-              sliced `shouldSatisfy` all (\r -> (T.length . reply_contents $ r) < 4096)
-      in  desc $ as target
-  -}
-  go4 key =
-    let desc = describe "Digests: Ensures correct JSON encoding "
-        as = it "Verifies an APIReq's (Digest) JSON encoding"
+    let desc = describe "slicing replies to avoid running into Telegram's upper bound"
+        as = it "slices up messages to keep all of them under 4096 characters"
         target = do
-          surrogate <- genObjectId
-          let oid = fromMaybe surrogate (readMaybe "62d7ecdedb218a0001000003" :: Maybe ObjectId)
-              f = APIFilter Nothing Nothing (Just oid)
-              r = APIReq CDigests (Just f)
-          res <- fetchApi key r
-          res `shouldSatisfy` \case
-            Right body -> responseStatusCode body == 200
-            {-
-            case eitherDecodeStrict' $ responseBody body :: Either String APIDigest of
-            Left err -> trace err False
-            Right _ -> True
-            -}
-            Left err -> trace (T.unpack err) False
-     in desc $ as target
-  go5 key =
-    let desc = describe "Pages: Ensures correct JSON encoding "
-        as = it "Verifies an APIReq's (Pages) JSON encoding"
-        target = do
-          let f = Just $ APIFilter Nothing (Just 40620) Nothing
-              r = APIReq CPages f
-          print $ encode r
-          res <- fetchApi key r
-          res `shouldSatisfy` \case
-            Right body -> responseStatusCode body == 200
-            {-case eitherDecodeStrict' $ responseBody body :: Either String APIPages of
-                Left err -> trace err False
-                Right _ -> True
-            -}
-            Left err -> trace (T.unpack err) False
-     in desc $ as target
-  go6 key =
-    let desc = describe "Chats: Validates chats values"
-        as = it "Validates chats' values from APIReq's (Chats) bytestring"
-        target = do
-          let r = APIReq CChats Nothing
-          print $ encode r
-          res <- fetchApi key r
-          res `shouldSatisfy` \case
-            Right body -> case eitherDecodeStrict' $ responseBody body :: Either String APIChats of
-              Left err -> trace err False
-              Right docs ->
-                let chats = chats_documents docs
-                    ats = mapMaybe (digest_at . settings_digest_interval . sub_settings) chats
-                    intervals = map (settings_digest_interval . sub_settings) chats
-                 in trace (show intervals ++ "\n" ++ show ats) (any (> 86400) $ mapMaybe digest_every_secs intervals)
-            Left err -> trace (T.unpack err) False
+          let lorecs = [lorec, lorec, lorec]
+              lorecs_txt = T.concat lorecs
+              reply = ChatReply lorecs_txt False False False False Nothing
+              sliced = sliceIfAboveTelegramMax $ reply_contents reply
+              sliced_txts = map T.length sliced
+              total_length = sum sliced_txts
+          print total_length
+          print sliced_txts
+          print sliced
+          sliced `shouldSatisfy` all (\r -> T.length r < 4096)
      in desc $ as target
 
 lorec :: T.Text

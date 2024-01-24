@@ -4,7 +4,7 @@
 module TgActions (registerWebhook, isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
 
 import Backend (withChat)
-import Cache (HasCache (withCache), getAllFeeds)
+import Cache (HasCache (withCache))
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
@@ -20,6 +20,7 @@ import Data.Time (addUTCTime, getCurrentTime)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
+import Redis (getAllFeeds)
 import Replies (mkReply, render)
 import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhook)
 import Text.Read (readMaybe)
@@ -57,7 +58,7 @@ import Types (
   FeedRef (ById, ByUrl),
   FromCache (CacheFeeds, CacheLinkDigest, CachePage),
   Item (i_pubdate),
-  Job (JobIncReadsJob, JobRemoveMsg, JobTgAlertAdmin),
+  Job (JobRemoveMsg, JobTgAlertAdmin),
   Replies (
     FromAdmin,
     FromAnnounce,
@@ -463,20 +464,18 @@ evalTgAct _ (GetItems ref) cid = do
   -- get items by url or id depending on whether the
   -- user user a number or a string referencing the target feed
   case ref of
-    ByUrl url -> urlPath url feeds_hmap chats_hmap env
+    ByUrl url -> urlPath url feeds_hmap chats_hmap
     ById _id -> case HMS.lookup cid chats_hmap of
       Nothing -> pure . Right . ServiceReply . renderUserError $ NotFoundChat
       Just c -> case maybeUserIdx (sort . S.toList $ sub_feeds_links c) _id of
         Nothing -> pure . Left . BadRef $ T.pack . show $ _id
-        Just r -> urlPath r feeds_hmap chats_hmap env
+        Just r -> urlPath r feeds_hmap chats_hmap
  where
-  urlPath url f_hmap c_hmap env = case HMS.lookup url f_hmap of
+  urlPath url f_hmap c_hmap = case HMS.lookup url f_hmap of
     Nothing -> pure . Left . NotFoundFeed $ url
     Just f ->
       if hasSubToFeed (f_link f) c_hmap
-        then do
-          liftIO $ writeChan (postjobs env) (JobIncReadsJob [f_link f])
-          pure . Right $ mkReply (FromFeedItems f)
+        then pure . Right $ mkReply (FromFeedItems f)
         else pure . Right . ServiceReply $ "It appears that you are not subscribed to this feed. Use /sub or talk to your chat administrator about it."
   hasSubToFeed flink chats_hmap = maybe False (\c -> flink `elem` sub_feeds_links c) (HMS.lookup cid chats_hmap)
 evalTgAct _ (GetLastXDaysItems n) cid = do
@@ -494,9 +493,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
             then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else
               withCache (CacheXDays subscribed n) >>= \case
-                Right (CacheLinkDigest feeds) -> do
-                  liftIO $ writeChan (postjobs env) (JobIncReadsJob $ map fst feeds)
-                  pure . Right $ mkReply (FromFeedLinkItems feeds)
+                Right (CacheLinkDigest feeds) -> pure . Right $ mkReply (FromFeedLinkItems feeds)
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
 evalTgAct uid (GetSubchannelSettings channel_id) _ = evalTgAct uid GetSubchatSettings channel_id
 evalTgAct _ GetSubchatSettings cid =
@@ -745,7 +742,7 @@ evalTgAct uid (UnSub feeds) cid =
               Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
 
-processCbq :: (MonadIO m, MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
+processCbq :: (MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
 processCbq cbq =
   ask >>= \env ->
     let send_result n (Right (CachePage p i mb_url)) =

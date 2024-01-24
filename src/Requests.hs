@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Requests (mkPagination, setWebhook, fetchApi, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
+module Requests (mkPagination, setWebhook, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
 import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
@@ -244,33 +244,3 @@ fetchFeed url =
  where
   action = withReqManager $ runReq defaultHttpConfig . pure request
   request = req GET url NoReqBody lbsResponse mempty
-
-{- Mongo API -}
-
-fetchApi :: (MonadIO m) => APIKey -> APIReq -> m (Either T.Text BsResponse)
-fetchApi k query =
-  let url =
-        https "data.mongodb-api.com"
-          /: "app"
-          /: "data-uaflk"
-          /: "endpoint"
-          /: "data"
-          /: "v1"
-          /: "action"
-          /: endpoint
-      headers =
-        let conts = header "Content-Type" "application/json"
-            ac = header "Access-Control-Request-Headers" "*"
-            key = header "api-key" k
-         in conts <> ac <> key
-   in liftIO $
-        (try . actionFrom $ mkRequest url headers)
-          >>= \case
-            Left (SomeException e) -> pure . Left . T.pack . show $ e
-            Right r -> pure $ Right r
- where
-  endpoint = case api_collection query of
-    CDigests -> "findOne"
-    _ -> "find"
-  mkRequest url = req POST url (ReqBodyJson query) bsResponse
-  actionFrom request = withReqManager $ runReq defaultHttpConfig . pure request

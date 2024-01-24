@@ -9,8 +9,6 @@ import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import Data.Aeson
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (foldl')
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
@@ -21,11 +19,11 @@ import qualified Data.Text.Encoding as B
 import Data.Time (UTCTime, getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
-import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotified, postNotifier, preNotifier)
+import Notifications (feedlinksWithMissingPubdates, postNotifier, preNotifier)
 import Parsing (rebuildFeed)
-import Redis (HasRedis, pageKeys, singleK, withRedis)
+import Redis (HasRedis, deleteManyFeeds, getAllFeeds, pageKeys, singleFeedsK, withRedis, writeManyFeeds)
 import Types hiding (Reply)
-import Utils (feedsFromList, freshLastXDays, partitionEither, renderDbError, sortItems)
+import Utils (feedsFromList, freshLastXDays, partitionEither, renderDbError)
 
 type CacheRes = Either T.Text FromCache
 
@@ -34,43 +32,6 @@ class (MonadReader AppConfig m) => HasCache m where
 
 instance (MonadIO m) => HasCache (App m) where
   withCache = withBroker
-
-writeManyFeeds :: [Feed] -> Redis (TxResult ([Status], Integer))
-writeManyFeeds fs =
-  let write_to_keys f = set (singleK . f_link $ f) . B.concat . LB.toChunks . encode $ sortItems f
-      write_to_sets = sadd "feeds" . map (B.encodeUtf8 . f_link) $ fs
-      action = do
-        q1 <- sequence <$> mapM write_to_keys fs
-        q2 <- write_to_sets
-        pure $ (,) <$> q1 <*> q2
-   in multiExec action
-
-deleteManyFeeds :: [T.Text] -> Redis (TxResult Integer)
-deleteManyFeeds fs = multiExec $ do
-  _ <- del (map singleK fs)
-  srem "feeds" $ map B.encodeUtf8 fs
-
-getAllFeeds :: (HasRedis m) => AppConfig -> m (Either T.Text FeedsMap)
-getAllFeeds env =
-  let action =
-        withRedis env $
-          smembers "feeds"
-            >>= \case
-              Left _ -> pure $ Left "Unable to find keys"
-              Right ks ->
-                mapM (get . B.append "feeds:") ks
-                  >>= ( \case
-                          Left _ -> pure $ Left "Unable to find feeds"
-                          Right xs -> pure $ Right xs
-                      )
-                    . sequence
-   in action >>= \case
-        Left err -> pure $ Left err
-        Right bs -> case sequence bs of
-          Nothing -> pure $ Left "Unable to decode feeds"
-          Just bs' -> case mapM decodeStrict' bs' :: Maybe [Feed] of
-            Nothing -> pure $ Left "Unable to decode feeds"
-            Just feeds -> pure . Right . feedsFromList $ feeds
 
 rebuildUpdate ::
   (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
@@ -185,7 +146,7 @@ withBroker (CacheSetPages cid mid pages mb_link) =
      in action
 withBroker (CachePullFeed flink) = do
   env <- ask
-  withRedis env (get . singleK $ flink) >>= \case
+  withRedis env (get . singleFeedsK $ flink) >>= \case
     Left _ -> pure $ Left "Redis ran into an error"
     Right Nothing -> pure $ Left "Cache miss"
     Right (Just doc) -> case decodeStrict' doc :: Maybe Feed of
@@ -212,7 +173,7 @@ withBroker (CachePullFeeds flinks) = do
       let misses = missing_from_cache feeds
        in pure . Left $ "Missing these feeds: " `T.append` T.intercalate "," misses
  where
-  red_get_one_s = get . singleK
+  red_get_one_s = get . singleFeedsK
   red_get_all_s fs = sequence . sequence <$> mapM red_get_one_s fs
   missing_from_cache feeds =
     if null feeds
@@ -248,27 +209,11 @@ withBroker CacheRefresh = do
           recached <- withBroker . CachePushFeeds $ HMS.elems rebuilt
           -- creating update notification payload, with 'last_run' used only for 'follow notifications'
           let post = postNotifier rebuilt last_batch pre
-              has_digest = HMS.keys $ batches post
-              no_digest = collectNoDigest has_digest $ batch_recipes pre
-              (not_updated_feeds, updated_feeds) = partitionDigests $ batches post
           liftIO $ do
             -- ensuring caching worked
             case recached of
               Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ e
               _ -> pure ()
-            -- logging due chats with no digest
-            unless (null no_digest) $ do
-              markNotified env no_digest now
-              writeChan (postjobs env) . JobLog $ LogNoDigest no_digest now
-            -- logging feeds of due chats with updates / no update
-            unless (S.null $ not_updated_feeds `S.union` updated_feeds) $ do
-              writeChan (postjobs env)
-                . JobLog
-                $ LogDigest
-                  { log_updated_feeds = S.toList updated_feeds
-                  , log_not_updated = S.toList not_updated_feeds
-                  , log_at = now
-                  }
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)
               $ writeChan (postjobs env)
@@ -286,17 +231,6 @@ withBroker CacheRefresh = do
     withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
       Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
       _ -> pure mempty
-  partitionDigests =
-    foldl'
-      ( \(!not_found, !found) (!c, !bat) ->
-          let subs = sub_feeds_links c
-              found' = case bat of
-                Follows fs -> S.fromList $ map f_link fs
-                Digests fs -> S.fromList $ map f_link fs
-              not_found' = S.filter (`notElem` found') subs
-           in (not_found `S.union` not_found', found `S.union` found')
-      )
-      (mempty, mempty)
   where_is_rust env Pre{..} Post{..} =
     let rust_in = filter (T.isInfixOf "rust")
         to_refresh = rust_in feeds_to_refresh

@@ -1,14 +1,13 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Mongo (saveToLog, HasMongo (..), checkDbMapper) where
+module Mongo where
 
 import Control.Concurrent (writeChan)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
-import Data.Aeson (eitherDecodeStrict')
 import qualified Data.ByteString.Char8 as B
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
@@ -23,8 +22,6 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
-import Network.HTTP.Req (BsResponse, responseBody)
-import Requests (fetchApi)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Types
@@ -58,7 +55,7 @@ instance MongoDoc Digest where
   checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc LogItem where
-  readDoc = bsonToLog
+  readDoc = undefined
   writeDoc = logToBson
   checks v = v == (readDoc . writeDoc $ v)
 
@@ -71,19 +68,16 @@ class HasMongo m where
   evalDb :: AppConfig -> DbAction -> m DbRes
   loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
   setupDb :: MongoCreds -> m (Either DbError (Pipe, MongoCreds))
-  fetch :: APIKey -> APIReq -> m (Either T.Text BsResponse)
 
 instance (MonadIO m) => HasMongo (App m) where
   evalDb = evalMongo
   loginDb = authWith
   setupDb = makePipe
-  fetch = fetchApi
 
 instance HasMongo IO where
   evalDb = evalMongo
   loginDb = authWith
   setupDb = makePipe
-  fetch = fetchApi
 
 {- Connection -}
 
@@ -91,10 +85,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print $
-        "Failed to acquire primary replica, reason:"
-          ++ show err
-          ++ ". Moving to second."
+      print
+        $ "Failed to acquire primary replica, reason:"
+        ++ show err
+        ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -139,7 +133,7 @@ makePipe creds =
 
 {- Evaluation -}
 
-withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either () a)
+withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either T.Text a)
 withMongo AppConfig{..} action = liftIO $ do
   pipe <- acquire
   attempt <- attemptWith pipe
@@ -147,9 +141,13 @@ withMongo AppConfig{..} action = liftIO $ do
     Left (ConnectionFailure failure) -> do
       alert failure
       initConnectionMongo mongo_creds >>= \case
-        Left e -> alertGiveUp $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
+        Left e -> do
+          alert $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
+          pure . Left . T.pack $ show e
         Right fresh_pipe -> finishWith fresh_pipe
-    Left err -> alertGiveUp err
+    Left err -> do
+      alert err
+      attemptGiveup pipe
     Right r -> pure $ Right r
  where
   ref = snd connectors
@@ -160,39 +158,30 @@ withMongo AppConfig{..} action = liftIO $ do
   attemptWith pipe = try $ runMongo pipe action
   attemptGiveup pipe =
     attemptWith pipe >>= \case
-      Left (SomeException e) -> alertGiveUp $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+      Left (SomeException e) -> do
+        alert $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+        pure . Left . T.pack . show $ e
       Right r -> pure $ Right r
-
-  runMongo :: (MonadIO m) => Pipe -> Action m a -> m a
   runMongo pipe = access pipe master (database_name mongo_creds)
-  alertGiveUp err = alert err >> pure (Left ())
   alert err =
     liftIO
       $ writeChan postjobs
-        . JobTgAlertAdmin
+      . JobTgAlertAdmin
       $ "withMongo failed with "
-        `T.append` (T.pack . show $ err)
-        `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+      `T.append` (T.pack . show $ err)
+      `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
-{- Actions -}
+{- Search and indices -}
 
 buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
 buildSearchQuery ws mb_last_time =
-  let searchExpr =
-        [ "$search"
-            =: [ "index" =: ("default" :: T.Text)
-               , "text"
-                  =: [ "query" =: S.toList ws
-                     , "fuzzy" =: ([] :: Document)
-                     , "path" =: (["i_desc", "i_title"] :: [T.Text])
-                     ]
-               ]
-        ]
+  let searchExpr = ["$search" =: T.intercalate " " (S.toList ws)]
       matchStage Nothing =
         ["$match" =: ["$text" =: searchExpr]]
       matchStage (Just t) =
         ["$match" =: ["$and" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]], "$text" =: searchExpr]]
-      sortLimitStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]], "$limit" =: (20 :: Int)]
+      sortStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]]]
+      limitStage = ["$limit" =: (20 :: Int)]
       projectStage =
         [ "$project"
             =: [ "_id" =: (0 :: Int)
@@ -203,21 +192,17 @@ buildSearchQuery ws mb_last_time =
                , "score" =: ["$meta" =: ("searchScore" :: T.Text)]
                ]
         ]
-   in [matchStage mb_last_time, sortLimitStage, projectStage]
+   in [matchStage mb_last_time, sortStage, limitStage, projectStage]
+
+itemsIndex :: Index
+itemsIndex =
+  let fields = ["i_title" =: ("text" :: T.Text), "i_desc" =: ("text" :: T.Text)]
+   in Index "items" fields "items_idx" True False Nothing
+
+{- Actions -}
 
 evalMongo :: (HasMongo m, MonadIO m) => AppConfig -> DbAction -> m DbRes
 evalMongo env (DbAskForLogin uid cid) = do
-  -- FIX ME --
-  -- This should be adapted to the Data API
-  {-
-  let f = "{'admin_uid': '" `T.append` uid `T.append` "', }"
-      q = FindOne "admins" "feedfarer" "Cluster0" f
-  fetchApi (api_key env) q >>= \case
-      Left _ -> pure . DbErr $ FaultyToken
-      Right resp ->
-          let b = responseBody resp :: APIReq
-          in  if null $
-  -}
   let selector = ["admin_uid" =: uid, "admin_chatid" =: cid]
       get_doc = findOne $ select selector "admins"
       write_doc h n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
@@ -236,10 +221,10 @@ evalMongo env (DbAskForLogin uid cid) = do
   mkSafeHash =
     liftIO getSystemTime
       <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
+      . show
+      . hashWith SHA256
+      . B.pack
+      . show
 evalMongo env (CheckLogin h) =
   let r = findOne (select ["admin_token" =: h] "admins")
       del = deleteOne (select ["admin_token" =: h] "admins")
@@ -262,10 +247,16 @@ evalMongo env (ArchiveItems feeds) =
           if failed res
             then pure . DbErr $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
             else pure DbOk
-evalMongo env (DbSearch keywords scope last_time) =
+evalMongo env req@(DbSearch keywords scope last_time) =
   let action = aggregate "items" $ buildSearchQuery keywords last_time
    in withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate mempty "DbSearch failed"
+        Left err ->
+          if "index required" `T.isInfixOf` err
+            then
+              withMongo env (createIndex itemsIndex) >>= \case
+                Left snd_err -> pure . DbErr . BadQuery $ snd_err
+                Right _ -> evalMongo env req
+            else pure . DbErr $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
         Right res ->
           let mkSearchRes doc =
                 let title = M.lookup "i_title" doc
@@ -277,8 +268,8 @@ evalMongo env (DbSearch keywords scope last_time) =
                  in if or nothings
                       then Nothing
                       else
-                        Just $
-                          SearchResult
+                        Just
+                          $ SearchResult
                             { sr_title = fromJust title
                             , sr_link = fromJust link
                             , sr_pubdate = fromJust pubdate
@@ -300,43 +291,27 @@ evalMongo env (DeleteChat cid) =
         Left _ -> pure $ DbErr $ FailedToUpdate mempty "DeleteChat failed"
         Right _ -> pure DbOk
 evalMongo env GetAllChats =
-  let q = APIReq CChats Nothing
-   in fetchApi (api_key env) q >>= \case
-        Left err -> pure . DbErr $ FailedToUpdate "GetAllChats failed" err
-        Right resp ->
-          let b = responseBody resp
-           in case eitherDecodeStrict' b :: Either String APIChats of
-                Left err -> pure $ DbErr . NotFound $ T.pack err
-                Right docs -> pure . DbChats . chats_documents $ docs
+  let action = find (select [] "chats")
+   in withMongo env (action >>= rest) >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllChats failed"
+        Right docs ->
+          if null docs
+            then pure DbNoChat
+            else pure $ DbChats . map readDoc $ docs
 evalMongo env GetAllFeeds =
-  let q = APIReq CFeeds Nothing
-   in fetchApi (api_key env) q >>= \case
-        Left err -> pure . DbErr $ FailedToUpdate "GetAllFeeds failed" err
-        Right resp ->
-          let b = responseBody resp
-           in case eitherDecodeStrict' b :: Either String APIFeeds of
-                Left err -> pure $ DbErr . NotFound $ T.pack err
-                Right docs -> pure . DbFeeds . map fromAPIFeed . feeds_documents $ docs
+  let action = find (select [] "feeds")
+   in withMongo env (action >>= rest) >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllFeeds failed"
+        Right docs ->
+          if null docs
+            then pure DbNoFeed
+            else pure . DbFeeds $ map readDoc docs
 evalMongo env (GetPages cid mid) =
-  let f = APIFilter Nothing (Just mid) Nothing
-      q = APIReq CPages (Just f)
-   in fetchApi (api_key env) q >>= \case
-        Left _ -> pure $ DbNoPage cid mid
-        Right resp ->
-          let b = responseBody resp
-           in case eitherDecodeStrict' b :: Either String APIPages of
-                Left err -> pure $ DbErr . NotFound $ T.pack err
-                Right docs -> case List.find (\p -> pages_chat_id p == cid) $ pages_documents docs of
-                  Nothing -> pure $ DbErr . NotFound $ mempty
-                  Just found -> pure $ DbPages (pages_pages found) (pages_url found)
-{-
-let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
- in action >>= \case
+  let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
+   in action >>= \case
         Right (Just doc) -> case M.lookup "pages" doc of
-            Just pages -> pure $ DbPages pages (M.lookup "url" doc)
-            _ -> pure $ DbNoPage cid mid
-        _ -> pure $ DbNoPage cid mid
--}
+          Just pages -> pure $ DbPages pages (M.lookup "url" doc)
+          _ -> pure $ DbNoPage cid mid
 evalMongo env (IncReads links) =
   let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
    in mapM_ action links >> pure DbOk
@@ -347,34 +322,25 @@ evalMongo env (InsertPages cid mid pages mb_link) =
         Just l -> base_payload ++ ["url" =: l]
       action = withMongo env $ insert "pages" payload
    in action >>= \case
-        Left () -> pure . DbErr $ FailedToInsertPage
+        Left _ -> pure . DbErr $ FailedToInsertPage
         _ -> pure DbOk
 evalMongo env (PruneOld t) =
   let del_items = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
       del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
    in withMongo env (del_items >> del_digests) >> pure DbOk
 evalMongo env (ReadDigest _id) =
-  case readMaybe . T.unpack $ _id :: Maybe ObjectId of
-    Nothing -> pure DbBadOID
-    oid ->
-      let f = APIFilter Nothing Nothing oid
-          q = APIReq CDigests (Just f)
-       in fetchApi (api_key env) q >>= \case
-            Left err -> pure . DbErr $ FailedToUpdate "digest" err
-            Right resp ->
-              let b = responseBody resp
-               in case eitherDecodeStrict' b :: Either String APIDigest of
-                    Left err -> pure $ DbErr . NotFound $ T.pack err
-                    Right doc -> pure . DbDigest $ digest_document doc
-{-
-    action s = findOne $ select s "digests"
- in case mkSelector of
+  let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
+        Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
+          Nothing -> Left FailedToProduceValidId
+          Just n -> Right ["digest_id" =: n]
+        Just oid -> Right ["_id" =: oid]
+      action s = findOne $ select s "digests"
+   in case mkSelector of
         Left err -> pure $ DbErr err
         Right selector ->
-            withMongo env (action selector) >>= \case
-                Left () -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
-                Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
--}
+          withMongo env (action selector) >>= \case
+            Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
+            Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
 evalMongo env (UpsertChat chat) =
   let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
    in action >>= \case
@@ -441,7 +407,6 @@ feedToBson Feed{..} =
   , "f_items" =: map writeDoc (take 30 . List.sortOn (Down . i_pubdate) $ f_items)
   , "f_last_refresh" =: f_last_refresh
   , "f_link" =: f_link
-  , "f_reads" =: f_reads
   , "f_title" =: f_title
   , "f_type" =: (T.pack . show $ f_type)
   ]
@@ -456,7 +421,6 @@ bsonToFeed doc =
         , f_items = items
         , f_last_refresh = M.lookup "f_last_refresh" doc
         , f_link = fromJust $ M.lookup "f_link" doc
-        , f_reads = fromJust $ M.lookup "f_reads" doc
         , f_title = fromJust $ M.lookup "f_title" doc
         , f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom
         }
@@ -594,75 +558,18 @@ adminToBson AdminUser{..} =
 
 {- Logs -}
 
-bsonToLog :: Document -> LogItem
-bsonToLog doc = case M.lookup "log_refresh" doc of
-  Just log_refresh ->
-    LogPerf
-      { log_refresh = fromMaybe 0 log_refresh
-      , log_message = fromMaybe mempty $ M.lookup "log_message" doc
-      , log_at = fromMaybe undefined $ M.lookup "log_at" doc
-      , log_sending_notif = fromMaybe 0 $ M.lookup "log_sending_notif" doc
-      , log_updating = fromMaybe 0 $ M.lookup "log_update" doc
-      , log_total = fromMaybe 0 $ M.lookup "log_total" doc
-      }
-  Nothing -> case M.lookup "log_discarded_duplicates" doc of
-    Just docs ->
-      LogMissing
-        { log_feeds_with_missing = docs
-        , log_at = fromMaybe undefined $ M.lookup "log_at" doc
-        , log_total_missed = fromMaybe 0 $ M.lookup "log_total_dicarded" doc
-        }
-    Nothing -> case M.lookup "log_updated_feeds" doc of
-      Just updated_feeds ->
-        LogDigest
-          { log_updated_feeds = updated_feeds
-          , log_not_updated = fromMaybe mempty $ M.lookup "log_not_updated" doc
-          , log_at = fromMaybe undefined $ M.lookup "log_at" doc
-          }
-      Nothing -> case M.lookup "long_due_chats_with_no_digest" doc of
-        Just l ->
-          LogNoDigest
-            { log_due_chats_with_no_digest = l
-            , log_at = fromMaybe undefined $ M.lookup "log_at" doc
-            }
-        Nothing -> undefined
-
 logToBson :: LogItem -> Document
-logToBson LogPerf{..} =
-  [ "log_message" =: log_message
-  , "log_at" =: log_at
-  , "log_refresh" =: log_refresh
-  , "log_sending_notif" =: log_sending_notif
-  , "log_update" =: log_updating
-  , "log_total" =: log_total
-  , "log_type" =: ("performance" :: T.Text)
-  ]
 logToBson (LogMissing missing total t) =
   [ "log_discarded_duplicates" =: missing
   , "log_total_discarded" =: total
   , "log_at" =: t
   , "log_type" =: ("discarded_duplicates" :: T.Text)
   ]
-logToBson (LogNoDigest chat_ids t) =
-  [ "log_at" =: t
-  , "log_due_chats_with_no_digest" =: chat_ids
-  , "log_type" =: ("chats_without_digest" :: T.Text)
-  ]
 logToBson (LogDiscardedToRefreshRecipes to_refresh discarded recipes) =
   [ "log_refresh" =: to_refresh
   , "log_discarded" =: discarded
   , "log_recipes" =: recipes
   ]
-logToBson (LogDigest updated not_updated t) =
-  [ "log_at" =: t
-  , "log_updated_feeds" =: updated
-  , "log_not_updated" =: not_updated
-  , "log_type" =: ("feeds_updated_or_not" :: T.Text)
-  ]
-logToBson (LogCouldNotArchive feeds t err) =
-  let flinks = map f_link feeds
-      items = foldMap f_items feeds
-   in ["log_at " =: t, "log_error" =: err, "log_flinks" =: flinks, "log_items" =: map (T.pack . show) items]
 logToBson (LogNotifiers pre_notifier post_notifier) =
   [ "pre_notifier_subchats" =: toBson pre_notifier
   , "post_notifier_subchats" =: toBson post_notifier
@@ -671,7 +578,12 @@ logToBson (LogNotifiers pre_notifier post_notifier) =
   toBson notifier = map (chatToBson . snd) $ HMS.toList notifier
 
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env logitem = void $ withMongo env (insert "logs" $ writeDoc logitem)
+saveToLog env logitem =
+  let collection = case logitem of
+        LogDiscardedToRefreshRecipes{} -> "logs_discarded"
+        LogMissing{} -> "logs_missing"
+        LogNotifiers{} -> "logs_notifiers"
+   in void $ withMongo env (insert collection $ writeDoc logitem)
 
 {- Tests -}
 
@@ -683,15 +595,13 @@ checkDbMapper = do
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
       settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
       chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings
-      feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now) 0
-      log' = LogPerf mempty now 0 0 0 0
+      feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]
       equalities =
         [ ("item", checks item)
         , ("digest", checks digest)
         , ("feed", checks feed)
         , ("chat", checks chat)
-        , ("log", checks log')
         ] ::
           [(T.Text, Bool)]
   unless (all snd equalities) . liftIO $ do

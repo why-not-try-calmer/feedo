@@ -13,7 +13,6 @@ import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import Jobs
 import Mongo (setupDb)
 import Network.Wai
@@ -58,7 +57,7 @@ server =
       let tok = bot_token . tg_config
           finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
           handle upd = case callback_query upd of
-            Just dat -> processCbq dat
+            Just cbq -> processCbq cbq
             Nothing -> case message upd of
               Nothing -> liftIO $ putStrLn "Failed to parse message"
               Just msg ->
@@ -100,7 +99,6 @@ withServer = serve botApi . initServer
 makeConfig :: [(String, String)] -> IO (AppConfig, Int)
 makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
-      key = T.encodeUtf8 . T.pack . fromJust $ lookup "API_KEY" env
       base = T.pack . fromJust $ lookup "BASE_URL" env
       dbName = case lookup "TEST" env of
         Just "1" -> "feedfarer-test"
@@ -130,8 +128,7 @@ makeConfig env =
         last_run_ioref <- newIORef Nothing
         pure
           ( AppConfig
-              { api_key = key
-              , blacklist = mvar2
+              { blacklist = mvar2
               , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
               , base_url = base
               , mongo_creds = connected_creds

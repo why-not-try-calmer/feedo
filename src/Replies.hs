@@ -96,7 +96,6 @@ instance Renderable Feed where
         , ("Current items", T.pack . show $ length f_items)
         , ("Avg. interval between items", renderAvgInterval f_avg_interval)
         , ("Last refresh", maybe "None" utcToYmdHMS f_last_refresh)
-        , ("Total reads", T.pack . show $ f_reads)
         ]
 
 instance Renderable SubChat where

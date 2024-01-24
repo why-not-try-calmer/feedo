@@ -134,10 +134,11 @@ test-suite feedfarer-test
   main-is: Spec.hs
   other-modules:
       BrokerSpec
-      DatabaseSpec
       MarkdownCheckerSpec
+      MongoSpec
       NotifierSpec
       ParsingSpec
+      RedisSpec
       RepliesSpec
       RequestsSpec
       TgActionsSpec
