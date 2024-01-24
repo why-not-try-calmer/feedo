@@ -52,17 +52,17 @@ deleteManyFeeds fs = multiExec $ do
 getAllFeeds :: (HasRedis m) => AppConfig -> m (Either T.Text FeedsMap)
 getAllFeeds env =
   let action =
-        withRedis env $
-          smembers "feeds"
-            >>= \case
-              Left _ -> pure $ Left "Unable to find keys"
-              Right ks ->
-                mapM (get . B.append "feeds:") ks
-                  >>= ( \case
-                          Left _ -> pure $ Left "Unable to find feeds"
-                          Right xs -> pure $ Right xs
-                      )
-                    . sequence
+        withRedis env
+          $ smembers "feeds"
+          >>= \case
+            Left _ -> pure $ Left "Unable to find keys"
+            Right ks ->
+              mapM (get . B.append "feeds:") ks
+                >>= ( \case
+                        Left _ -> pure $ Left "Unable to find feeds"
+                        Right xs -> pure $ Right xs
+                    )
+                . sequence
    in action >>= \case
         Left err -> pure $ Left err
         Right bs -> case sequence bs of
@@ -127,7 +127,7 @@ withBroker (CacheDeleteFeeds flinks) =
             pure
               . Left
               $ "Unable to delete these feeds: "
-                `T.append` T.intercalate ", " flinks
+              `T.append` T.intercalate ", " flinks
 withBroker (CacheGetPage cid mid n) = do
   env <- ask
   withRedis env query >>= \case
@@ -142,7 +142,7 @@ withBroker (CacheGetPage cid mid n) = do
               pure
                 . Left
                 $ "Error while trying to refresh after pulling anew from database. Chat involved: "
-                  `T.append` (T.pack . show $ cid)
+                `T.append` (T.pack . show $ cid)
  where
   (lk, k) = pageKeys cid mid
   query = do
@@ -233,13 +233,14 @@ withBroker CacheRefresh = do
   -- checking due chats
   let pre = preNotifier now last_run chats
       chats_want_to_refresh =
-        map (T.intercalate ", " . S.toList . sub_feeds_links . fst) $
-          HMS.elems $
-            batch_recipes pre
-  liftIO . writeChan (postjobs env) $
-    JobTgAlertAdmin $
-      T.append "These chats want to refresh" $
-        T.intercalate " ;" chats_want_to_refresh
+        map (T.pack . show . fst)
+          $ HMS.elems
+          $ batch_recipes pre
+  liftIO
+    . writeChan (postjobs env)
+    $ JobTgAlertAdmin
+    $ T.append "These chats want to refresh"
+    $ T.intercalate " ;" chats_want_to_refresh
   pure . Right $ CacheOk
 -- handling due chats
 
