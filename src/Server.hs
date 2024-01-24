@@ -5,7 +5,7 @@
 module Server (startApp, registerWebhook, makeConfig) where
 
 import Backend
-import Broker (HasCache)
+import Cache (HasCache)
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader

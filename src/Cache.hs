@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Broker where
+module Cache where
 
 import Control.Concurrent (modifyMVar, readMVar, writeChan)
 import Control.Concurrent.Async (mapConcurrently)
@@ -54,15 +54,16 @@ getAllFeeds :: (HasRedis m) => AppConfig -> m (Either T.Text FeedsMap)
 getAllFeeds env =
   let action =
         withRedis env $
-          smembers "feeds" >>= \case
-            Left _ -> pure $ Left "Unable to find keys"
-            Right ks ->
-              mapM (get . B.append "feeds:") ks
-                >>= ( \case
-                        Left _ -> pure $ Left "Unable to find feeds"
-                        Right xs -> pure $ Right xs
-                    )
-                  . sequence
+          smembers "feeds"
+            >>= \case
+              Left _ -> pure $ Left "Unable to find keys"
+              Right ks ->
+                mapM (get . B.append "feeds:") ks
+                  >>= ( \case
+                          Left _ -> pure $ Left "Unable to find feeds"
+                          Right xs -> pure $ Right xs
+                      )
+                    . sequence
    in action >>= \case
         Left err -> pure $ Left err
         Right bs -> case sequence bs of
@@ -117,6 +118,7 @@ rebuildUpdate flinks now =
     edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
 
 withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
+{- Cache in-app or in-data frequently requested data -}
 withBroker (CacheDeleteFeeds []) = pure $ Left "No feed to delete!"
 withBroker (CacheDeleteFeeds flinks) =
   ask >>= \env ->
@@ -124,8 +126,9 @@ withBroker (CacheDeleteFeeds flinks) =
      in action >>= \case
           TxSuccess _ -> pure . Right $ CacheOk
           _ ->
-            pure . Left $
-              "Unable to delete these feeds: "
+            pure
+              . Left
+              $ "Unable to delete these feeds: "
                 `T.append` T.intercalate ", " flinks
 withBroker (CacheGetPage cid mid n) = do
   env <- ask
@@ -138,8 +141,9 @@ withBroker (CacheGetPage cid mid n) = do
           withRedis env query >>= \case
             Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
             _ ->
-              pure . Left $
-                "Error while trying to refresh after pulling anew from database. Chat involved: "
+              pure
+                . Left
+                $ "Error while trying to refresh after pulling anew from database. Chat involved: "
                   `T.append` (T.pack . show $ cid)
  where
   (lk, k) = pageKeys cid mid
@@ -258,16 +262,22 @@ withBroker CacheRefresh = do
               writeChan (postjobs env) . JobLog $ LogNoDigest no_digest now
             -- logging feeds of due chats with updates / no update
             unless (S.null $ not_updated_feeds `S.union` updated_feeds) $ do
-              writeChan (postjobs env) . JobLog $
-                LogDigest
+              writeChan (postjobs env)
+                . JobLog
+                $ LogDigest
                   { log_updated_feeds = S.toList updated_feeds
                   , log_not_updated = S.toList not_updated_feeds
                   , log_at = now
                   }
             -- logging possibly too aggressive union
-            unless (null $ discarded_items_links post) $
-              writeChan (postjobs env) . JobLog $
-                LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
+            unless (null $ discarded_items_links post)
+              $ writeChan (postjobs env)
+                . JobLog
+              $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
+            -- log notifiers
+            writeChan (postjobs env) $
+              JobLog $
+                LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
             -- Rust??
             where_is_rust env pre post
           pure . Right $ CacheDigests $ batches post
@@ -300,8 +310,9 @@ withBroker CacheRefresh = do
             []
             batch_recipes
         report =
-          writeChan (postjobs env) . JobLog $
-            LogDiscardedToRefreshRecipes
+          writeChan (postjobs env)
+            . JobLog
+            $ LogDiscardedToRefreshRecipes
               to_refresh
               discarded
               recipes

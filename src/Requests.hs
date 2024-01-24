@@ -47,7 +47,8 @@ setWebhook tok webhook = do
  where
   request =
     req GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
-      "url" =: (webhook `T.append` "/webhook/" `T.append` tok)
+      "url"
+        =: (webhook `T.append` "/webhook/" `T.append` tok)
 
 reqSend :: (TgReqM m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
 reqSend tok postMeth encodedMsg =
@@ -218,7 +219,11 @@ reply tok cid rep chan =
         runSend_ tok "sendMessage" (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
-   in outbound rep
+   in if T.null $ reply_contents rep
+        then
+          let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
+           in liftIO $ writeChan chan $ JobTgAlertAdmin alert_msg
+        else outbound rep
 
 {- Feeds -}
 
@@ -259,9 +264,10 @@ fetchApi k query =
             key = header "api-key" k
          in conts <> ac <> key
    in liftIO $
-        (try . actionFrom $ mkRequest url headers) >>= \case
-          Left (SomeException e) -> pure . Left . T.pack . show $ e
-          Right r -> pure $ Right r
+        (try . actionFrom $ mkRequest url headers)
+          >>= \case
+            Left (SomeException e) -> pure . Left . T.pack . show $ e
+            Right r -> pure $ Right r
  where
   endpoint = case api_collection query of
     CDigests -> "findOne"

@@ -3,7 +3,7 @@
 
 module Backend where
 
-import Broker (HasCache (withCache))
+import Cache (HasCache (withCache))
 import Control.Concurrent
 import Control.Concurrent.Async (forConcurrently)
 import Control.Monad.Reader

@@ -30,7 +30,7 @@ flag static
 library
   exposed-modules:
       Backend
-      Broker
+      Cache
       Jobs
       MarkdownChecker
       Mongo

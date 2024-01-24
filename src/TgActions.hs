@@ -4,7 +4,7 @@
 module TgActions (registerWebhook, isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
 
 import Backend (withChat)
-import Broker (HasCache (withCache), getAllFeeds)
+import Cache (HasCache (withCache), getAllFeeds)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)

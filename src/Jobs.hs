@@ -3,7 +3,7 @@
 module Jobs (procNotif, postProcJobs) where
 
 import Backend (withChat)
-import Broker (HasCache (withCache))
+import Cache (HasCache (withCache))
 import Control.Concurrent (
   readChan,
   threadDelay,
@@ -11,7 +11,7 @@ import Control.Concurrent (
  )
 import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
-import Control.Monad (forever, void, when, unless)
+import Control.Monad (forever, unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.HashMap.Strict as HMS
@@ -36,9 +36,12 @@ import Utils (renderDbError, scanTimeSlices)
 {- Background tasks -}
 
 runForever_ :: (Exception e) => IO () -> (e -> IO ()) -> IO ()
+{- Utility to fork a runtime thread that will run forever (i.e. absorbing all exceptions -}
 runForever_ action handler = void . async . forever $ catch action handler
 
 procNotif :: (MonadReader AppConfig m, MonadIO m) => m ()
+{- Forks a thread and tasks it with checking every minute
+if any chat need a digest or follow -}
 procNotif = do
   env <- ask
   let tok = bot_token . tg_config $ env
@@ -125,6 +128,7 @@ procNotif = do
   liftIO $ runForever_ wait_action handler
 
 postProcJobs :: (MonadReader AppConfig m, MonadIO m) => m ()
+{- Forks a runtime thread and tasks it with handling as they come all post-processing jobs -}
 postProcJobs =
   ask >>= \env ->
     let action = readChan (postjobs env) >>= execute env

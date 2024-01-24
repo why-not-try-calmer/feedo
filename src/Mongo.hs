@@ -663,6 +663,12 @@ logToBson (LogCouldNotArchive feeds t err) =
   let flinks = map f_link feeds
       items = foldMap f_items feeds
    in ["log_at " =: t, "log_error" =: err, "log_flinks" =: flinks, "log_items" =: map (T.pack . show) items]
+logToBson (LogNotifiers pre_notifier post_notifier) =
+  [ "pre_notifier_subchats" =: toBson pre_notifier
+  , "post_notifier_subchats" =: toBson post_notifier
+  ]
+ where
+  toBson notifier = map (chatToBson . snd) $ HMS.toList notifier
 
 saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
 saveToLog env logitem = void $ withMongo env (insert "logs" $ writeDoc logitem)

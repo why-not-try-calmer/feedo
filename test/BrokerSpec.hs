@@ -1,7 +1,7 @@
 module BrokerSpec where
 
 import Backend (loadChats, refreshCache, regenFeeds)
-import Broker
+import Cache
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.RWS (All (getAll))
 import Control.Monad.Reader (MonadReader)
