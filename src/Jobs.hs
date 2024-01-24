@@ -11,7 +11,7 @@ import Control.Concurrent (
  )
 import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
-import Control.Monad (forever, void, when, unless)
+import Control.Monad (forever, unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.HashMap.Strict as HMS

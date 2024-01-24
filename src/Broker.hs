@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Broker where
 
@@ -21,7 +20,7 @@ import qualified Data.Text.Encoding as B
 import Data.Time (UTCTime, getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
-import Notifications (collectNoDigest, feedlinksWithMissingPubdates, markNotified, postNotifier, preNotifier)
+import Notifications (preNotifier)
 import Parsing (rebuildFeed)
 import Redis (HasRedis, pageKeys, singleK, withRedis)
 import Types hiding (Reply)
@@ -54,15 +53,16 @@ getAllFeeds :: (HasRedis m) => AppConfig -> m (Either T.Text FeedsMap)
 getAllFeeds env =
   let action =
         withRedis env $
-          smembers "feeds" >>= \case
-            Left _ -> pure $ Left "Unable to find keys"
-            Right ks ->
-              mapM (get . B.append "feeds:") ks
-                >>= ( \case
-                        Left _ -> pure $ Left "Unable to find feeds"
-                        Right xs -> pure $ Right xs
-                    )
-                  . sequence
+          smembers "feeds"
+            >>= \case
+              Left _ -> pure $ Left "Unable to find keys"
+              Right ks ->
+                mapM (get . B.append "feeds:") ks
+                  >>= ( \case
+                          Left _ -> pure $ Left "Unable to find feeds"
+                          Right xs -> pure $ Right xs
+                      )
+                    . sequence
    in action >>= \case
         Left err -> pure $ Left err
         Right bs -> case sequence bs of
@@ -124,8 +124,9 @@ withBroker (CacheDeleteFeeds flinks) =
      in action >>= \case
           TxSuccess _ -> pure . Right $ CacheOk
           _ ->
-            pure . Left $
-              "Unable to delete these feeds: "
+            pure
+              . Left
+              $ "Unable to delete these feeds: "
                 `T.append` T.intercalate ", " flinks
 withBroker (CacheGetPage cid mid n) = do
   env <- ask
@@ -138,8 +139,9 @@ withBroker (CacheGetPage cid mid n) = do
           withRedis env query >>= \case
             Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
             _ ->
-              pure . Left $
-                "Error while trying to refresh after pulling anew from database. Chat involved: "
+              pure
+                . Left
+                $ "Error while trying to refresh after pulling anew from database. Chat involved: "
                   `T.append` (T.pack . show $ cid)
  where
   (lk, k) = pageKeys cid mid
@@ -230,83 +232,96 @@ withBroker CacheRefresh = do
     pure (chats, now, last_run)
   -- checking due chats
   let pre = preNotifier now last_run chats
-  -- handling due chats
-  if null $ feeds_to_refresh pre
-    then pure $ Right CacheOk
-    else
-      rebuildUpdate (feeds_to_refresh pre) now >>= \case
-        Left err -> pure $ Left err
-        Right rebuilt -> do
-          -- sometimes a digest would contain items with the same timestamps, but
-          -- we can filter them out through a simple comparison
-          last_batch <- get_last_batch rebuilt
-          -- caching
-          recached <- withBroker . CachePushFeeds $ HMS.elems rebuilt
-          -- creating update notification payload, with 'last_run' used only for 'follow notifications'
-          let post = postNotifier rebuilt last_batch pre
-              has_digest = HMS.keys $ batches post
-              no_digest = collectNoDigest has_digest $ batch_recipes pre
-              (not_updated_feeds, updated_feeds) = partitionDigests $ batches post
-          liftIO $ do
-            -- ensuring caching worked
-            case recached of
-              Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ e
-              _ -> pure ()
-            -- logging due chats with no digest
-            unless (null no_digest) $ do
-              markNotified env no_digest now
-              writeChan (postjobs env) . JobLog $ LogNoDigest no_digest now
-            -- logging feeds of due chats with updates / no update
-            unless (S.null $ not_updated_feeds `S.union` updated_feeds) $ do
-              writeChan (postjobs env) . JobLog $
-                LogDigest
-                  { log_updated_feeds = S.toList updated_feeds
-                  , log_not_updated = S.toList not_updated_feeds
-                  , log_at = now
-                  }
-            -- logging possibly too aggressive union
-            unless (null $ discarded_items_links post) $
-              writeChan (postjobs env) . JobLog $
-                LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
-            -- Rust??
-            where_is_rust env pre post
-          pure . Right $ CacheDigests $ batches post
- where
-  get_last_batch rebuilt =
-    withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
-      Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
-      _ -> pure mempty
-  partitionDigests =
-    foldl'
-      ( \(!not_found, !found) (!c, !bat) ->
-          let subs = sub_feeds_links c
-              found' = case bat of
-                Follows fs -> S.fromList $ map f_link fs
-                Digests fs -> S.fromList $ map f_link fs
-              not_found' = S.filter (`notElem` found') subs
-           in (not_found `S.union` not_found', found `S.union` found')
-      )
-      (mempty, mempty)
-  where_is_rust env Pre{..} Post{..} =
-    let rust_in = filter (T.isInfixOf "rust")
-        to_refresh = rust_in feeds_to_refresh
-        discarded = rust_in discarded_items_links
-        recipes =
-          foldl'
-            ( \acc (_, v) -> case v of
-                FollowFeedLinks fs -> acc ++ rust_in fs
-                DigestFeedLinks ds -> acc ++ rust_in ds
-            )
-            []
-            batch_recipes
-        report =
-          writeChan (postjobs env) . JobLog $
-            LogDiscardedToRefreshRecipes
-              to_refresh
-              discarded
-              recipes
-     in unless (all null [to_refresh, discarded, recipes]) report
-  where_is_rust _ _ _ = undefined
+      chats_want_to_refresh =
+        map (T.intercalate ", " . S.toList . sub_feeds_links . fst) $
+          HMS.elems $
+            batch_recipes pre
+  liftIO . writeChan (postjobs env) $
+    JobTgAlertAdmin $
+      T.append "These chats want to refresh" $
+        T.intercalate " ;" chats_want_to_refresh
+  pure . Right $ CacheOk
+-- handling due chats
+
+-- if null $ feeds_to_refresh pre
+--   then pure $ Right CacheOk
+--   else
+--     rebuildUpdate (feeds_to_refresh pre) now >>= \case
+--       Left err -> pure $ Left err
+--       Right rebuilt -> do
+--         -- sometimes a digest would contain items with the same timestamps, but
+--         -- we can filter them out through a simple comparison
+--         last_batch <- get_last_batch rebuilt
+--         -- caching
+--         recached <- withBroker . CachePushFeeds $ HMS.elems rebuilt
+--         -- creating update notification payload, with 'last_run' used only for 'follow notifications'
+--         let post = postNotifier rebuilt last_batch pre
+--             has_digest = HMS.keys $ batches post
+--             no_digest = collectNoDigest has_digest $ batch_recipes pre
+--             (not_updated_feeds, updated_feeds) = partitionDigests $ batches post
+--         liftIO $ do
+--           -- ensuring caching worked
+--           case recached of
+--             Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ e
+--             _ -> pure ()
+--           -- logging due chats with no digest
+--           unless (null no_digest) $ do
+--             markNotified env no_digest now
+--             writeChan (postjobs env) . JobLog $ LogNoDigest no_digest now
+--           -- logging feeds of due chats with updates / no update
+--           unless (S.null $ not_updated_feeds `S.union` updated_feeds) $ do
+--             writeChan (postjobs env)
+--               . JobLog
+--               $ LogDigest
+--                 { log_updated_feeds = S.toList updated_feeds
+--                 , log_not_updated = S.toList not_updated_feeds
+--                 , log_at = now
+--                 }
+--           -- logging possibly too aggressive union
+--           unless (null $ discarded_items_links post)
+--             $ writeChan (postjobs env)
+--             . JobLog
+--             $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
+--           -- Rust??
+--           where_is_rust env pre post
+--         pure . Right $ CacheDigests $ batches post
+--  where
+--   get_last_batch rebuilt =
+--     withBroker (CachePullFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
+--       Right (CacheFeeds fs) -> pure $ map i_link $ foldMap f_items fs
+--       _ -> pure mempty
+--   partitionDigests =
+--     foldl'
+--       ( \(!not_found, !found) (!c, !bat) ->
+--           let subs = sub_feeds_links c
+--               found' = case bat of
+--                 Follows fs -> S.fromList $ map f_link fs
+--                 Digests fs -> S.fromList $ map f_link fs
+--               not_found' = S.filter (`notElem` found') subs
+--            in (not_found `S.union` not_found', found `S.union` found')
+--       )
+--       (mempty, mempty)
+--   where_is_rust env Pre{..} Post{..} =
+--     let rust_in = filter (T.isInfixOf "rust")
+--         to_refresh = rust_in feeds_to_refresh
+--         discarded = rust_in discarded_items_links
+--         recipes =
+--           foldl'
+--             ( \acc (_, v) -> case v of
+--                 FollowFeedLinks fs -> acc ++ rust_in fs
+--                 DigestFeedLinks ds -> acc ++ rust_in ds
+--             )
+--             []
+--             batch_recipes
+--         report =
+--           writeChan (postjobs env)
+--             . JobLog
+--             $ LogDiscardedToRefreshRecipes
+--               to_refresh
+--               discarded
+--               recipes
+--      in unless (all null [to_refresh, discarded, recipes]) report
+--   where_is_rust _ _ _ = undefined
 withBroker (CacheXDays links days) =
   ask
     >>= ( getAllFeeds

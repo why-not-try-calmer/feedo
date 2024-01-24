@@ -130,8 +130,9 @@ withChat action cid = do
       _ -> pure (hmap, Right ChatOk)
 
 loadChats :: (MonadReader AppConfig m, MonadIO m) => m ()
-loadChats =
-  ask >>= \env -> liftIO $
+loadChats = do
+  env <- ask
+  liftIO $
     modifyMVar_ (subs_state env) $
       \chats_hmap -> do
         now <- getCurrentTime
