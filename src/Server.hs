@@ -11,7 +11,7 @@ import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
 import Mongo (setupDb)
@@ -112,8 +112,9 @@ makeConfig env =
         let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
          in if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
+      version = T.pack . fromMaybe "test" $ lookup "VERSION" env
    in do
-        mvar <- newMVar HMS.empty
+        mvar1 <- newMVar HMS.empty
         mvar2 <- newMVar HMS.empty
         chan <- newChan
         conn <-
@@ -128,12 +129,13 @@ makeConfig env =
         last_run_ioref <- newIORef Nothing
         pure
           ( AppConfig
-              { blacklist = mvar2
+              { app_version = version
+              , blacklist = mvar1
               , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
               , base_url = base
               , mongo_creds = connected_creds
               , last_worker_run = last_run_ioref
-              , subs_state = mvar
+              , subs_state = mvar2
               , postjobs = chan
               , worker_interval = interval
               , connectors = (conn, pipe_ioref)

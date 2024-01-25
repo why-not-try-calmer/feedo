@@ -274,11 +274,12 @@ data ParsingSettings
 data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (Eq, Show)
 
 data UserAction
-  = About FeedRef
+  = About
   | Announce T.Text
   | AskForLogin ChatId
   | AboutChannel ChatId FeedRef
   | Changelog
+  | FeedInfo FeedRef
   | GetChannelItems ChatId FeedRef
   | GetItems FeedRef
   | GetLastXDaysItems Int
@@ -341,7 +342,8 @@ data ChatRes
 {- Replies -}
 
 data Replies
-  = FromAdmin T.Text T.Text
+  = FromAbout T.Text
+  | FromAdmin T.Text T.Text
   | FromAnnounce T.Text
   | FromChangelog
   | FromChatFeeds SubChat [Feed]
@@ -604,14 +606,15 @@ data BlackListedUrl = BlackListedUrl
 type BlacklistMap = MVar (HMS.HashMap FeedLink BlackListedUrl)
 
 data AppConfig = AppConfig
-  { blacklist :: BlacklistMap
+  { app_version :: T.Text
+  , base_url :: T.Text
+  , blacklist :: BlacklistMap
+  , connectors :: Connectors
   , last_worker_run :: IORef (Maybe UTCTime)
   , mongo_creds :: MongoCreds
-  , connectors :: Connectors
-  , tg_config :: ServerConfig
-  , base_url :: T.Text
-  , subs_state :: MVar SubChats
   , postjobs :: Chan Job
+  , subs_state :: MVar SubChats
+  , tg_config :: ServerConfig
   , worker_interval :: Int
   }
 

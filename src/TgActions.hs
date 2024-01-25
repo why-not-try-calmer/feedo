@@ -21,14 +21,14 @@ import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Redis (getAllFeeds)
-import Replies (mkReply, render)
+import Replies (Replies (FromAbout), mkReply, render)
 import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhook)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
 import Types (
   App,
-  AppConfig (base_url, postjobs, subs_state, tg_config),
+  AppConfig (app_version, base_url, postjobs, subs_state, tg_config),
   BotToken,
   CacheAction (
     CacheGetPage,
@@ -109,7 +109,7 @@ isUserAdmin tok uid cid =
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= (user_id . cm_user $ member) = acc
-    | "administrator" == cm_status member || "creator" == cm_status member = True
+    | cm_status member `elem` ["administrator", "creator"] = True
     | otherwise = False
 
 isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either Error Bool)
@@ -130,6 +130,7 @@ exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
 interpretCmd :: T.Text -> Either Error UserAction
 interpretCmd contents
+  | cmd == "/about" = Right About
   | cmd == "/admin" =
       if length args /= 1
         then Left $ BadInput "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
@@ -145,7 +146,7 @@ interpretCmd contents
       if length args == 1
         then case toFeedRef args of
           Left err -> Left err
-          Right single_ref -> Right . About . head $ single_ref
+          Right single_ref -> Right . FeedInfo . head $ single_ref
         else
           if length args == 2
             then case readMaybe . T.unpack . head $ args :: Maybe ChatId of
@@ -372,7 +373,10 @@ evalTgAct ::
   UserAction ->
   ChatId ->
   App m (Either Error Reply)
-evalTgAct _ (About ref) cid =
+evalTgAct _ About _ =
+  ask >>= \env ->
+    pure . Right . mkReply . FromAbout . app_version $ env
+evalTgAct _ (FeedInfo ref) cid =
   ask >>= \env -> do
     chats_hmap <- liftIO . readMVar $ subs_state env
     case HMS.lookup cid chats_hmap of
@@ -450,7 +454,7 @@ evalTgAct uid (AskForLogin target_id) cid = do
                         . mkReply
                         . FromAdmin (base_url env)
                         $ "Unable to log you in. Are you sure you are an admin of this chat?"
-evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (About ref) channel_id
+evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (FeedInfo ref) channel_id
 evalTgAct _ Changelog _ = pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
 evalTgAct _ (GetItems ref) cid = do

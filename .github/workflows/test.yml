@@ -36,6 +36,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
+          build-args: app_version=${{ GITHUB_SHA }}
           file: Dockerfile-test
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}

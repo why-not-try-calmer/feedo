@@ -238,6 +238,12 @@ defaultReply payload =
     }
 
 mkReply :: Replies -> Reply
+mkReply (FromAbout version) =
+  ServiceReply $
+    "Version: "
+      `T.append` version
+      `T.append` ". See https://github.com/why-not-try-calmer/feedo/commit/"
+      `T.append` version
 mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
 mkReply (FromAnnounce txt) = defaultReply txt
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedo_the_bot_channel"

@@ -85,10 +85,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print
-        $ "Failed to acquire primary replica, reason:"
-        ++ show err
-        ++ ". Moving to second."
+      print $
+        "Failed to acquire primary replica, reason:"
+          ++ show err
+          ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -166,10 +166,10 @@ withMongo AppConfig{..} action = liftIO $ do
   alert err =
     liftIO
       $ writeChan postjobs
-      . JobTgAlertAdmin
+        . JobTgAlertAdmin
       $ "withMongo failed with "
-      `T.append` (T.pack . show $ err)
-      `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+        `T.append` (T.pack . show $ err)
+        `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Search and indices -}
 
@@ -221,10 +221,10 @@ evalMongo env (DbAskForLogin uid cid) = do
   mkSafeHash =
     liftIO getSystemTime
       <&> T.pack
-      . show
-      . hashWith SHA256
-      . B.pack
-      . show
+        . show
+        . hashWith SHA256
+        . B.pack
+        . show
 evalMongo env (CheckLogin h) =
   let r = findOne (select ["admin_token" =: h] "admins")
       del = deleteOne (select ["admin_token" =: h] "admins")
@@ -268,8 +268,8 @@ evalMongo env req@(DbSearch keywords scope last_time) =
                  in if or nothings
                       then Nothing
                       else
-                        Just
-                          $ SearchResult
+                        Just $
+                          SearchResult
                             { sr_title = fromJust title
                             , sr_link = fromJust link
                             , sr_pubdate = fromJust pubdate
