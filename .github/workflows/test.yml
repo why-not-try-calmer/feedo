@@ -62,5 +62,5 @@ jobs:
           echo "WEBHOOK_URL=$webhook_url" >> .env
           
           docker compose up -d mongo
-          docker compose exec mongo mongosh --file /scripts/startup-mongo.js
+          docker compose exec mongo mongosh --file /scripts/mongo-startup.js
           docker compose run test
