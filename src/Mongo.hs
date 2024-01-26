@@ -25,7 +25,7 @@ import GHC.IORef (atomicModifyIORef', readIORef)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Types
-import Utils (defaultChatSettings)
+import Utils (defaultChatSettings, freshLastXDays, renderDbError)
 
 {- Interface -}
 
@@ -85,10 +85,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print $
-        "Failed to acquire primary replica, reason:"
-          ++ show err
-          ++ ". Moving to second."
+      print
+        $ "Failed to acquire primary replica, reason:"
+        ++ show err
+        ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -168,10 +168,10 @@ withMongo AppConfig{..} action = liftIO $ do
   alert err =
     liftIO
       $ writeChan postjobs
-        . JobTgAlertAdmin
+      . JobTgAlertAdmin
       $ "withMongo failed with "
-        `T.append` (T.pack . show $ err)
-        `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+      `T.append` (T.pack . show $ err)
+      `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Search and indices -}
 
@@ -223,10 +223,10 @@ evalMongo env (DbAskForLogin uid cid) = do
   mkSafeHash =
     liftIO getSystemTime
       <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
+      . show
+      . hashWith SHA256
+      . B.pack
+      . show
 evalMongo env (CheckLogin h) =
   let r = findOne (select ["admin_token" =: h] "admins")
       del = deleteOne (select ["admin_token" =: h] "admins")
@@ -265,8 +265,8 @@ evalMongo env (DbSearch keywords scope last_time) =
                  in if or nothings
                       then Nothing
                       else
-                        Just $
-                          SearchResult
+                        Just
+                          $ SearchResult
                             { sr_title = fromJust title
                             , sr_link = fromJust link
                             , sr_pubdate = fromJust pubdate
@@ -382,6 +382,21 @@ evalMongo env (WriteDigest digest) =
         Right res -> case res of
           ObjId _id -> pure $ DbDigestId . T.pack . show $ _id
           _ -> pure . DbErr $ FailedToProduceValidId
+evalMongo env (GetXDays links days) = do
+  now <- liftIO getCurrentTime
+  evalDb env GetAllFeeds
+    >>= \case
+      DbErr err -> pure . DbErr . NotFound $ renderDbError err
+      DbFeeds fs ->
+        let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
+            collected = foldFeeds listed now
+         in pure . DbLinkDigest $ collected
+      _ -> pure . DbErr . NotFound $ "Unknown error from CacheXDays"
+ where
+  collect f acc now =
+    let fresh = freshLastXDays days now $ f_items f
+     in if null fresh then acc else (f_link f, fresh) : acc
+  foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs
 
 {- Items -}
 

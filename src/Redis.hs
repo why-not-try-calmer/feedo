@@ -11,17 +11,15 @@ import Control.Monad.Reader (MonadReader (ask))
 import Data.Aeson (encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
-import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
-import Data.Time (getCurrentTime)
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
 import Mongo (HasMongo, evalDb)
-import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), Digest (..), Feed (f_items), FromCache (..), f_link)
-import Utils (freshLastXDays, renderDbError)
+import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), Digest (..), FromCache (..))
+import Utils (renderDbError)
 
 class (Monad m) => HasRedis m where
   withKeyStore :: AppConfig -> Redis a -> m a
@@ -148,19 +146,3 @@ withBroker (CacheSetPages cid mid pages mb_link) =
                 TxSuccess _ -> pure $ Right CacheOk
                 _ -> pure $ Left "Nothing"
      in action
-withBroker (CacheXDays links days) = do
-  env <- ask
-  now <- liftIO getCurrentTime
-  evalDb env GetAllFeeds
-    >>= \case
-      DbErr err -> pure . Left $ renderDbError err
-      DbFeeds fs ->
-        let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
-            collected = foldFeeds listed now
-         in pure . Right . CacheLinkDigest $ collected
-      _ -> pure . Left $ "Unknown error from CacheXDays"
- where
-  collect f acc now =
-    let fresh = freshLastXDays days now $ f_items f
-     in if null fresh then acc else (f_link f, fresh) : acc
-  foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs

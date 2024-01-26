@@ -409,6 +409,7 @@ data DbAction
   | GetSomeFeeds [FeedLink]
   | GetAllChats
   | GetPages ChatId Int
+  | GetXDays [FeedLink] Int
   | IncReads [FeedLink]
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
   | DbSearch Keywords Scope (Maybe UTCTime)
@@ -428,7 +429,9 @@ data DbRes
   | DbBadOID
   | DbNoDigest
   | DbErr DbError
+  | DbLinkDigest [(FeedLink, [Item])]
   | DbOk
+  | DbXDays [FeedLink] Int
   | DbNoFeed
   | DbLoggedIn ChatId
   | DbToken T.Text
@@ -466,15 +469,13 @@ data PageOne = PageOne
 {- Cache -}
 
 data CacheAction
-  = CacheXDays [FeedLink] Int
-  | CacheGetPage ChatId Int Int
+  = CacheGetPage ChatId Int Int
   | CacheSetPages ChatId Int [T.Text] (Maybe T.Text)
 
 data FromCache
   = CacheOk
   | CacheNothing
   | CacheDigests (HMS.HashMap ChatId (SubChat, Batch))
-  | CacheLinkDigest [(FeedLink, [Item])]
   | CachePage T.Text Int (Maybe T.Text)
   deriving (Show, Eq)
 
