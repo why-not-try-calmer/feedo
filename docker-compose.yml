@@ -46,7 +46,7 @@ services:
         - MONGO_INITDB_ROOT_PASSWORD
       volumes:
         - mongo-data:/data/db
-        - ./mongo-startup.js:/scripts/mongo-startup.js:ro
+        - ./scripts/mongo-startup.js:/scripts/mongo-startup.js:ro
       ports:
         - "27017:27017" 
        
