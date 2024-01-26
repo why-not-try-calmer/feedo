@@ -46,14 +46,14 @@ jobs:
       - name: Pull and run tests
         env:
           api_key: ${{ secrets.API_KEY }}
-          telegram_token: ${{ secrets.TELEGRAM_TOKEN }}
-          base_url: ${{ secrets.BASE_URL }}
           alert_chat_id: ${{ secrets.ALERT_CHATID }}
-          webhook_url: ${{ secrets.WEBHOOK_URL }}
+          base_url: ${{ secrets.BASE_URL }}
+          mongo_password: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
           mongo_user: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
-          mongo_password: $ {{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
+          telegram_token: ${{ secrets.TELEGRAM_TOKEN }}
+          webhook_url: ${{ secrets.WEBHOOK_URL }}
         run: |
-          echo "ALERT_CHAT_ID=$alert_chat_id" >> .env
+          echo "ALERT_CHATID=$alert_chat_id" >> .env
           echo "API_KEY=$api_key" >> .env
           echo "BASE_URL=$base_url" >> .env
           echo "MONGO_INITDB_ROOT_PASSWORD=$mongo_password" >> .env
@@ -62,5 +62,6 @@ jobs:
           echo "WEBHOOK_URL=$webhook_url" >> .env
           
           docker compose up -d mongo
+          sleep 3
           docker compose exec -e TEST=1 mongo mongosh --file /scripts/mongo-startup.js
           docker compose run test
