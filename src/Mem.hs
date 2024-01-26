@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Backend where
+module Mem where
 
 import Control.Concurrent
 import Control.Concurrent.Async (forConcurrently, mapConcurrently)
@@ -23,8 +23,8 @@ import TgramOutJson (ChatId)
 import Types
 import Utils (defaultChatSettings, feedsFromList, partitionEither, removeByUserIdx, renderDbError, sortItems, updateSettings)
 
-withChat :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either Error ChatRes)
-withChat action cid = do
+withChatsFromMem :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either Error ChatRes)
+withChatsFromMem action cid = do
   env <- ask
   res <- liftIO $ modifyMVar (subs_state env) (`afterDb` env)
   case res of
@@ -132,23 +132,23 @@ withChat action cid = do
               _ -> pure (updated_cs, Right ChatOk)
       _ -> pure (hmap, Right ChatOk)
 
-loadChats :: (MonadReader AppConfig m, MonadIO m) => m ()
-loadChats =
-  ask >>= \env -> liftIO $
-    modifyMVar_ (subs_state env) $
-      \chats_hmap -> do
-        now <- getCurrentTime
-        putStrLn "Trying to loading chats now"
-        evalDb env GetAllChats >>= \case
-          DbChats chats -> pure $ update_chats chats now
-          DbErr err -> do
-            print $ renderDbError err
-            pure chats_hmap
-          _ -> pure chats_hmap
+loadChatsIntoMem :: (MonadReader AppConfig m, MonadIO m) => m ()
+loadChatsIntoMem =
+  ask >>= \env -> liftIO
+    $ modifyMVar_ (subs_state env)
+    $ \chats_hmap -> do
+      now <- getCurrentTime
+      putStrLn "Trying to loading chats now"
+      evalDb env GetAllChats >>= \case
+        DbChats chats -> pure $ update_chats chats now
+        DbErr err -> do
+          print $ renderDbError err
+          pure chats_hmap
+        _ -> pure chats_hmap
  where
   update_chats chats now =
-    HMS.fromList $
-      map
+    HMS.fromList
+      $ map
         ( \c ->
             let interval = settings_digest_interval . sub_settings $ c
                 t = case sub_last_digest c of
@@ -159,37 +159,23 @@ loadChats =
         )
         chats
 
-regenFeeds :: (MonadIO m, MonadReader AppConfig m) => m (Maybe [Feed])
-regenFeeds = do
+getFeedsFromMem :: (MonadIO m, MonadReader AppConfig m) => m [Feed]
+getFeedsFromMem = do
   env <- ask
   chats <- liftIO . readMVar $ subs_state env
   let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
       report err = writeChan (postjobs env) . JobTgAlertAdmin $ "Failed to regen feeds for this reason: " `T.append` err
   liftIO $ do
     (failed, feeds) <- partitionEither <$> forConcurrently urls rebuildFeed
-    unless (null failed) (report $ "regenFeeds: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
-    if null feeds
-      then pure Nothing
-      else pure $ Just . map sortItems $ feeds
+    unless (null failed) (report $ "getFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
+    pure . map sortItems $ feeds
 
-refreshCache :: (MonadIO m, HasMongo m, MonadReader AppConfig m) => Maybe [Feed] -> m ()
-refreshCache Nothing = liftIO $ putStrLn "refresh_cache: No feed given"
-refreshCache (Just feeds) = do
-  env <- ask
-  evalDb env (UpsertFeeds feeds) >>= \case
-    DbErr msg -> liftIO $ do
-      print $
-        "refresh_cache: Unable to warm up cache: "
-          `T.append` renderDbError msg
-          `T.append` "Proceededing nonetheless"
-    _ -> pure ()
-
-rebuildUpdate ::
+rebuildFeedsFromMem ::
   (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
   [FeedLink] ->
   UTCTime ->
   m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildUpdate flinks now =
+rebuildFeedsFromMem flinks now =
   ask >>= \env -> liftIO $ do
     (failed, succeeded) <- fetch_feeds
     -- if any failed, 'punish' offenders
@@ -229,8 +215,8 @@ rebuildUpdate flinks now =
     updateSubChats = foldl' edit_subchats
     edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
 
-makeDigests :: (MonadIO m, MonadReader AppConfig m, HasRedis m, HasMongo m) => m (Either T.Text FromCache)
-makeDigests = do
+makeDigestsFromMem :: (MonadIO m, MonadReader AppConfig m, HasRedis m, HasMongo m) => m (Either T.Text FromCache)
+makeDigestsFromMem = do
   env <- ask
   (chats, now, last_run) <- liftIO $ do
     chats <- readMVar $ subs_state env
@@ -243,7 +229,7 @@ makeDigests = do
   if null $ feeds_to_refresh pre
     then pure $ Right CacheOk
     else
-      rebuildUpdate (feeds_to_refresh pre) now >>= \case
+      rebuildFeedsFromMem (feeds_to_refresh pre) now >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
           -- sometimes a digest would contain items with the same timestamps, but
@@ -266,12 +252,12 @@ makeDigests = do
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)
               $ writeChan (postjobs env)
-                . JobLog
+              . JobLog
               $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
             -- log notifiers
-            writeChan (postjobs env) $
-              JobLog $
-                LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
+            writeChan (postjobs env)
+              $ JobLog
+              $ LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
             -- Rust??
             where_is_rust env pre post
           pure . Right $ CacheDigests $ batches post

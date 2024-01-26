@@ -2,7 +2,7 @@
 
 module Jobs (procNotif, postProcJobs) where
 
-import Backend (makeDigests, withChat)
+import Mem (makeDigestsFromMem, withChatsFromMem)
 import Cache (HasCache (withCache))
 import Control.Concurrent (
   readChan,
@@ -75,7 +75,7 @@ procNotif =
                     pure (cid, map f_link ds)
         notify = do
           -- rebuilding feeds and collecting notifications
-          from_cache_payload <- runApp env makeDigests
+          from_cache_payload <- runApp env makeDigestsFromMem
           case from_cache_payload of
             Right (CacheDigests notif_hmap) -> do
               -- skipping sending on a firt run
@@ -136,7 +136,7 @@ postProcJobs =
           . with_cid_txt "Tried to pin a message in (chat_id) " cid
           $ " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
       _ -> pure ()
-  execute env (JobPurge cid) = fork . runApp env $ withChat Purge cid
+  execute env (JobPurge cid) = fork . runApp env $ withChatsFromMem Purge cid
   execute env (JobRemoveMsg cid mid delay) = do
     let (msg, checked_delay) = check_delay delay
     putStrLn ("Removing message in " ++ msg)

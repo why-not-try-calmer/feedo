@@ -3,7 +3,6 @@
 
 module TgActions (registerWebhook, isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
 
-import Backend (withChat)
 import Cache (HasCache (withCache))
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
@@ -17,10 +16,10 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
+import Mem (withChatsFromMem)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
-import Redis (getAllFeeds)
 import Replies (Replies (FromAbout), mkReply, render)
 import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhook)
 import Text.Read (readMaybe)
@@ -112,14 +111,14 @@ isUserAdmin tok uid cid =
 
 isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either Error Bool)
 isChatOfType tok cid ty =
-  liftIO $
-    getChatType
-      >>= \case
-        Left err -> pure . Left . TelegramErr $ err
-        Right res_chat ->
-          let chat_resp = responseBody res_chat :: TgGetChatResponse
-              c = resp_result chat_resp :: Chat
-           in pure . Right $ chat_type c == ty
+  liftIO
+    $ getChatType
+    >>= \case
+      Left err -> pure . Left . TelegramErr $ err
+      Right res_chat ->
+        let chat_resp = responseBody res_chat :: TgGetChatResponse
+            c = resp_result chat_resp :: Chat
+         in pure . Right $ chat_type c == ty
  where
   getChatType = runSend tok "getChat" $ GetChat cid
 
@@ -325,19 +324,19 @@ subFeed cid feeds_urls = do
     Right valid_urls ->
       -- sort out already existent feeds to minimize network call
       -- , and subscribe chat to them
-      getAllFeeds env >>= \case
-        Left _ -> respondWith "Unable to acquire feeds."
-        Right old_feeds ->
+      evalDb env GetAllFeeds >>= \case
+        DbErr err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` renderDbError err
+        DbFeeds old_feeds ->
           let urls = map renderUrl valid_urls
-              old_keys = HMS.keys $ HMS.filter (\f -> f_link f `elem` urls) old_feeds
+              old_keys = map (\f -> f_link f) $ filter (\f -> f_link f `elem` urls) old_feeds
               new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
            in do
-                unless (null old_keys) (void $ withChat (Sub old_keys) cid)
+                unless (null old_keys) (void $ withChatsFromMem (Sub old_keys) cid)
                 if null new_url_schemes
                   then
-                    respondWith $
-                      "Successfully subscribed to "
-                        `T.append` T.intercalate ", " old_keys
+                    respondWith
+                      $ "Successfully subscribed to "
+                      `T.append` T.intercalate ", " old_keys
                   else -- fetches feeds at remaining urls
 
                     liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
@@ -353,7 +352,7 @@ subFeed cid feeds_urls = do
                                 DbErr err -> respondWith $ renderDbError err
                                 _ ->
                                   let to_sub_to = map f_link feeds
-                                   in withChat (Sub to_sub_to) cid >>= \case
+                                   in withChatsFromMem (Sub to_sub_to) cid >>= \case
                                         Left err -> respondWith $ renderUserError err
                                         Right _ ->
                                           let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
@@ -362,6 +361,7 @@ subFeed cid feeds_urls = do
                                                 Nothing -> mempty
                                                 Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
                                            in respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
+        _ -> respondWith "Unknown error when trying to subscribe."
  where
   respondWith err = pure $ ServiceReply err
 
@@ -460,9 +460,9 @@ evalTgAct _ (GetItems ref) cid = do
   let chats_mvar = subs_state env
   chats_hmap <- liftIO $ readMVar chats_mvar
   feeds_hmap <-
-    getAllFeeds env >>= \case
-      Left _ -> pure HMS.empty
-      Right fs -> pure fs
+    evalDb env GetAllFeeds >>= \case
+      DbFeeds fs -> pure $ HMS.fromList $ map (\f -> (f_link f, f)) fs
+      _ -> pure HMS.empty
   -- get items by url or id depending on whether the
   -- user user a number or a string referencing the target feed
   case ref of
@@ -517,21 +517,23 @@ evalTgAct _ ListSubs cid = do
        in if null subs
             then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
             else
-              getAllFeeds env >>= \case
-                Left _ ->
+              evalDb env GetAllFeeds >>= \case
+                DbFeeds fs ->
+                  let hmap = HMS.fromList $ map (\f -> (f_link f, f)) fs
+                   in case mapM (`HMS.lookup` hmap) subs of
+                        Nothing ->
+                          pure
+                            . Left
+                            . NotFoundFeed
+                            $ "Unable to find these feeds "
+                            `T.append` T.intercalate " " subs
+                        Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
+                _ ->
                   pure
                     . Left
                     . NotFoundFeed
                     $ "Unable to find these feeds "
-                      `T.append` T.intercalate " " subs
-                Right fs -> case mapM (`HMS.lookup` fs) subs of
-                  Nothing ->
-                    pure
-                      . Left
-                      . NotFoundFeed
-                      $ "Unable to find these feeds "
-                        `T.append` T.intercalate " " subs
-                  Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
+                    `T.append` T.intercalate " " subs
 evalTgAct uid (Link target_id) cid = do
   env <- ask
   verdict <- liftIO $ mapConcurrently (isUserAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
@@ -541,7 +543,7 @@ evalTgAct uid (Link target_id) cid = do
       if not authorized
         then exitNotAuth uid
         else
-          withChat (Link target_id) cid >>= \case
+          withChatsFromMem (Link target_id) cid >>= \case
             Left err -> pure . Right . ServiceReply . renderUserError $ err
             Right _ -> pure . Right . ServiceReply $ succeeded
  where
@@ -568,16 +570,16 @@ evalTgAct uid (Migrate to) cid = do
             Left err -> restore >> onErr err
             Right _ -> onOk
  where
-  migrate = sequence <$> sequence [withChat (Migrate to) cid, withChat Purge cid]
-  restore = withChat (Migrate cid) to >> withChat Purge to
+  migrate = sequence <$> sequence [withChatsFromMem (Migrate to) cid, withChatsFromMem Purge cid]
+  restore = withChatsFromMem (Migrate cid) to >> withChatsFromMem Purge to
   onOk =
     pure
       . Right
       . ServiceReply
       $ "Successfully migrated "
-        `T.append` (T.pack . show $ cid)
-        `T.append` " to "
-        `T.append` (T.pack . show $ to)
+      `T.append` (T.pack . show $ cid)
+      `T.append` " to "
+      `T.append` (T.pack . show $ to)
   onErr err = pure . Right . ServiceReply $ renderUserError err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
 evalTgAct uid (Pause pause_or_resume) cid =
@@ -589,7 +591,7 @@ evalTgAct uid (Pause pause_or_resume) cid =
             if not verdict
               then exitNotAuth uid
               else
-                withChat (Pause pause_or_resume) cid >>= \case
+                withChatsFromMem (Pause pause_or_resume) cid >>= \case
                   Left err -> pure . Right . ServiceReply . renderUserError $ err
                   Right _ -> pure . Right . ServiceReply $ succeeded
  where
@@ -607,7 +609,7 @@ evalTgAct uid Purge cid = do
       if not verdict
         then exitNotAuth uid
         else
-          withChat Purge cid >>= \case
+          withChatsFromMem Purge cid >>= \case
             Left err -> pure . Right . ServiceReply $ "Unable to purge this chat" `T.append` renderUserError err
             Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
@@ -652,7 +654,7 @@ evalTgAct uid Reset cid = do
       if not verdict
         then exitNotAuth uid
         else
-          withChat Reset cid >>= \case
+          withChatsFromMem Reset cid >>= \case
             Left err -> pure . Right . ServiceReply $ renderUserError err
             Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
@@ -683,7 +685,7 @@ evalTgAct uid (SetChatSettings settings) cid =
             if not verdict
               then exitNotAuth uid
               else
-                withChat (SetChatSettings settings) cid >>= \case
+                withChatsFromMem (SetChatSettings settings) cid >>= \case
                   Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
                   Right (ChatUpdated c) -> pure . Right $ mkReply (FromChat c "Ok. New settings below.\n---\n")
                   _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
@@ -739,7 +741,7 @@ evalTgAct uid (UnSub feeds) cid =
         if not is_admin
           then exitNotAuth uid
           else
-            withChat (UnSub feeds) cid >>= \case
+            withChatsFromMem (UnSub feeds) cid >>= \case
               Left err -> pure . Left $ err
               Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
@@ -760,14 +762,14 @@ processCbq cbq =
         get_page n = withCache $ CacheGetPage cid mid n
      in case cbq_data cbq
               >>= readMaybe
-                . T.unpack ::
+              . T.unpack ::
               Maybe Int of
           Nothing -> pure ()
           Just n ->
-            liftIO $
-              concurrently (runApp env $ get_page n) send_answer
-                >>= send_result n
-                  . fst
+            liftIO
+              $ concurrently (runApp env $ get_page n) send_answer
+              >>= send_result n
+              . fst
  where
   cid = chat_id . chat . fromJust . cbq_message $ cbq
   mid = message_id . fromJust . cbq_message $ cbq

@@ -8,7 +8,7 @@ import Data.Maybe (fromJust)
 import Data.Time (getCurrentTime)
 import Database.Redis (TxResult (TxSuccess))
 import Debug.Trace (trace)
-import Redis (dequeueDigest, enqueueDigest, withRedis')
+import Redis (readDigest, writeDigest, withRedis)
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
@@ -29,7 +29,7 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env
         target = do
           now <- getCurrentTime
           let digest = Digest (Just "123") now [] [] []
-          res <- liftIO $ withRedis' env $ enqueueDigest digest
+          res <- liftIO $ withRedis env $ writeDigest digest
           res `shouldSatisfy` (\case Right _ -> True; _ -> False)
      in desc $ as target
   go2 env =
@@ -46,10 +46,10 @@ spec = runIO getConns >>= \env -> go1 env >> go2 env
               condition1 = validateResults . getDoc
               condition2 (TxSuccess (Nothing, 0)) = True
               condition2 _ = False
-          res1 <- liftIO $ withRedis' env $ dequeueDigest "123"
+          res1 <- liftIO $ withRedis env $ readDigest "123"
           print res1
           res1 `shouldSatisfy` condition1
-          res2 <- liftIO $ withRedis' env $ dequeueDigest "123"
+          res2 <- liftIO $ withRedis env $ readDigest "123"
           print res2
           res2 `shouldSatisfy` condition2
      in desc $ as target

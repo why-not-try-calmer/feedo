@@ -12,7 +12,7 @@ import qualified Data.Text.Encoding as B
 import Data.Time (getCurrentTime)
 import Database.Redis
 import Mongo (HasMongo (evalDb))
-import Redis (HasRedis, getAllFeeds, pageKeys, withRedis)
+import Redis (HasRedis, pageKeys, withRedis)
 import Types hiding (Reply)
 import Utils (freshLastXDays, renderDbError)
 
@@ -40,7 +40,7 @@ withBroker (CacheGetPage cid mid n) = do
               pure
                 . Left
                 $ "Error while trying to refresh after pulling anew from database. Chat involved: "
-                  `T.append` (T.pack . show $ cid)
+                `T.append` (T.pack . show $ cid)
  where
   (lk, k) = pageKeys cid mid
   query = do
@@ -79,14 +79,17 @@ withBroker (CacheSetPages cid mid pages mb_link) =
                 TxSuccess _ -> pure $ Right CacheOk
                 _ -> pure $ Left "Nothing"
      in action
-withBroker (CacheXDays links days) =
-  ask
-    >>= ( getAllFeeds
-            >=> ( \case
-                    Left txt -> pure . Left $ txt
-                    Right fs -> liftIO getCurrentTime <&> (Right . CacheLinkDigest . foldFeeds fs)
-                )
-        )
+withBroker (CacheXDays links days) = do
+  env <- ask
+  now <- liftIO getCurrentTime
+  evalDb env GetAllFeeds
+    >>= \case
+      DbErr err -> pure . Left $ renderDbError err
+      DbFeeds fs ->
+        let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
+            collected = foldFeeds listed now
+         in pure . Right . CacheLinkDigest $ collected
+      _ -> pure . Left $ "Unknown error from CacheXDays"
  where
   collect f acc now =
     let fresh = freshLastXDays days now $ f_items f

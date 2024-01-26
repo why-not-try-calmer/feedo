@@ -4,7 +4,7 @@
 
 module Server (startApp, registerWebhook, makeConfig) where
 
-import Backend
+import Mem
 import Cache (HasCache)
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
@@ -14,7 +14,7 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
-import Mongo (HasMongo, setupDb)
+import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Redis (setupRedis)
@@ -79,11 +79,11 @@ server =
               liftIO (try . runApp env . handle $ update) >>= \case
                 -- catching all leftover exceptions if any
                 Left (SomeException err) ->
-                  liftIO $
-                    writeChan (postjobs env) $
-                      JobTgAlertAdmin $
-                        "Exception thrown against handler: "
-                          `T.append` (T.pack . show $ err)
+                  liftIO
+                    $ writeChan (postjobs env)
+                    $ JobTgAlertAdmin
+                    $ "Exception thrown against handler: "
+                    `T.append` (T.pack . show $ err)
                 Right _ -> pure ()
             else liftIO $ putStrLn "Secrets do not match."
 
@@ -146,16 +146,16 @@ makeConfig env =
 initStart :: (HasCache m, HasMongo m, MonadIO m, MonadReader AppConfig m) => m ()
 initStart = do
   env <- ask
-  loadChats
-  liftIO . putStrLn $ "Chats loaded"
-  feeds <- regenFeeds
+  loadChatsIntoMem
+  liftIO $ putStrLn "Chats loaded"
+  feeds <- getFeedsFromMem
   liftIO . putStrLn $ "Feeds regenerated"
-  refreshCache feeds
+  _ <- evalDb env $ UpsertFeeds feeds
   liftIO . putStrLn $ "Cache refreshed"
   postProcJobs >> procNotif
-  liftIO $
-    writeChan (postjobs env) $
-      JobTgAlertAdmin "Feedo just started."
+  liftIO
+    $ writeChan (postjobs env)
+    $ JobTgAlertAdmin "Feedo just started."
 
 startApp :: IO ()
 startApp = do

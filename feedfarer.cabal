@@ -29,10 +29,10 @@ flag static
 
 library
   exposed-modules:
-      Backend
       Cache
       Jobs
       MarkdownChecker
+      Mem
       Mongo
       Notifications
       Parsing

@@ -2,7 +2,7 @@
 
 module Web where
 
-import Backend (withChat)
+import Mem (withChatsFromMem)
 import Control.Concurrent (readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
@@ -218,7 +218,7 @@ writeSettings (WriteReq hash settings (Just True)) =
     evalDb env (CheckLogin hash) >>= \case
       DbErr err -> pure $ noLogin err
       DbLoggedIn cid ->
-        withChat (SetChatSettings $ Immediate settings) cid >>= \case
+        withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
           Left err -> pure . noUpdate . renderUserError $ err
           Right _ -> pure ok
       _ -> undefined
