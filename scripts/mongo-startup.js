@@ -5,3 +5,4 @@ conn_str = `mongodb://${username}:${password}@localhost:27017/admin`
 conn = Mongo(conn_str)
 db = conn.getDB(db_name)
 db.items.createIndex({ "i_desc": "text" })
+console.assert(db.items.getIndexes())

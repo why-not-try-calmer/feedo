@@ -53,24 +53,14 @@ jobs:
           mongo_user: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
           mongo_password: $ {{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
         run: |
-          docker compose pull test
+          echo "ALERT_CHAT_ID=$alert_chat_id" >> .env
+          echo "API_KEY=$api_key" >> .env
+          echo "BASE_URL=$base_url" >> .env
+          echo "MONGO_INITDB_ROOT_PASSWORD=$mongo_password" >> .env
+          echo "MONGO_INITDB_ROOT_USERNAME=$mongo_user" >> .env
+          echo "TELEGRAM_TOKEN=$telegram_token" >> .env
+          echo "WEBHOOK_URL=$webhook_url" >> .env
           
-          API_KEY=$api_key \
-          TELEGRAM_TOKEN=$telegram_token \
-          BASE_URL=$base_url \
-          ALERT_CHATID=$alert_chat_id \
-          WEBHOOK_URL=$webhook_url \
-          MONGO_INITDB_ROOT_USERNAME=$mongo_user \
-          MONGO_INITDB_ROOT_PASSWORD=$mongo_password \
-            docker compose up -d mongo
-
+          docker compose up -d mongo
           docker compose exec mongo mongosh --file /scripts/startup-mongo.js
-          
-          API_KEY=$api_key \
-          TELEGRAM_TOKEN=$telegram_token \
-          BASE_URL=$base_url \
-          ALERT_CHATID=$alert_chat_id \
-          WEBHOOK_URL=$webhook_url \
-          MONGO_INITDB_ROOT_USERNAME=$mongo_user \
-          MONGO_INITDB_ROOT_PASSWORD=$mongo_password \
-            docker compose run test
+          docker compose run test
