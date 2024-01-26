@@ -54,7 +54,12 @@ jobs:
           mongo_password: $ {{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
         run: |
           docker compose pull test
-
+          docker compose up -d mongo
+          docker compose exec \
+            -e MONGO_INITDB_ROOT_USERNAME=$mongo_user \
+            -e MONGO_INITDB_ROOT_PASSWORD=$mongo_password \
+            mongo mongosh --file /scripts/startup-mongo.js
+          
           API_KEY=$api_key \
           TELEGRAM_TOKEN=$telegram_token \
           BASE_URL=$base_url \

@@ -28,4 +28,5 @@ jobs:
             cd /opt/app
             docker-compose pull
             docker-compose up -d --force-recreate
+            docker-compose exec mongo mongosh --file /scripts/startup-mongo.js
             docker image prune -a --force

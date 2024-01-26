@@ -133,6 +133,9 @@ makePipe creds =
 
 {- Evaluation -}
 
+runMongo :: (MonadIO m) => T.Text -> Pipe -> Action m a -> m a
+runMongo dbName pipe = access pipe master dbName
+
 withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either T.Text a)
 withMongo AppConfig{..} action = liftIO $ do
   pipe <- acquire
@@ -155,14 +158,13 @@ withMongo AppConfig{..} action = liftIO $ do
   finishWith fresh_pipe = do
     atomicModifyIORef' ref (const (fresh_pipe, ()))
     attemptGiveup fresh_pipe
-  attemptWith pipe = try $ runMongo pipe action
+  attemptWith pipe = try $ runMongo (database_name mongo_creds) pipe action
   attemptGiveup pipe =
     attemptWith pipe >>= \case
       Left (SomeException e) -> do
         alert $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
         pure . Left . T.pack . show $ e
       Right r -> pure $ Right r
-  runMongo pipe = access pipe master (database_name mongo_creds)
   alert err =
     liftIO
       $ writeChan postjobs
@@ -196,8 +198,8 @@ buildSearchQuery ws mb_last_time =
 
 itemsIndex :: Index
 itemsIndex =
-  let fields = ["i_title" =: ("text" :: T.Text), "i_desc" =: ("text" :: T.Text)]
-   in Index "items" fields "items_idx" True False Nothing
+  let fields = ["i_desc" =: ("text" :: T.Text)]
+   in Index "items" fields "items__i_desc__idx" True False Nothing
 
 {- Actions -}
 
@@ -247,16 +249,11 @@ evalMongo env (ArchiveItems feeds) =
           if failed res
             then pure . DbErr $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
             else pure DbOk
-evalMongo env req@(DbSearch keywords scope last_time) =
-  let action = aggregate "items" $ buildSearchQuery keywords last_time
-   in withMongo env action >>= \case
-        Left err ->
-          if "index required" `T.isInfixOf` err
-            then
-              withMongo env (createIndex itemsIndex) >>= \case
-                Left snd_err -> pure . DbErr . BadQuery $ snd_err
-                Right _ -> evalMongo env req
-            else pure . DbErr $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
+evalMongo env (DbSearch keywords scope last_time) =
+  let action1 = ensureIndex itemsIndex
+      action2 = aggregate "items" $ buildSearchQuery keywords last_time
+   in withMongo env (action1 >> action2) >>= \case
+        Left err -> pure . DbErr $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
         Right res ->
           let mkSearchRes doc =
                 let title = M.lookup "i_title" doc
