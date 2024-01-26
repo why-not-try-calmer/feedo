@@ -26,6 +26,8 @@ jobs:
           key: ${{ secrets.PROD_KEY }}
           script: |
             cd /opt/app
+            git pull
             docker-compose pull
             docker-compose up -d --force-recreate
+            docker-compose exec -e TEST=0 mongo mongosh --file /scripts/startup-mongo.js
             docker image prune -a --force

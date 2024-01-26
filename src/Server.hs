@@ -4,18 +4,16 @@
 
 module Server (startApp, registerWebhook, makeConfig) where
 
-import Backend
-import Broker (HasCache)
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import Jobs
-import Mongo (setupDb)
+import Mem
+import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Redis (setupRedis)
@@ -58,7 +56,7 @@ server =
       let tok = bot_token . tg_config
           finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
           handle upd = case callback_query upd of
-            Just dat -> processCbq dat
+            Just cbq -> processCbq cbq
             Nothing -> case message upd of
               Nothing -> liftIO $ putStrLn "Failed to parse message"
               Just msg ->
@@ -100,7 +98,6 @@ withServer = serve botApi . initServer
 makeConfig :: [(String, String)] -> IO (AppConfig, Int)
 makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
-      key = T.encodeUtf8 . T.pack . fromJust $ lookup "API_KEY" env
       base = T.pack . fromJust $ lookup "BASE_URL" env
       dbName = case lookup "TEST" env of
         Just "1" -> "feedfarer-test"
@@ -114,8 +111,9 @@ makeConfig env =
         let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
          in if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
+      version = T.pack . fromMaybe "test" $ lookup "VERSION" env
    in do
-        mvar <- newMVar HMS.empty
+        mvar1 <- newMVar HMS.empty
         mvar2 <- newMVar HMS.empty
         chan <- newChan
         conn <-
@@ -130,13 +128,13 @@ makeConfig env =
         last_run_ioref <- newIORef Nothing
         pure
           ( AppConfig
-              { api_key = key
-              , blacklist = mvar2
+              { app_version = version
+              , blacklist = mvar1
               , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
               , base_url = base
               , mongo_creds = connected_creds
               , last_worker_run = last_run_ioref
-              , subs_state = mvar
+              , subs_state = mvar2
               , postjobs = chan
               , worker_interval = interval
               , connectors = (conn, pipe_ioref)
@@ -144,16 +142,16 @@ makeConfig env =
           , port
           )
 
-initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
+initStart :: (MonadIO m, MonadReader AppConfig m, HasMongo m) => m ()
 initStart = do
-  loadChats
-  liftIO . putStrLn $ "Chats loaded"
-  feeds <- regenFeeds
+  env <- ask
+  loadChatsIntoMem
+  liftIO $ putStrLn "Chats loaded"
+  feeds <- getFeedsFromMem
   liftIO . putStrLn $ "Feeds regenerated"
-  refreshCache feeds
+  _ <- evalDb env $ UpsertFeeds feeds
   liftIO . putStrLn $ "Cache refreshed"
   postProcJobs >> procNotif
-  env <- ask
   liftIO $
     writeChan (postjobs env) $
       JobTgAlertAdmin "Feedo just started."

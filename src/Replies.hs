@@ -96,7 +96,6 @@ instance Renderable Feed where
         , ("Current items", T.pack . show $ length f_items)
         , ("Avg. interval between items", renderAvgInterval f_avg_interval)
         , ("Last refresh", maybe "None" utcToYmdHMS f_last_refresh)
-        , ("Total reads", T.pack . show $ f_reads)
         ]
 
 instance Renderable SubChat where
@@ -239,6 +238,12 @@ defaultReply payload =
     }
 
 mkReply :: Replies -> Reply
+mkReply (FromAbout version) =
+  ServiceReply $
+    "Version: "
+      `T.append` version
+      `T.append` ". See https://github.com/why-not-try-calmer/feedo/commit/"
+      `T.append` version
 mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
 mkReply (FromAnnounce txt) = defaultReply txt
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedo_the_bot_channel"
@@ -307,7 +312,8 @@ renderCmds :: T.Text
 renderCmds =
   T.intercalate
     "\n"
-    [ "/admin: manage the chat settings from the comfort of a web browser"
+    [ "/about: Information about this service (version, statistics, etc.)"
+    , "/admin: manage the chat settings from the comfort of a web browser"
     , "/changelog: link to the changelog"
     , "/feed `<optional: channel id> <# or url>`: show info about the subscribed to feed"
     , "/fresh `<n>`: display n-old items, in number of days"

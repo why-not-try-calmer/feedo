@@ -29,10 +29,9 @@ flag static
 
 library
   exposed-modules:
-      Backend
-      Broker
       Jobs
       MarkdownChecker
+      Mem
       Mongo
       Notifications
       Parsing
@@ -133,11 +132,11 @@ test-suite feedfarer-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      BrokerSpec
-      DatabaseSpec
       MarkdownCheckerSpec
+      MongoSpec
       NotifierSpec
       ParsingSpec
+      RedisSpec
       RepliesSpec
       RequestsSpec
       TgActionsSpec

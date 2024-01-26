@@ -1,4 +1,6 @@
 FROM haskell:latest
+ARG app_version=test
+ENV APP_VERSION=$app_version
 WORKDIR /opt/app
 
 # Dependencies for caching
@@ -10,7 +12,11 @@ RUN stack --resolver lts-19.33 test \
   --no-run-tests \
   --only-dependencies
 
-COPY . .
+COPY ./app app/
+COPY ./src src/
+COPY ./test test/
+COPY ./Setup.hs ./package.yaml .
 COPY /static /var/www/feedfarer-webui
+
 # Build and run tests
 CMD ["stack", "--resolver", "lts-19.33", "test", "--fast"]

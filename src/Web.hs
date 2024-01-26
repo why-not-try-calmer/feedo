@@ -2,7 +2,6 @@
 
 module Web where
 
-import Backend (withChat)
 import Control.Concurrent (readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
@@ -15,6 +14,7 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
+import Mem (withChatsFromMem)
 import Mongo (HasMongo (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
@@ -218,7 +218,7 @@ writeSettings (WriteReq hash settings (Just True)) =
     evalDb env (CheckLogin hash) >>= \case
       DbErr err -> pure $ noLogin err
       DbLoggedIn cid ->
-        withChat (SetChatSettings $ Immediate settings) cid >>= \case
+        withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
           Left err -> pure . noUpdate . renderUserError $ err
           Right _ -> pure ok
       _ -> undefined

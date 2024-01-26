@@ -84,7 +84,6 @@ buildFeed ty url = do
                 , f_items = items
                 , f_avg_interval = interval
                 , f_last_refresh = Just now
-                , f_reads = 0
                 }
          in pure $ faultyFeed built_feed
  where

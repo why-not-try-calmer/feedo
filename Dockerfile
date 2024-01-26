@@ -13,7 +13,11 @@ RUN stack --resolver lts-19.33 build \
   --only-dependencies
 
 # Build main
-COPY . .
+COPY ./app app/
+COPY ./src src/
+COPY ./test test/
+COPY ./Setup.hs ./package.yaml .
+
 RUN stack --resolver lts-19.33 install \
   --no-install-ghc \
   --system-ghc \
@@ -21,6 +25,9 @@ RUN stack --resolver lts-19.33 install \
   --flag feedfarer:static
 
 FROM alpine:latest as runner
+ARG app_version
+ENV APP_VERSION=$app_version
+
 WORKDIR /opt/app/
 COPY --from=builder /opt/app/feedfarer-exe .
 
