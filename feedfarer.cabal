@@ -29,7 +29,6 @@ flag static
 
 library
   exposed-modules:
-      Cache
       Jobs
       MarkdownChecker
       Mem

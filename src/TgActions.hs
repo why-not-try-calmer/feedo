@@ -3,7 +3,6 @@
 
 module TgActions (registerWebhook, isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
 
-import Cache (HasCache (withCache))
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
@@ -20,6 +19,7 @@ import Mem (withChatsFromMem)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
+import Redis
 import Replies (Replies (FromAbout), mkReply, render)
 import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhook)
 import Text.Read (readMaybe)
@@ -111,14 +111,14 @@ isUserAdmin tok uid cid =
 
 isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either Error Bool)
 isChatOfType tok cid ty =
-  liftIO
-    $ getChatType
-    >>= \case
-      Left err -> pure . Left . TelegramErr $ err
-      Right res_chat ->
-        let chat_resp = responseBody res_chat :: TgGetChatResponse
-            c = resp_result chat_resp :: Chat
-         in pure . Right $ chat_type c == ty
+  liftIO $
+    getChatType
+      >>= \case
+        Left err -> pure . Left . TelegramErr $ err
+        Right res_chat ->
+          let chat_resp = responseBody res_chat :: TgGetChatResponse
+              c = resp_result chat_resp :: Chat
+           in pure . Right $ chat_type c == ty
  where
   getChatType = runSend tok "getChat" $ GetChat cid
 
@@ -328,15 +328,15 @@ subFeed cid feeds_urls = do
         DbErr err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` renderDbError err
         DbFeeds old_feeds ->
           let urls = map renderUrl valid_urls
-              old_keys = map (\f -> f_link f) $ filter (\f -> f_link f `elem` urls) old_feeds
+              old_keys = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
               new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
            in do
                 unless (null old_keys) (void $ withChatsFromMem (Sub old_keys) cid)
                 if null new_url_schemes
                   then
-                    respondWith
-                      $ "Successfully subscribed to "
-                      `T.append` T.intercalate ", " old_keys
+                    respondWith $
+                      "Successfully subscribed to "
+                        `T.append` T.intercalate ", " old_keys
                   else -- fetches feeds at remaining urls
 
                     liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
@@ -526,14 +526,14 @@ evalTgAct _ ListSubs cid = do
                             . Left
                             . NotFoundFeed
                             $ "Unable to find these feeds "
-                            `T.append` T.intercalate " " subs
+                              `T.append` T.intercalate " " subs
                         Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
                 _ ->
                   pure
                     . Left
                     . NotFoundFeed
                     $ "Unable to find these feeds "
-                    `T.append` T.intercalate " " subs
+                      `T.append` T.intercalate " " subs
 evalTgAct uid (Link target_id) cid = do
   env <- ask
   verdict <- liftIO $ mapConcurrently (isUserAdmin (bot_token . tg_config $ env) uid) [cid, target_id]
@@ -577,9 +577,9 @@ evalTgAct uid (Migrate to) cid = do
       . Right
       . ServiceReply
       $ "Successfully migrated "
-      `T.append` (T.pack . show $ cid)
-      `T.append` " to "
-      `T.append` (T.pack . show $ to)
+        `T.append` (T.pack . show $ cid)
+        `T.append` " to "
+        `T.append` (T.pack . show $ to)
   onErr err = pure . Right . ServiceReply $ renderUserError err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
 evalTgAct uid (Pause pause_or_resume) cid =
@@ -762,14 +762,14 @@ processCbq cbq =
         get_page n = withCache $ CacheGetPage cid mid n
      in case cbq_data cbq
               >>= readMaybe
-              . T.unpack ::
+                . T.unpack ::
               Maybe Int of
           Nothing -> pure ()
           Just n ->
-            liftIO
-              $ concurrently (runApp env $ get_page n) send_answer
-              >>= send_result n
-              . fst
+            liftIO $
+              concurrently (runApp env $ get_page n) send_answer
+                >>= send_result n
+                  . fst
  where
   cid = chat_id . chat . fromJust . cbq_message $ cbq
   mid = message_id . fromJust . cbq_message $ cbq

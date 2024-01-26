@@ -8,7 +8,7 @@ import Data.Maybe (fromJust)
 import Data.Time (getCurrentTime)
 import Database.Redis (TxResult (TxSuccess))
 import Debug.Trace (trace)
-import Redis (readDigest, writeDigest, withRedis)
+import Redis (readDigest, withRedis, writeDigest)
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec

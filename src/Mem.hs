@@ -134,21 +134,21 @@ withChatsFromMem action cid = do
 
 loadChatsIntoMem :: (MonadReader AppConfig m, MonadIO m) => m ()
 loadChatsIntoMem =
-  ask >>= \env -> liftIO
-    $ modifyMVar_ (subs_state env)
-    $ \chats_hmap -> do
-      now <- getCurrentTime
-      putStrLn "Trying to loading chats now"
-      evalDb env GetAllChats >>= \case
-        DbChats chats -> pure $ update_chats chats now
-        DbErr err -> do
-          print $ renderDbError err
-          pure chats_hmap
-        _ -> pure chats_hmap
+  ask >>= \env -> liftIO $
+    modifyMVar_ (subs_state env) $
+      \chats_hmap -> do
+        now <- getCurrentTime
+        putStrLn "Trying to loading chats now"
+        evalDb env GetAllChats >>= \case
+          DbChats chats -> pure $ update_chats chats now
+          DbErr err -> do
+            print $ renderDbError err
+            pure chats_hmap
+          _ -> pure chats_hmap
  where
   update_chats chats now =
-    HMS.fromList
-      $ map
+    HMS.fromList $
+      map
         ( \c ->
             let interval = settings_digest_interval . sub_settings $ c
                 t = case sub_last_digest c of
@@ -252,12 +252,12 @@ makeDigestsFromMem = do
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)
               $ writeChan (postjobs env)
-              . JobLog
+                . JobLog
               $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
             -- log notifiers
-            writeChan (postjobs env)
-              $ JobLog
-              $ LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
+            writeChan (postjobs env) $
+              JobLog $
+                LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
             -- Rust??
             where_is_rust env pre post
           pure . Right $ CacheDigests $ batches post

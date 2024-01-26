@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Redis where
@@ -6,16 +7,21 @@ import Control.Concurrent (threadDelay)
 import Control.Exception
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class
+import Control.Monad.Reader (MonadReader (ask))
 import Data.Aeson (encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
+import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
-import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult, checkedConnect, defaultConnectInfo, del, get, multiExec, runRedis, set)
-import Types (App, AppConfig (connectors), Digest (..))
+import Data.Time (getCurrentTime)
+import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
+import Mongo (HasMongo, evalDb)
+import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), Digest (..), Feed (f_items), FromCache (..), f_link)
+import Utils (freshLastXDays, renderDbError)
 
 class (Monad m) => HasRedis m where
   withKeyStore :: AppConfig -> Redis a -> m a
@@ -76,3 +82,85 @@ readDigest digest_id =
         q1 <- get key
         q2 <- del [key]
         return $ (,) <$> q1 <*> q2
+
+{- Cache -}
+
+type CacheRes = Either T.Text FromCache
+
+class (MonadReader AppConfig m) => HasCache m where
+  withCache :: CacheAction -> m CacheRes
+
+instance (MonadIO m) => HasCache (App m) where
+  withCache = withBroker
+
+withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
+{- Cache in-app or in-data frequently requested data -}
+withBroker (CacheGetPage cid mid n) = do
+  env <- ask
+  withRedis env query >>= \case
+    Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
+    _ ->
+      refresh env >>= \case
+        Left err -> pure . Left $ err
+        Right _ ->
+          withRedis env query >>= \case
+            Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
+            _ ->
+              pure
+                . Left
+                $ "Error while trying to refresh after pulling anew from database. Chat involved: "
+                  `T.append` (T.pack . show $ cid)
+ where
+  (lk, k) = pageKeys cid mid
+  query = do
+    d <- lindex lk (toInteger $ n - 1)
+    l <- llen lk
+    url <- get k
+    pure $ (,,) <$> d <*> l <*> url
+  success p i mb_page =
+    let (page', i') = (B.decodeUtf8 p, fromInteger i)
+     in pure . Right $ CachePage page' i' mb_page
+  refresh env =
+    evalDb env (GetPages cid mid) >>= \case
+      DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
+      DbErr err -> pure . Left $ renderDbError err
+      _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
+withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
+withBroker (CacheSetPages cid mid pages mb_link) =
+  ask >>= \env ->
+    let (lk, k) = pageKeys cid mid
+        action = case mb_link of
+          Nothing ->
+            withRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
+              Right _ -> pure $ Right CacheOk
+              Left _ -> pure $ Left "Nothing"
+          Just l ->
+            withRedis
+              env
+              ( multiExec $ do
+                  q1 <- set k $ B.encodeUtf8 l
+                  q1' <- expire k 86400
+                  q2 <- lpush lk $ map B.encodeUtf8 pages
+                  q2' <- expire lk 86400
+                  pure $ (,,,) <$> q1 <*> q2 <*> q1' <*> q2'
+              )
+              >>= \case
+                TxSuccess _ -> pure $ Right CacheOk
+                _ -> pure $ Left "Nothing"
+     in action
+withBroker (CacheXDays links days) = do
+  env <- ask
+  now <- liftIO getCurrentTime
+  evalDb env GetAllFeeds
+    >>= \case
+      DbErr err -> pure . Left $ renderDbError err
+      DbFeeds fs ->
+        let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
+            collected = foldFeeds listed now
+         in pure . Right . CacheLinkDigest $ collected
+      _ -> pure . Left $ "Unknown error from CacheXDays"
+ where
+  collect f acc now =
+    let fresh = freshLastXDays days now $ f_items f
+     in if null fresh then acc else (f_link f, fresh) : acc
+  foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs

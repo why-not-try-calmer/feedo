@@ -2,8 +2,6 @@
 
 module Jobs (procNotif, postProcJobs) where
 
-import Mem (makeDigestsFromMem, withChatsFromMem)
-import Cache (HasCache (withCache))
 import Control.Concurrent (
   readChan,
   threadDelay,
@@ -19,8 +17,10 @@ import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
+import Mem (makeDigestsFromMem, withChatsFromMem)
 import Mongo (evalDb, saveToLog)
 import Notifications (markNotified)
+import Redis
 import Replies (
   mkDigestUrl,
   mkReply,
