@@ -32,13 +32,11 @@ import Types (
   BotToken,
   CacheAction (
     CacheGetPage,
-    CachePullFeeds,
-    CachePushFeeds,
     CacheXDays
   ),
   ChatRes (ChatUpdated),
-  DbAction (DbAskForLogin, DbSearch),
-  DbRes (DbSearchRes, DbToken),
+  DbAction (..),
+  DbRes (..),
   Error (
     BadInput,
     BadRef,
@@ -56,7 +54,7 @@ import Types (
   FeedError (r_url),
   FeedLink,
   FeedRef (ById, ByUrl),
-  FromCache (CacheFeeds, CacheLinkDigest, CachePage),
+  FromCache (CacheLinkDigest, CachePage),
   Item (i_pubdate),
   Job (JobRemoveMsg, JobTgAlertAdmin),
   Replies (
@@ -80,7 +78,7 @@ import Types (
   UserAction (..),
   runApp,
  )
-import Utils (maybeUserIdx, partitionEither, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (maybeUserIdx, partitionEither, renderDbError, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -351,9 +349,9 @@ subFeed cid feeds_urls = do
                           if null built_feeds
                             then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
                             else
-                              withCache (CachePushFeeds feeds) >>= \case
-                                Left err -> respondWith err
-                                Right _ ->
+                              evalDb env (UpsertFeeds feeds) >>= \case
+                                DbErr err -> respondWith $ renderDbError err
+                                _ ->
                                   let to_sub_to = map f_link feeds
                                    in withChat (Sub to_sub_to) cid >>= \case
                                         Left err -> respondWith $ renderUserError err
@@ -390,8 +388,8 @@ evalTgAct _ (FeedInfo ref) cid =
          in if null subs
               then pure . Left $ NotSubscribed
               else
-                withCache (CachePullFeeds subs) >>= \case
-                  Right (CacheFeeds fs) ->
+                evalDb env (GetSomeFeeds subs) >>= \case
+                  DbFeeds fs ->
                     let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
                      in case found of
                           Nothing -> pure . Left $ NotFoundFeed mempty

@@ -295,6 +295,14 @@ evalMongo env GetAllChats =
           if null docs
             then pure DbNoChat
             else pure $ DbChats . map readDoc $ docs
+evalMongo env (GetSomeFeeds flinks) =
+  let action = find (select ["f_link" =: ["$in" =: flinks]] "feeds")
+   in withMongo env (action >>= rest) >>= \case
+        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllFeeds failed"
+        Right docs ->
+          if null docs
+            then pure DbNoFeed
+            else pure . DbFeeds $ map readDoc docs
 evalMongo env GetAllFeeds =
   let action = find (select [] "feeds")
    in withMongo env (action >>= rest) >>= \case

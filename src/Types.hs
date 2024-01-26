@@ -406,6 +406,7 @@ data DbAction
   | ArchiveItems [Feed]
   | DeleteChat ChatId
   | GetAllFeeds
+  | GetSomeFeeds [FeedLink]
   | GetAllChats
   | GetPages ChatId Int
   | IncReads [FeedLink]
@@ -465,21 +466,13 @@ data PageOne = PageOne
 {- Cache -}
 
 data CacheAction
-  = CacheDeleteFeeds [T.Text]
-  | CachePullFeed T.Text
-  | CachePullFeeds [T.Text]
-  | CachePushFeeds [Feed]
-  | CacheRefresh
-  | CacheXDays [FeedLink] Int
+  = CacheXDays [FeedLink] Int
   | CacheGetPage ChatId Int Int
   | CacheSetPages ChatId Int [T.Text] (Maybe T.Text)
 
 data FromCache
   = CacheOk
   | CacheNothing
-  | CacheFeed Feed
-  | CacheFeeds [Feed]
-  | CacheMissed [FeedLink]
   | CacheDigests (HMS.HashMap ChatId (SubChat, Batch))
   | CacheLinkDigest [(FeedLink, [Item])]
   | CachePage T.Text Int (Maybe T.Text)

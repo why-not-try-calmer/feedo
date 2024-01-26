@@ -2,7 +2,7 @@
 
 module Jobs (procNotif, postProcJobs) where
 
-import Backend (withChat)
+import Backend (makeDigests, withChat)
 import Cache (HasCache (withCache))
 import Control.Concurrent (
   readChan,
@@ -29,7 +29,7 @@ import Requests (reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Types (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheRefresh, CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FromCache (CacheDigests), Job (..), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
+import Types (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FromCache (CacheDigests), Job (..), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
 import Utils (renderDbError)
 
 {- Background tasks -}
@@ -75,7 +75,7 @@ procNotif =
                     pure (cid, map f_link ds)
         notify = do
           -- rebuilding feeds and collecting notifications
-          from_cache_payload <- runApp env $ withCache CacheRefresh
+          from_cache_payload <- runApp env makeDigests
           case from_cache_payload of
             Right (CacheDigests notif_hmap) -> do
               -- skipping sending on a firt run

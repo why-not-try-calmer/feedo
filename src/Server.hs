@@ -14,7 +14,7 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
-import Mongo (setupDb)
+import Mongo (HasMongo, setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Redis (setupRedis)
@@ -143,8 +143,9 @@ makeConfig env =
           , port
           )
 
-initStart :: (HasCache m, MonadIO m, MonadReader AppConfig m) => m ()
+initStart :: (HasCache m, HasMongo m, MonadIO m, MonadReader AppConfig m) => m ()
 initStart = do
+  env <- ask
   loadChats
   liftIO . putStrLn $ "Chats loaded"
   feeds <- regenFeeds
@@ -152,7 +153,6 @@ initStart = do
   refreshCache feeds
   liftIO . putStrLn $ "Cache refreshed"
   postProcJobs >> procNotif
-  env <- ask
   liftIO $
     writeChan (postjobs env) $
       JobTgAlertAdmin "Feedo just started."
