@@ -1,8 +1,8 @@
 db_name = process.env["TEST"] == "1" ? "feedfarer-test" : "feedfarer"
 username = process.env["MONGO_INITDB_ROOT_USERNAME"]
 password = process.env["MONGO_INITDB_ROOT_PASSWORD"]
+new Array(db_name, username, password).forEach(c => console.assert(c))
 
-[db_name, username, password].forEach(c => console.assert(c))
 conn_str = `mongodb://${username}:${password}@localhost:27017/admin`
 conn = Mongo(conn_str)
 db = conn.getDB(db_name)

@@ -61,7 +61,7 @@ jobs:
           echo "TELEGRAM_TOKEN=$telegram_token" >> .env
           echo "WEBHOOK_URL=$webhook_url" >> .env
           
-          docker compose up -d mongo
+          docker compose up mongo -d
           sleep 3
           docker compose exec -e TEST=1 mongo mongosh --file /scripts/mongo-startup.js
           docker compose run test
