@@ -214,6 +214,11 @@ withBroker CacheRefresh = do
             case recached of
               Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ e
               _ -> pure ()
+            -- saving to mongo
+            evalDb env (ArchiveItems $ HMS.elems rebuilt) >>= \case
+              DbErr err -> writeChan (postjobs env) (JobTgAlertAdmin $ "Unable to archive items for this reason: " `T.append` renderDbError err)
+              DbOk -> pure ()
+              _ -> pure ()
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)
               $ writeChan (postjobs env)

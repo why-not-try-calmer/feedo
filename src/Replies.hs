@@ -312,7 +312,8 @@ renderCmds :: T.Text
 renderCmds =
   T.intercalate
     "\n"
-    [ "/admin: manage the chat settings from the comfort of a web browser"
+    [ "/about: Information about this service (version, statistics, etc.)"
+    , "/admin: manage the chat settings from the comfort of a web browser"
     , "/changelog: link to the changelog"
     , "/feed `<optional: channel id> <# or url>`: show info about the subscribed to feed"
     , "/fresh `<n>`: display n-old items, in number of days"
