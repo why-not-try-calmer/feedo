@@ -108,7 +108,7 @@ makeConfig env =
         _ -> "feedfarer"
       creds =
         let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
-         in MongoCredsServer "localhost" dbName user pwd
+         in MongoCredsServer "mongo" dbName user pwd
       port = read . fromJust . lookup "PORT" $ env
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
       webhook =
@@ -149,17 +149,23 @@ makeConfig env =
 initStart :: (MonadIO m, MonadReader AppConfig m, HasMongo m) => m ()
 initStart = do
   env <- ask
-  postProcJobs
   loadChatsIntoMem
+  liftIO $ putStrLn "chats loaded"
   feeds <- rebuildAllFeedsFromMem
+  liftIO $ putStrLn "feeds built"
   _ <- evalDb env $ UpsertFeeds feeds
+  liftIO $ putStrLn "feeds saved"
   postProcJobs
+  liftIO $ putStrLn "jobs queue started"
   procNotif
-  liftIO $ writeChan (postjobs env) $ JobTgAlertAdmin "Feedo just started."
+  liftIO $ do
+    putStrLn "digests / follows queue started"
+    writeChan (postjobs env) $ JobTgAlertAdmin "Feedo just started."
 
 startApp :: IO ()
 startApp = do
   env <- getEnvironment
   (config, port) <- makeConfig env
   runApp config initStart
+  print $ "Running now using " ++ show port
   run port $ withServer config
