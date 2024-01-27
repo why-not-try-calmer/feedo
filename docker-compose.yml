@@ -17,6 +17,7 @@ services:
         - WEBHOOK_URL
         - MONGO_INITDB_ROOT_PASSWORD
         - MONGO_INITDB_ROOT_USERNAME
+        - PORT
         - TEST=1
 
     app:
