@@ -58,6 +58,7 @@ jobs:
           echo "BASE_URL=$base_url" >> .env
           echo "MONGO_INITDB_ROOT_PASSWORD=$mongo_password" >> .env
           echo "MONGO_INITDB_ROOT_USERNAME=$mongo_user" >> .env
+          echo "PORT=8000 >> .env
           echo "TELEGRAM_TOKEN=$telegram_token" >> .env
           echo "WEBHOOK_URL=$webhook_url" >> .env
           
