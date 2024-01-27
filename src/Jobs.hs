@@ -29,7 +29,7 @@ import Requests (reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
-import Types (AppConfig (..), Batch (Digests, Follows), CacheAction (CacheSetPages), DbAction (..), DbRes (..), Digest (Digest), Feed (f_items, f_link, f_title), FromCache (CacheDigests), Job (..), Replies (..), Reply (ServiceReply), ServerConfig (..), SubChat (..), UserAction (Purge), runApp)
+import Types
 import Utils (renderDbError)
 
 {- Background tasks -}
@@ -69,7 +69,7 @@ procNotif =
                         digest = Digest Nothing now fitems flinks' ftitles'
                     res <- evalDb env $ WriteDigest digest
                     let mb_digest_link r = case r of
-                          DbDigestId _id -> Just $ mkDigestUrl (base_url env) _id
+                          Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
                           _ -> Nothing
                     reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
                     pure (cid, map f_link ds)
@@ -123,7 +123,7 @@ postProcJobs =
   execute env (JobArchive feeds now) = fork $ do
     -- archiving items
     evalDb env (ArchiveItems feeds) >>= \case
-      DbErr err -> writeChan (postjobs env) . JobTgAlertAdmin $ "Unable to archive items. Reason: " `T.append` renderDbError err
+      Left err -> writeChan (postjobs env) . JobTgAlertAdmin $ "Unable to archive items. Reason: " `T.append` renderDbError err
       _ -> pure ()
     -- cleaning more than 1 month old archives
     void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)

@@ -211,14 +211,14 @@ evalMongo env (DbAskForLogin uid cid) = do
       delete_doc = deleteOne $ select selector "admins"
    in liftIO getCurrentTime >>= \now ->
         withMongo env get_doc >>= \case
-          Left _ -> pure . DbErr $ FaultyToken
+          Left _ -> pure . Left $ FaultyToken
           Right Nothing -> do
             h <- mkSafeHash
             _ <- withMongo env (write_doc h now)
-            pure $ DbToken h
+            pure . Right . DbToken $ h
           Right (Just doc) -> do
             when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (void $ withMongo env delete_doc)
-            pure $ DbToken . admin_token . readDoc $ doc
+            pure . Right . DbToken . admin_token . readDoc $ doc
  where
   mkSafeHash =
     liftIO getSystemTime
@@ -236,24 +236,24 @@ evalMongo env (CheckLogin h) =
           Right Nothing -> nope
           Right (Just doc) ->
             if diffUTCTime now (admin_created . readDoc $ doc) < 2592000
-              then pure $ DbLoggedIn (admin_chatid $ readDoc doc)
+              then pure . Right . DbLoggedIn $ admin_chatid (readDoc doc)
               else withMongo env del >> nope
  where
-  nope = pure . DbErr $ FaultyToken
+  nope = pure . Left $ FaultyToken
 evalMongo env (ArchiveItems feeds) =
   let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
       action = withMongo env $ updateAll "items" selector
    in action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "ArchiveItems" "Action failed during connection."
+        Left _ -> pure . Left $ FailedToUpdate "ArchiveItems" "Action failed during connection."
         Right res ->
           if failed res
-            then pure . DbErr $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
-            else pure DbOk
+            then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
+            else pure $ Right DbDone
 evalMongo env (DbSearch keywords scope last_time) =
   let action1 = ensureIndex itemsIndex
       action2 = aggregate "items" $ buildSearchQuery keywords last_time
    in withMongo env (action1 >> action2) >>= \case
-        Left err -> pure . DbErr $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
+        Left err -> pure . Left $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
         Right res ->
           let mkSearchRes doc =
                 let title = M.lookup "i_title" doc
@@ -280,46 +280,45 @@ evalMongo env (DbSearch keywords scope last_time) =
                   then sort_limit r
                   else sort_limit . rescind $ r
            in case mapM mkSearchRes res of
-                Nothing -> pure $ DbSearchRes S.empty []
-                Just r -> pure . DbSearchRes keywords . payload $ r
+                Nothing -> pure . Right $ DbSearchRes S.empty []
+                Just r -> pure . Right $ DbSearchRes keywords . payload $ r
 evalMongo env (DeleteChat cid) =
   let action = withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
    in action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty "DeleteChat failed"
-        Right _ -> pure DbOk
+        Left _ -> pure $ Left $ FailedToUpdate mempty "DeleteChat failed"
+        Right _ -> pure $ Right DbDone
 evalMongo env GetAllChats =
   let action = find (select [] "chats")
    in withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllChats failed"
+        Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllChats failed"
         Right docs ->
           if null docs
-            then pure DbNoChat
-            else pure $ DbChats . map readDoc $ docs
+            then pure . Right $ DbNoChat
+            else pure . Right . DbChats . map readDoc $ docs
 evalMongo env (GetSomeFeeds flinks) =
   let action = find (select ["f_link" =: ["$in" =: flinks]] "feeds")
    in withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllFeeds failed"
+        Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllFeeds failed"
         Right docs ->
           if null docs
-            then pure DbNoFeed
-            else pure . DbFeeds $ map readDoc docs
+            then pure $ Right DbNoFeed
+            else pure . Right . DbFeeds $ map readDoc docs
 evalMongo env GetAllFeeds =
   let action = find (select [] "feeds")
    in withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate mempty "GetAllFeeds failed"
+        Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllFeeds failed"
         Right docs ->
           if null docs
-            then pure DbNoFeed
-            else pure . DbFeeds $ map readDoc docs
+            then pure . Right $ DbNoFeed
+            else pure . Right . DbFeeds $ map readDoc docs
 evalMongo env (GetPages cid mid) =
   let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
    in action >>= \case
+        Left err -> pure $ Left . BadQuery $ err
+        Right Nothing -> pure . Right $ DbNoPage cid mid
         Right (Just doc) -> case M.lookup "pages" doc of
-          Just pages -> pure $ DbPages pages (M.lookup "url" doc)
-          _ -> pure $ DbNoPage cid mid
-evalMongo env (IncReads links) =
-  let action l = withMongo env $ modify (select ["f_link" =: l] "feeds") ["$inc" =: ["f_reads" =: (1 :: Int)]]
-   in mapM_ action links >> pure DbOk
+          Just pages -> pure $ Right $ DbPages pages (M.lookup "url" doc)
+          Nothing -> pure . Right $ DbNoPage cid mid
 evalMongo env (InsertPages cid mid pages mb_link) =
   let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
       payload = case mb_link of
@@ -327,12 +326,13 @@ evalMongo env (InsertPages cid mid pages mb_link) =
         Just l -> base_payload ++ ["url" =: l]
       action = withMongo env $ insert "pages" payload
    in action >>= \case
-        Left _ -> pure . DbErr $ FailedToInsertPage
-        _ -> pure DbOk
-evalMongo env (PruneOld t) =
+        Left _ -> pure . Left $ FailedToInsertPage
+        _ -> pure . Right $ DbDone
+evalMongo env (PruneOld t) = do
   let del_items = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
       del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
-   in withMongo env (del_items >> del_digests) >> pure DbOk
+  _ <- withMongo env (del_items >> del_digests)
+  pure . Right $ DbDone
 evalMongo env (ReadDigest _id) =
   let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
         Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
@@ -341,57 +341,57 @@ evalMongo env (ReadDigest _id) =
         Just oid -> Right ["_id" =: oid]
       action s = findOne $ select s "digests"
    in case mkSelector of
-        Left err -> pure $ DbErr err
+        Left err -> pure $ Left err
         Right selector ->
           withMongo env (action selector) >>= \case
-            Left _ -> pure . DbErr $ FailedToUpdate "digest" "Read digest refused to read from the database."
-            Right doc -> maybe (pure DbNoDigest) (pure . DbDigest . readDoc) doc
+            Left _ -> pure . Left $ FailedToUpdate "digest" "Read digest refused to read from the database."
+            Right doc -> maybe (pure . Right $ DbNoDigest) (pure . Right . DbDigest . readDoc) doc
 evalMongo env (UpsertChat chat) =
   let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
    in action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
-        Right _ -> pure DbOk
+        Left _ -> pure $ Left $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
+        Right _ -> pure . Right $ DbDone
 evalMongo env (UpsertChats chatshmap) =
   let chats = HMS.elems chatshmap
       selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
       action = withMongo env $ updateAll "chats" selector
    in action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
+        Left _ -> pure $ Left $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
         Right res ->
           if failed res
-            then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
-            else pure DbOk
+            then pure . Left $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+            else pure . Right $ DbDone
 evalMongo env (UpsertFeeds feeds) =
   let selector = map (\f -> (["f_link" =: f_link f], writeDoc f, [Upsert])) feeds
       action = withMongo env $ updateAll "feeds" selector
    in action >>= \case
-        Left _ -> pure $ DbErr $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
+        Left _ -> pure $ Left $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
         Right res ->
           if failed res
-            then pure . DbErr $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
-            else pure DbOk
+            then pure . Left $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+            else pure . Right $ DbDone
 evalMongo env (View flinks start end) =
   let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
    in withMongo env query >>= \case
-        Left _ -> pure $ DbErr FailedToLoadFeeds
-        Right is -> pure $ DbView (map readDoc is) start end
+        Left _ -> pure $ Left FailedToLoadFeeds
+        Right is -> pure . Right $ DbView (map readDoc is) start end
 evalMongo env (WriteDigest digest) =
   let action = insert "digests" $ writeDoc digest
    in withMongo env action >>= \case
-        Left _ -> pure . DbErr $ FailedToUpdate "digest" "HasMongo refused to insert digest items"
+        Left _ -> pure . Left $ FailedToUpdate "digest" "HasMongo refused to insert digest items"
         Right res -> case res of
-          ObjId _id -> pure $ DbDigestId . T.pack . show $ _id
-          _ -> pure . DbErr $ FailedToProduceValidId
+          ObjId _id -> pure . Right . DbDigestId . T.pack . show $ _id
+          _ -> pure . Left $ FailedToProduceValidId
 evalMongo env (GetXDays links days) = do
   now <- liftIO getCurrentTime
   evalDb env GetAllFeeds
     >>= \case
-      DbErr err -> pure . DbErr . NotFound $ renderDbError err
-      DbFeeds fs ->
+      Left err -> pure . Left . NotFound $ renderDbError err
+      Right (DbFeeds fs) ->
         let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
             collected = foldFeeds listed now
-         in pure . DbLinkDigest $ collected
-      _ -> pure . DbErr . NotFound $ "Unknown error from CacheXDays"
+         in pure . Right . DbLinkDigest $ collected
+      _ -> pure . Left . NotFound $ "Unknown error from CacheXDays"
  where
   collect f acc now =
     let fresh = freshLastXDays days now $ f_items f

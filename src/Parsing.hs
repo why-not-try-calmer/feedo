@@ -17,19 +17,19 @@ import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
 import Types (
-  Error (BadFeed, BadInput, ParseError),
   Feed (..),
   FeedError (..),
   FeedType (..),
   Item (Item, i_pubdate),
   ParsingSettings (..),
   Settings (settings_digest_title),
+  TgActError (BadFeed, BadInput, ParseError),
  )
 import Utils (averageInterval, defaultChatSettings, mbTime, renderUserError, sortTimePairs)
 
 {- Feeds, Items -}
 
-buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either Error (Feed, Maybe T.Text))
+buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgActError (Feed, Maybe T.Text))
 -- tries parsing bytes into a Feed
 -- tries as Atom if Rss fails
 buildFeed ty url = do
@@ -112,7 +112,7 @@ buildFeed ty url = do
           then Right (f, render_optional)
           else Left . ParseError $ render_required
 
-eitherUrlScheme :: T.Text -> Either Error (Url 'Https)
+eitherUrlScheme :: T.Text -> Either TgActError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
 eitherUrlScheme s
   | T.null s = Left . BadInput $ s

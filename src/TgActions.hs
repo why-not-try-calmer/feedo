@@ -33,19 +33,7 @@ import Types (
   ChatRes (ChatUpdated),
   DbAction (..),
   DbRes (..),
-  Error (
-    BadInput,
-    BadRef,
-    ChatNotPrivate,
-    Ignore,
-    MaxFeedsAlready,
-    NotAdmin,
-    NotFoundChat,
-    NotFoundFeed,
-    NotSubscribed,
-    TelegramErr,
-    UserNotAdmin
-  ),
+  DbResults (..),
   Feed (f_items, f_link),
   FeedError (r_url),
   FeedLink,
@@ -71,6 +59,19 @@ import Types (
   ServerConfig (alert_chat, bot_token, webhook_url),
   SettingsUpdater (Parsed),
   SubChat (sub_feeds_links, sub_linked_to, sub_settings),
+  TgActError (
+    BadInput,
+    BadRef,
+    ChatNotPrivate,
+    Ignore,
+    MaxFeedsAlready,
+    NotAdmin,
+    NotFoundChat,
+    NotFoundFeed,
+    NotSubscribed,
+    TelegramErr,
+    UserNotAdmin
+  ),
   UserAction (..),
   runApp,
  )
@@ -84,7 +85,7 @@ registerWebhook config =
         >> setWebhook tok webhook
         >> print ("Webhook successfully set at " `T.append` webhook)
 
-isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either Error Bool)
+isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgActError Bool)
 isUserAdmin tok uid cid =
   isChatOfType tok cid Private >>= \case
     Left err -> pure $ Left err
@@ -106,7 +107,7 @@ isUserAdmin tok uid cid =
     | cm_status member `elem` ["administrator", "creator"] = True
     | otherwise = False
 
-isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either Error Bool)
+isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgActError Bool)
 isChatOfType tok cid ty =
   liftIO $
     getChatType
@@ -119,10 +120,10 @@ isChatOfType tok cid ty =
  where
   getChatType = runSend tok "getChat" $ GetChat cid
 
-exitNotAuth :: (Applicative f, Show a) => a -> f (Either Error b)
+exitNotAuth :: (Applicative f, Show a) => a -> f (Either TgActError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
-interpretCmd :: T.Text -> Either Error UserAction
+interpretCmd :: T.Text -> Either TgActError UserAction
 interpretCmd contents
   | cmd == "/about" = Right About
   | cmd == "/admin" =
@@ -296,7 +297,7 @@ interpretCmd contents
         (h : _) = T.splitOn "@" h'
      in (h, t)
 
-testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either Error ())
+testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either TgActError ())
 testChannel tok chan_id jobs =
   -- tries sending a message to the given channel
   -- if the response rewards the test with a message_id, it's won.
@@ -322,8 +323,8 @@ subFeed cid feeds_urls = do
       -- sort out already existent feeds to minimize network call
       -- , and subscribe chat to them
       evalDb env GetAllFeeds >>= \case
-        DbErr err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` renderDbError err
-        DbFeeds old_feeds ->
+        Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` renderDbError err
+        Right (DbFeeds old_feeds) ->
           let urls = map renderUrl valid_urls
               old_keys = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
               new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
@@ -346,7 +347,7 @@ subFeed cid feeds_urls = do
                             then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
                             else
                               evalDb env (UpsertFeeds feeds) >>= \case
-                                DbErr err -> respondWith $ renderDbError err
+                                Left err -> respondWith $ renderDbError err
                                 _ ->
                                   let to_sub_to = map f_link feeds
                                    in withChatsFromMem (Sub to_sub_to) cid >>= \case
@@ -367,7 +368,7 @@ evalTgAct ::
   UserId ->
   UserAction ->
   ChatId ->
-  App m (Either Error Reply)
+  App m (Either TgActError Reply)
 evalTgAct _ About _ =
   ask >>= \env ->
     pure . Right . mkReply . FromAbout . app_version $ env
@@ -386,7 +387,7 @@ evalTgAct _ (FeedInfo ref) cid =
               then pure . Left $ NotSubscribed
               else
                 evalDb env (GetSomeFeeds subs) >>= \case
-                  DbFeeds fs ->
+                  Right (DbFeeds fs) ->
                     let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
                      in case found of
                           Nothing -> pure . Left $ NotFoundFeed mempty
@@ -442,7 +443,7 @@ evalTgAct uid (AskForLogin target_id) cid = do
                 then pure . Left $ UserNotAdmin
                 else do
                   evalDb env (DbAskForLogin uid cid) >>= \case
-                    DbToken h -> pure . Right . mkReply . FromAdmin (base_url env) $ h
+                    Right (DbToken h) -> pure . Right . mkReply . FromAdmin (base_url env) $ h
                     _ ->
                       pure
                         . Right
@@ -458,7 +459,7 @@ evalTgAct _ (GetItems ref) cid = do
   chats_hmap <- liftIO $ readMVar chats_mvar
   feeds_hmap <-
     evalDb env GetAllFeeds >>= \case
-      DbFeeds fs -> pure $ HMS.fromList $ map (\f -> (f_link f, f)) fs
+      Right (DbFeeds fs) -> pure $ HMS.fromList $ map (\f -> (f_link f, f)) fs
       _ -> pure HMS.empty
   -- get items by url or id depending on whether the
   -- user user a number or a string referencing the target feed
@@ -492,7 +493,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
             then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else
               evalDb env (GetXDays subscribed n) >>= \case
-                DbLinkDigest res -> pure . Right $ mkReply (FromFeedLinkItems res)
+                Right (DbLinkDigest res) -> pure . Right $ mkReply (FromFeedLinkItems res)
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
 evalTgAct uid (GetSubchannelSettings channel_id) _ = evalTgAct uid GetSubchatSettings channel_id
 evalTgAct _ GetSubchatSettings cid =
@@ -515,7 +516,7 @@ evalTgAct _ ListSubs cid = do
             then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
             else
               evalDb env GetAllFeeds >>= \case
-                DbFeeds fs ->
+                Right (DbFeeds fs) ->
                   let hmap = HMS.fromList $ map (\f -> (f_link f, f)) fs
                    in case mapM (`HMS.lookup` hmap) subs of
                         Nothing ->
@@ -670,7 +671,7 @@ evalTgAct _ (Search keywords) cid =
                   then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
                   else
                     evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
-                      DbSearchRes keys sc -> pure . Right $ mkReply (FromSearchRes keys sc)
+                      Right (DbSearchRes keys sc) -> pure . Right $ mkReply (FromSearchRes keys sc)
                       _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid =
@@ -733,7 +734,7 @@ evalTgAct uid (TestDigestChannel chan_id) _ = evalTgAct uid TestDigest chan_id
 evalTgAct uid (UnSub feeds) cid =
   ask >>= \env ->
     isUserAdmin (bot_token . tg_config $ env) uid cid >>= \case
-      Left _ -> pure . Right . ServiceReply $ "Error occured when requesting Telegram. Try again."
+      Left _ -> pure . Right . ServiceReply $ "TgActError occured when requesting Telegram. Try again."
       Right is_admin ->
         if not is_admin
           then exitNotAuth uid

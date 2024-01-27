@@ -317,7 +317,7 @@ data FeedError = FeedError
   }
   deriving (Show, Eq)
 
-data Error
+data TgActError
   = BadFeedUrl T.Text
   | BadInput T.Text
   | BadRef T.Text
@@ -410,7 +410,6 @@ data DbAction
   | GetAllChats
   | GetPages ChatId Int
   | GetXDays [FeedLink] Int
-  | IncReads [FeedLink]
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
   | DbSearch Keywords Scope (Maybe UTCTime)
   | PruneOld UTCTime
@@ -422,19 +421,18 @@ data DbAction
   | WriteDigest Digest
   deriving (Show, Eq)
 
-data DbRes
+data DbResults
   = DbFeeds [Feed]
   | DbChats [SubChat]
   | DbNoChat
   | DbBadOID
   | DbNoDigest
-  | DbErr DbError
   | DbLinkDigest [(FeedLink, [Item])]
-  | DbOk
   | DbXDays [FeedLink] Int
   | DbNoFeed
   | DbLoggedIn ChatId
   | DbToken T.Text
+  | DbDone
   | DbSearchRes Keywords [SearchResult]
   | DbView [Item] UTCTime UTCTime
   | DbDigest Digest
@@ -456,6 +454,8 @@ data DbError
   | FailedToInsertPage
   | FailedToGetAllPages
   deriving (Show, Eq)
+
+type DbRes = Either DbError DbResults
 
 data PageOne = PageOne
   { page_one :: T.Text

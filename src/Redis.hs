@@ -18,7 +18,7 @@ import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
 import Mongo (HasMongo, evalDb)
-import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), Digest (..), FromCache (..))
+import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), DbResults (DbPages), Digest (..), FromCache (..))
 import Utils (renderDbError)
 
 class (Monad m) => HasRedis m where
@@ -61,7 +61,7 @@ setupRedis = liftIO $ do
   switch_hostnames n = if even n then "redis" else "localhost"
   handleWith (Right connector) = pure $ Right connector
   handleWith (Left (SomeException e)) = do
-    print $ "Failed to connect. Error: " `T.append` (T.pack . show $ e)
+    print $ "Failed to connect. TgActError: " `T.append` (T.pack . show $ e)
     putStrLn "Retrying now..."
     pure $ Left ()
 
@@ -106,7 +106,7 @@ withBroker (CacheGetPage cid mid n) = do
             _ ->
               pure
                 . Left
-                $ "Error while trying to refresh after pulling anew from database. Chat involved: "
+                $ "TgActError while trying to refresh after pulling anew from database. Chat involved: "
                   `T.append` (T.pack . show $ cid)
  where
   (lk, k) = pageKeys cid mid
@@ -120,8 +120,8 @@ withBroker (CacheGetPage cid mid n) = do
      in pure . Right $ CachePage page' i' mb_page
   refresh env =
     evalDb env (GetPages cid mid) >>= \case
-      DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
-      DbErr err -> pure . Left $ renderDbError err
+      Right (DbPages pages mb_link) -> withBroker (CacheSetPages cid mid pages mb_link)
+      Left err -> pure . Left $ renderDbError err
       _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
 withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
 withBroker (CacheSetPages cid mid pages mb_link) =
