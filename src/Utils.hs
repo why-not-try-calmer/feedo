@@ -91,7 +91,7 @@ unFeedRef (ById s) = T.pack $ show s
 unFeedRefs :: [FeedRef] -> [T.Text]
 unFeedRefs = map unFeedRef
 
-toFeedRef :: [T.Text] -> Either Error [FeedRef]
+toFeedRef :: [T.Text] -> Either TgActError [FeedRef]
 {-# INLINE toFeedRef #-}
 toFeedRef ss
   | all_valid_urls = Right intoUrls
@@ -107,7 +107,7 @@ toFeedRef ss
 
 {- Errors -}
 
-renderUserError :: Error -> T.Text
+renderUserError :: TgActError -> T.Text
 renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
 renderUserError (BadFeed feederror) = T.append "Unable to fetch this feed: " (T.pack . show $ feederror)
 renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t

@@ -21,13 +21,13 @@ import Types
 getConns :: IO AppConfig
 getConns = do
   env <- getEnvironment
-  (config, _) <- makeConfig env
+  config <- makeConfig env
   pure config
 
 spec :: Spec
 spec = do
   env <- runIO getConns
-  sequenceA_ [go, go1 env, go2 env, go3 env]
+  sequenceA_ [go, go1 env, go2 env, go3 env, go4 env]
  where
   go =
     let desc = describe "checkDbMapper"
@@ -45,11 +45,11 @@ spec = do
           let dig = Digest Nothing now [] [] []
           object_id <-
             evalDb env (WriteDigest dig) >>= \case
-              DbDigestId digest_id -> pure . Just $ digest_id
+              Right (DbDigestId digest_id) -> pure . Just $ digest_id
               _ -> pure Nothing
           object_id `shouldSatisfy` (\case Just _ -> True; Nothing -> False)
           res <- evalDb env (ReadDigest . fromJust $ object_id)
-          res `shouldSatisfy` (\case DbErr _ -> False; _ -> True)
+          res `shouldSatisfy` (\case Left _ -> False; _ -> True)
      in desc $ as target
   go2 env =
     let desc = describe "search indexes: creating"
@@ -59,7 +59,7 @@ spec = do
           let items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           res <- evalDb env (ArchiveItems [feed])
-          res `shouldSatisfy` (\DbOk -> True)
+          res `shouldSatisfy` (\(Right _) -> True)
           pipe <- readIORef (snd . connectors $ env)
           res <- try $ runMongo (database_name . mongo_creds $ env) pipe (ensureIndex itemsIndex)
           res `shouldSatisfy` (\case Right _ -> True; Left (SomeException _) -> False)
@@ -74,8 +74,21 @@ spec = do
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
               search_query = DbSearch keywords S.empty Nothing
           res <- evalDb env (ArchiveItems [feed])
-          res `shouldSatisfy` (\DbOk -> True)
+          res `shouldSatisfy` (\(Right _) -> True)
           res <- evalDb env search_query
-          res `shouldSatisfy` (\case DbSearchRes keywords' results -> not $ null results && keywords == keywords'; DbErr _ -> False)
+          res `shouldSatisfy` (\case Right (DbSearchRes keywords' results) -> not $ null results && keywords == keywords'; Left _ -> False)
           print res
+     in desc $ as target
+  go4 env =
+    let desc = describe "upsert and get feeds"
+        as = it "test writing feeds to db as upserts"
+        target = do
+          now <- getCurrentTime
+          let items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
+              feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
+          res1 <- evalDb env (UpsertFeeds [feed])
+          res1 `shouldSatisfy` (\(Right _) -> True)
+          res2 <- evalDb env GetAllFeeds
+          res2 `shouldSatisfy` (\(Right (DbFeeds feeds)) -> not $ null feeds)
+          print res2
      in desc $ as target

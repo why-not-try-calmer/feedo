@@ -39,7 +39,7 @@ jobs:
           build-args: app_version=${{ github.sha }}
           file: Dockerfile-test
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

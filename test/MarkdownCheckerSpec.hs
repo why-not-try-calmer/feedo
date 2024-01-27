@@ -17,7 +17,7 @@ import Types
 getConns :: IO AppConfig
 getConns = do
   env <- getEnvironment
-  (config, _) <- makeConfig env
+  config <- makeConfig env
   pure config
 
 spec :: Spec

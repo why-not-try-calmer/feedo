@@ -1,7 +1,7 @@
 services:    
     
     test:
-      image: ghcr.io/why-not-try-calmer/feedo-test:latest
+      image: ghcr.io/why-not-try-calmer/feedo-test:latest-test
       profiles: [test]
       depends_on: [mongo, redis]
       container_name: feedfarer-test
@@ -10,14 +10,13 @@ services:
         context: .
         dockerfile: Dockerfile-test
       environment:
-        - API_KEY
-        - TELEGRAM_TOKEN
-        - BASE_URL
         - ALERT_CHATID
-        - WEBHOOK_URL
+        - BASE_URL
         - MONGO_INITDB_ROOT_PASSWORD
         - MONGO_INITDB_ROOT_USERNAME
+        - TELEGRAM_TOKEN
         - TEST=1
+        - WEBHOOK_URL
 
     app:
       image: ghcr.io/why-not-try-calmer/feedo:latest
@@ -27,14 +26,12 @@ services:
         context: .
         dockerfile: Dockerfile
       environment:
-        API_KEY: ${API_KEY}
-        TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
-        BASE_URL: ${BASE_URL}
-        ALERT_CHATID: ${ALERT_CHATID}
-        WEBHOOK_URL: ${WEBHOOK_URL}
-        MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD} 
-        MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-        PORT: 8000
+        - ALERT_CHATID
+        - BASE_URL
+        - MONGO_INITDB_ROOT_PASSWORD 
+        - MONGO_INITDB_ROOT_USERNAME
+        - TELEGRAM_TOKEN
+        - WEBHOOK_URL
       volumes:
         - ./static:/var/www/feedfarer-webui
     

@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
+import Notifications (alertAdmin)
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
 import Types
@@ -167,7 +168,7 @@ reply tok cid rep chan =
         let base =
               OutboundMessage
                 { out_chat_id = cid
-                , out_text = non_empty reply_contents
+                , out_text = reply_contents
                 , out_parse_mode = if reply_markdown then Just "Markdown" else Nothing
                 , out_disable_web_page_preview = pure reply_disable_webview
                 , out_reply_markup = Nothing
@@ -175,17 +176,17 @@ reply tok cid rep chan =
          in if reply_pagination && isJust (mkPagination reply_contents reply_permalink)
               then
                 let (pages, keyboard) = fromJust $ mkPagination reply_contents reply_permalink
-                 in base{out_text = non_empty $ last pages, out_reply_markup = Just keyboard}
+                 in base{out_text = last pages, out_reply_markup = Just keyboard}
               else base{out_reply_markup = mkPermLinkKeyboard <$> reply_permalink}
-      fromReply (ServiceReply contents) = OutboundMessage cid (non_empty contents) Nothing (Just True) Nothing
+      fromReply (ServiceReply contents) = OutboundMessage cid contents Nothing (Just True) Nothing
       fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents has_markdown no_webview keyboard
        where
         no_webview = pure True
         has_markdown = if markdown then Just "Markdown" else Nothing
       report err =
         let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
-         in liftIO . writeChan chan $ JobTgAlertAdmin err_msg
-      non_empty txt = if T.null txt then "No result for this command." else txt
+         in alertAdmin chan err_msg
+      -- non_empty txt = if T.null txt then "No result for this command." else txt
       outbound msg@ChatReply{..} =
         let jobs mid =
               [ if reply_pin_on_send then Just $ JobPin cid mid else Nothing
@@ -219,10 +220,14 @@ reply tok cid rep chan =
         runSend_ tok "sendMessage" (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
-   in if T.null $ reply_contents rep
+      replyTxt = case rep of
+        ChatReply txt _ _ _ _ _ -> txt
+        ServiceReply txt -> txt
+        EditReply _ txt _ _ -> txt
+   in if T.null replyTxt
         then
           let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
-           in liftIO $ writeChan chan $ JobTgAlertAdmin alert_msg
+           in alertAdmin chan alert_msg
         else outbound rep
 
 {- Feeds -}

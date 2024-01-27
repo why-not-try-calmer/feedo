@@ -16,6 +16,7 @@ import Mem
 import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Notifications (alertAdmin)
 import Redis (setupRedis)
 import Requests (reply)
 import Servant
@@ -51,40 +52,39 @@ server =
     :<|> staticSettings
  where
   handleWebhook :: (MonadIO m) => T.Text -> Update -> App m ()
-  handleWebhook secret update =
-    ask >>= \env ->
-      let tok = bot_token . tg_config
-          finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
-          handle upd = case callback_query upd of
-            Just cbq -> processCbq cbq
-            Nothing -> case message upd of
-              Nothing -> liftIO $ putStrLn "Failed to parse message"
-              Just msg ->
-                let cid = chat_id . chat $ msg
-                    uid = user_id . fromJust . from $ msg
-                 in case reply_to_message msg of
-                      Just _ -> pure () -- ignoring replies
-                      Nothing -> case TgramInJson.text msg of
-                        Nothing -> pure () -- ignoring empty contents
-                        Just conts -> case interpretCmd conts of
-                          Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
-                          Left err -> finishWith cid err
-                          Right action ->
-                            evalTgAct uid action cid >>= \case
-                              Left err -> finishWith cid err
-                              Right r -> reply (tok env) cid r (postjobs env)
-       in if EQ == compare secret (tok env)
-            then
-              liftIO (try . runApp env . handle $ update) >>= \case
-                -- catching all leftover exceptions if any
-                Left (SomeException err) ->
-                  liftIO $
-                    writeChan (postjobs env) $
-                      JobTgAlertAdmin $
-                        "Exception thrown against handler: "
-                          `T.append` (T.pack . show $ err)
-                Right _ -> pure ()
-            else liftIO $ putStrLn "Secrets do not match."
+  handleWebhook secret update = do
+    env <- ask
+    let tok = bot_token . tg_config
+        sendReply cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
+        handle upd = case callback_query upd of
+          Just cbq -> processCbq cbq
+          Nothing -> case message upd of
+            Nothing -> liftIO $ putStrLn "Failed to parse message"
+            Just inboundMsg ->
+              let cid = chat_id . chat $ inboundMsg
+                  uid = user_id . fromJust . from $ inboundMsg
+               in case reply_to_message inboundMsg of
+                    Just _ -> pure () -- ignoring replies
+                    Nothing -> case TgramInJson.text inboundMsg of
+                      Nothing -> pure () -- ignoring empty contents
+                      Just conts -> case interpretCmd conts of
+                        Left err -> sendReply cid err
+                        Right action ->
+                          evalTgAct uid action cid >>= \case
+                            Left err -> sendReply cid err
+                            Right outboundMsg -> reply (tok env) cid outboundMsg (postjobs env)
+    if EQ == compare secret (tok env)
+      then
+        liftIO $
+          (try . runApp env . handle $ update)
+            >>= \case
+              -- catching all leftover exceptions if any
+              Left (SomeException err) ->
+                alertAdmin (postjobs env) $
+                  "Exception thrown against handler: "
+                    `T.append` (T.pack . show $ err)
+              Right _ -> pure ()
+      else liftIO $ putStrLn "Secrets do not match."
 
   staticSettings :: (MonadIO m) => ServerT Raw m
   staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
@@ -95,7 +95,7 @@ initServer config = hoistServer botApi (runApp config) server
 withServer :: AppConfig -> Application
 withServer = serve botApi . initServer
 
-makeConfig :: [(String, String)] -> IO (AppConfig, Int)
+makeConfig :: [(String, String)] -> IO AppConfig
 makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
       base = T.pack . fromJust $ lookup "BASE_URL" env
@@ -105,7 +105,6 @@ makeConfig env =
       creds =
         let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
          in MongoCredsServer "mongo" dbName user pwd
-      port = maybe 80 read (lookup "PORT" env)
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
       webhook =
         let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
@@ -127,38 +126,40 @@ makeConfig env =
         pipe_ioref <- newIORef pipe
         last_run_ioref <- newIORef Nothing
         pure
-          ( AppConfig
-              { app_version = version
-              , blacklist = mvar1
-              , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
-              , base_url = base
-              , mongo_creds = connected_creds
-              , last_worker_run = last_run_ioref
-              , subs_state = mvar2
-              , postjobs = chan
-              , worker_interval = interval
-              , connectors = (conn, pipe_ioref)
-              }
-          , port
-          )
+          AppConfig
+            { app_version = version
+            , blacklist = mvar1
+            , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
+            , base_url = base
+            , mongo_creds = connected_creds
+            , last_worker_run = last_run_ioref
+            , subs_state = mvar2
+            , postjobs = chan
+            , worker_interval = interval
+            , connectors = (conn, pipe_ioref)
+            }
 
-initStart :: (MonadIO m, MonadReader AppConfig m, HasMongo m) => m ()
-initStart = do
-  env <- ask
+initStart :: AppConfig -> IO ()
+initStart env = runApp env $ do
+  startJobs -- must be first started in any it's sent any job in the steps below
+  liftIO $ putStrLn "jobs queue started"
   loadChatsIntoMem
-  liftIO $ putStrLn "Chats loaded"
-  feeds <- getFeedsFromMem
-  liftIO . putStrLn $ "Feeds regenerated"
-  _ <- evalDb env $ UpsertFeeds feeds
-  liftIO . putStrLn $ "Cache refreshed"
-  postProcJobs >> procNotif
-  liftIO $
-    writeChan (postjobs env) $
-      JobTgAlertAdmin "Feedo just started."
+  liftIO $ putStrLn "chats loaded"
+  feeds <- rebuildAllFeedsFromMem
+  liftIO $ putStrLn "feeds built"
+  void $ evalDb env $ UpsertFeeds feeds
+  liftIO $ putStrLn "feeds saved"
+  startNotifs
+  liftIO $ do
+    putStrLn "digests / follows queue started"
+    writeChan (postjobs env) $ JobTgAlertAdmin "Feedo just started."
 
 startApp :: IO ()
 startApp = do
   env <- getEnvironment
-  (config, port) <- makeConfig env
-  runApp config initStart
+  config <- makeConfig env
+  initStart config
+  print $ "Running now using " ++ show port
   run port $ withServer config
+ where
+  port = 8000

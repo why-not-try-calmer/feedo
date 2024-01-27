@@ -23,7 +23,7 @@ import TgramOutJson (ChatId)
 import Types
 import Utils (defaultChatSettings, feedsFromList, partitionEither, removeByUserIdx, renderDbError, sortItems, updateSettings)
 
-withChatsFromMem :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either Error ChatRes)
+withChatsFromMem :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either TgActError ChatRes)
 withChatsFromMem action cid = do
   env <- ask
   res <- liftIO $ modifyMVar (subs_state env) (`afterDb` env)
@@ -50,13 +50,13 @@ withChatsFromMem action cid = do
               getCurrentTime >>= \now ->
                 let new_chat = initialized now [] (Just target_id)
                  in saveToDb new_chat >>= \case
-                      DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat: " `T.append` renderDbError err)
+                      Left err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat: " `T.append` renderDbError err)
                       _ -> pure (inserted new_chat, Right ChatOk)
             Sub links ->
               getCurrentTime >>= \now ->
                 let new_chat = initialized now links Nothing
                  in saveToDb new_chat >>= \case
-                      DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                      Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                       _ -> pure (inserted new_chat, Right ChatOk)
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
     Just c -> case action of
@@ -64,31 +64,31 @@ withChatsFromMem action cid = do
         let updated_c = c{sub_linked_to = Just target_id}
             update_m = HMS.update (\_ -> Just updated_c) cid hmap
          in evalDb env (UpsertChat updated_c) >>= \case
-              DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat to a new chat_id." `T.append` renderDbError err)
+              Left err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat to a new chat_id." `T.append` renderDbError err)
               _ -> pure (update_m, Right ChatOk)
       Migrate to ->
         let updated_c = c{sub_chatid = to}
             update_m = HMS.insert cid updated_c hmap
          in evalDb env (UpsertChat updated_c) >>= \case
-              DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
+              Left err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
               _ -> pure (update_m, Right ChatOk)
       Reset ->
         let updated_c = c{sub_settings = defaultChatSettings}
             update_m = HMS.update (\_ -> Just updated_c) cid hmap
          in evalDb env (UpsertChat updated_c) >>= \case
-              DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
+              Left err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
               _ -> pure (update_m, Right ChatOk)
       Sub links ->
         let updated_c = c{sub_feeds_links = S.fromList $ links ++ (S.toList . sub_feeds_links $ c)}
             updated_m = HMS.insert cid updated_c hmap
          in evalDb env (UpsertChat updated_c) >>= \case
-              DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+              Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
               _ -> pure (updated_m, Right ChatOk)
       UnSub refs -> do
         let (byurls, byids) = foldl' (\(!us, !is) v -> case v of ByUrl u -> (u : us, is); ById i -> (us, i : is)) ([], []) refs
             update_db c' =
               evalDb env (UpsertChat c') >>= \case
-                DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
                 _ -> pure (HMS.insert cid c' hmap, Right ChatOk)
         if not (null byurls) && not (null byids)
           then pure (hmap, Left . BadInput $ "You cannot mix references by urls and by ids in the same command.")
@@ -104,7 +104,7 @@ withChatsFromMem action cid = do
                  in update_db updated_c
       Purge ->
         evalDb env (DeleteChat cid) >>= \case
-          DbErr err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+          Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
           _ -> pure (HMS.delete cid hmap, Right ChatOk)
       SetChatSettings s ->
         let updated_settings = case s of
@@ -121,14 +121,14 @@ withChatsFromMem action cid = do
                       }
                   updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                in evalDb env (UpsertChat updated_c) >>= \case
-                    DbErr _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
+                    Left _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
                     _ -> pure (updated_cs, Right . ChatUpdated $ updated_c)
       Pause pause_or_resume ->
         let updated_sets = (sub_settings c){settings_paused = pause_or_resume}
             updated_c = c{sub_settings = updated_sets}
             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
          in evalDb env (UpsertChat updated_c) >>= \case
-              DbErr err -> pure (hmap, Left . UpdateError . renderDbError $ err)
+              Left err -> pure (hmap, Left . UpdateError . renderDbError $ err)
               _ -> pure (updated_cs, Right ChatOk)
       _ -> pure (hmap, Right ChatOk)
 
@@ -140,8 +140,8 @@ loadChatsIntoMem =
         now <- getCurrentTime
         putStrLn "Trying to loading chats now"
         evalDb env GetAllChats >>= \case
-          DbChats chats -> pure $ update_chats chats now
-          DbErr err -> do
+          Right (DbChats chats) -> pure $ update_chats chats now
+          Left err -> do
             print $ renderDbError err
             pure chats_hmap
           _ -> pure chats_hmap
@@ -159,23 +159,23 @@ loadChatsIntoMem =
         )
         chats
 
-getFeedsFromMem :: (MonadIO m, MonadReader AppConfig m) => m [Feed]
-getFeedsFromMem = do
+rebuildAllFeedsFromMem :: (MonadIO m, MonadReader AppConfig m) => m [Feed]
+rebuildAllFeedsFromMem = do
   env <- ask
   chats <- liftIO . readMVar $ subs_state env
   let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
-      report err = writeChan (postjobs env) . JobTgAlertAdmin $ "Failed to regen feeds for this reason: " `T.append` err
+      report err = alertAdmin (postjobs env) $ "Failed to regen feeds for this reason: " `T.append` err
   liftIO $ do
     (failed, feeds) <- partitionEither <$> forConcurrently urls rebuildFeed
-    unless (null failed) (report $ "getFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
+    unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
     pure . map sortItems $ feeds
 
-rebuildFeedsFromMem ::
-  (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
+rebuildSomeFeedsFromMem ::
+  (MonadReader AppConfig m, MonadIO m) =>
   [FeedLink] ->
   UTCTime ->
   m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildFeedsFromMem flinks now =
+rebuildSomeFeedsFromMem flinks now =
   ask >>= \env -> liftIO $ do
     (failed, succeeded) <- fetch_feeds
     -- if any failed, 'punish' offenders
@@ -193,7 +193,7 @@ rebuildFeedsFromMem flinks now =
     punished <- update_subchats env punishable
     -- alert admin
     let report = "Failed to update these feeds: " `T.append` T.intercalate ", " punishable
-    writeChan (postjobs env) $ JobTgAlertAdmin (report `T.append` ". Blacklist was updated accordingly.")
+    alertAdmin (postjobs env) (report `T.append` ". Blacklist was updated accordingly.")
     -- alert chats
     let msg = "This chat has been found to use a faulty RSS endpoint. It will be removed from your subscriptions."
     writeChan (postjobs env) (JobTgAlertChats punished msg)
@@ -229,7 +229,7 @@ makeDigestsFromMem = do
   if null $ feeds_to_refresh pre
     then pure $ Right CacheOk
     else
-      rebuildFeedsFromMem (feeds_to_refresh pre) now >>= \case
+      rebuildSomeFeedsFromMem (feeds_to_refresh pre) now >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
           -- sometimes a digest would contain items with the same timestamps, but
@@ -242,12 +242,11 @@ makeDigestsFromMem = do
           liftIO $ do
             -- ensuring caching worked
             case res of
-              DbErr e -> writeChan (postjobs env) . JobTgAlertAdmin $ renderDbError e
+              Left e -> alertAdmin (postjobs env) $ renderDbError e
               _ -> pure ()
             -- saving to mongo
             evalDb env (ArchiveItems $ HMS.elems rebuilt) >>= \case
-              DbErr err -> writeChan (postjobs env) (JobTgAlertAdmin $ "Unable to archive items for this reason: " `T.append` renderDbError err)
-              DbOk -> pure ()
+              Left err -> alertAdmin (postjobs env) $ "Unable to archive items for this reason: " `T.append` renderDbError err
               _ -> pure ()
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)
@@ -264,7 +263,7 @@ makeDigestsFromMem = do
  where
   get_last_batch rebuilt env =
     evalDb env (GetSomeFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
-      DbFeeds fs -> pure $ map i_link $ foldMap f_items fs
+      Right (DbFeeds fs) -> pure $ map i_link $ foldMap f_items fs
       _ -> pure mempty
   where_is_rust env Pre{..} Post{..} =
     let rust_in = filter (T.isInfixOf "rust")

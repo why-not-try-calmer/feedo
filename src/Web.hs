@@ -28,10 +28,10 @@ import Types
 import Utils (mbTime, renderDbError, renderUserError)
 
 renderDbRes :: DbRes -> H.Html
-renderDbRes res = case res of
-  DbBadOID -> "Unable to find a digest matching this identifier."
+renderDbRes (Left err) = H.toHtml . renderDbError $ err
+renderDbRes (Right res) = case res of
   DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
-  DbErr err -> H.toHtml . renderDbError $ err
+  DbBadOID -> "Unable to find a digest matching this identifier."
   DbDigest Digest{..} ->
     let flt =
           let titles = if null digest_titles then digest_links else digest_titles
@@ -168,8 +168,8 @@ readSettings :: (MonadIO m) => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
   env <- ask
   evalDb env (CheckLogin hash) >>= \case
-    DbErr err -> pure $ failedWith (renderDbError err)
-    DbLoggedIn cid ->
+    Left err -> pure $ failedWith (renderDbError err)
+    Right (DbLoggedIn cid) ->
       liftIO (readMVar $ subs_state env)
         >>= \chats -> case HMS.lookup cid chats of
           Nothing -> pure $ failedWith "Chat does not exist."
@@ -183,8 +183,8 @@ writeSettings :: (MonadIO m) => WriteReq -> App m WriteResp
 writeSettings (WriteReq hash new_settings Nothing) = do
   env <- ask
   evalDb env (CheckLogin hash) >>= \case
-    DbErr err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
-    DbLoggedIn cid -> do
+    Left err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
+    Right (DbLoggedIn cid) -> do
       chats <- liftIO . readMVar $ subs_state env
       case HMS.lookup cid chats of
         Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
@@ -216,8 +216,8 @@ writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update a
 writeSettings (WriteReq hash settings (Just True)) =
   ask >>= \env ->
     evalDb env (CheckLogin hash) >>= \case
-      DbErr err -> pure $ noLogin err
-      DbLoggedIn cid ->
+      Left err -> pure $ noLogin err
+      Right (DbLoggedIn cid) ->
         withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
           Left err -> pure . noUpdate . renderUserError $ err
           Right _ -> pure ok

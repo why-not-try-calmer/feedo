@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Redis where
@@ -18,14 +19,21 @@ import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
 import Mongo (HasMongo, evalDb)
-import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), Digest (..), FromCache (..))
+import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbResults (DbPages), Digest (..), FromCache (..))
 import Utils (renderDbError)
 
 class (Monad m) => HasRedis m where
-  withKeyStore :: AppConfig -> Redis a -> m a
+  evalKeyStore :: AppConfig -> Redis a -> m a
+  setUpKeyStore :: m (Either T.Text Connection)
+  withKeyStore :: CacheAction -> m CacheRes
 
 instance (MonadIO m) => HasRedis (App m) where
-  withKeyStore = withRedis
+  evalKeyStore :: (MonadIO m) => AppConfig -> Redis a -> App m a
+  evalKeyStore = evalRedis
+  setUpKeyStore :: (MonadIO m) => App m (Either T.Text Connection)
+  setUpKeyStore = setupRedis
+  withKeyStore :: (MonadIO m) => CacheAction -> App m CacheRes
+  withKeyStore = withCache
 
 singleFeedsK :: T.Text -> B.ByteString
 singleFeedsK = B.append "feeds:" . T.encodeUtf8
@@ -38,8 +46,8 @@ pageKeys cid mid = (lk, k)
   f :: (Show a) => a -> B.ByteString
   f = T.encodeUtf8 . T.pack . show
 
-withRedis :: (MonadIO m) => AppConfig -> Redis a -> m a
-withRedis conf action =
+evalRedis :: (MonadIO m) => AppConfig -> Redis a -> m a
+evalRedis conf action =
   let (conn, _) = connectors conf
    in liftIO $ runRedis conn action
 
@@ -61,7 +69,7 @@ setupRedis = liftIO $ do
   switch_hostnames n = if even n then "redis" else "localhost"
   handleWith (Right connector) = pure $ Right connector
   handleWith (Left (SomeException e)) = do
-    print $ "Failed to connect. Error: " `T.append` (T.pack . show $ e)
+    print $ "Failed to connect. TgActError: " `T.append` (T.pack . show $ e)
     putStrLn "Retrying now..."
     pure $ Left ()
 
@@ -95,18 +103,18 @@ withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => Ca
 {- Cache in-app or in-data frequently requested data -}
 withBroker (CacheGetPage cid mid n) = do
   env <- ask
-  withRedis env query >>= \case
+  evalKeyStore env query >>= \case
     Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
     _ ->
       refresh env >>= \case
         Left err -> pure . Left $ err
         Right _ ->
-          withRedis env query >>= \case
+          evalRedis env query >>= \case
             Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
             _ ->
               pure
                 . Left
-                $ "Error while trying to refresh after pulling anew from database. Chat involved: "
+                $ "TgActError while trying to refresh after pulling anew from database. Chat involved: "
                   `T.append` (T.pack . show $ cid)
  where
   (lk, k) = pageKeys cid mid
@@ -120,8 +128,8 @@ withBroker (CacheGetPage cid mid n) = do
      in pure . Right $ CachePage page' i' mb_page
   refresh env =
     evalDb env (GetPages cid mid) >>= \case
-      DbPages pages mb_link -> withBroker (CacheSetPages cid mid pages mb_link)
-      DbErr err -> pure . Left $ renderDbError err
+      Right (DbPages pages mb_link) -> withBroker (CacheSetPages cid mid pages mb_link)
+      Left err -> pure . Left $ renderDbError err
       _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
 withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
 withBroker (CacheSetPages cid mid pages mb_link) =
@@ -129,11 +137,11 @@ withBroker (CacheSetPages cid mid pages mb_link) =
     let (lk, k) = pageKeys cid mid
         action = case mb_link of
           Nothing ->
-            withRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
+            evalRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
               Right _ -> pure $ Right CacheOk
               Left _ -> pure $ Left "Nothing"
           Just l ->
-            withRedis
+            evalRedis
               env
               ( multiExec $ do
                   q1 <- set k $ B.encodeUtf8 l

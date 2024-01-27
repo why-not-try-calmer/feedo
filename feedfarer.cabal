@@ -132,6 +132,7 @@ test-suite feedfarer-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      AppSpec
       MarkdownCheckerSpec
       MongoSpec
       NotifierSpec

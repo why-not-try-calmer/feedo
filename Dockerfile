@@ -13,10 +13,7 @@ RUN stack --resolver lts-19.33 build \
   --only-dependencies
 
 # Build main
-COPY ./app app/
-COPY ./src src/
-COPY ./test test/
-COPY ./Setup.hs ./package.yaml .
+COPY . .
 
 RUN stack --resolver lts-19.33 install \
   --no-install-ghc \

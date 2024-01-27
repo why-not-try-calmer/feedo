@@ -11,10 +11,8 @@ import Data.Maybe (fromJust, isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDayTime), addUTCTime)
-import Mongo (HasMongo (evalDb))
 import TgramOutJson (ChatId)
 import Types
-import Utils (renderDbError)
 
 preNotifier :: UTCTime -> Maybe UTCTime -> SubChats -> Notifier
 {-# INLINEABLE preNotifier #-}
@@ -207,37 +205,5 @@ partitionDigests =
     )
     (mempty, mempty)
 
-markNotified :: (MonadIO m) => AppConfig -> [ChatId] -> UTCTime -> m ()
--- marking input chats as notified
-markNotified env notified_chats now = liftIO $
-  modifyMVar_ (subs_state env) $
-    \subs ->
-      let updated_chats = updated_notified_chats notified_chats subs
-       in evalDb env (UpsertChats updated_chats) >>= \case
-            DbErr err -> do
-              writeChan (postjobs env) $
-                JobTgAlertAdmin $
-                  "notifier: failed to \
-                  \ save updated chats to db because of this error"
-                    `T.append` renderDbError err
-              pure subs
-            DbOk -> pure updated_chats
-            _ -> pure subs
- where
-  updated_notified_chats notified =
-    HMS.mapWithKey
-      ( \cid c ->
-          if cid `elem` notified
-            then
-              let next = Just . findNextTime now . settings_digest_interval . sub_settings $ c
-               in -- updating last, next, and consuming 'settings_digest_start'
-                  case settings_digest_start . sub_settings $ c of
-                    Nothing -> c{sub_last_digest = Just now, sub_next_digest = next}
-                    Just _ ->
-                      c
-                        { sub_last_digest = Just now
-                        , sub_next_digest = next
-                        , sub_settings = (sub_settings c){settings_digest_start = Nothing}
-                        }
-            else c
-      )
+alertAdmin :: (MonadIO m) => Chan Job -> T.Text -> m ()
+alertAdmin chan = liftIO . writeChan chan . JobTgAlertAdmin
