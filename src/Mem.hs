@@ -159,23 +159,23 @@ loadChatsIntoMem =
         )
         chats
 
-getFeedsFromMem :: (MonadIO m, MonadReader AppConfig m) => m [Feed]
-getFeedsFromMem = do
+rebuildAllFeedsFromMem :: (MonadIO m, MonadReader AppConfig m) => m [Feed]
+rebuildAllFeedsFromMem = do
   env <- ask
   chats <- liftIO . readMVar $ subs_state env
   let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
       report err = writeChan (postjobs env) . JobTgAlertAdmin $ "Failed to regen feeds for this reason: " `T.append` err
   liftIO $ do
     (failed, feeds) <- partitionEither <$> forConcurrently urls rebuildFeed
-    unless (null failed) (report $ "getFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
+    unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
     pure . map sortItems $ feeds
 
-rebuildFeedsFromMem ::
+rebuildSomeFeedsFromMem ::
   (MonadReader AppConfig m, HasRedis m, HasMongo m, MonadIO m) =>
   [FeedLink] ->
   UTCTime ->
   m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildFeedsFromMem flinks now =
+rebuildSomeFeedsFromMem flinks now =
   ask >>= \env -> liftIO $ do
     (failed, succeeded) <- fetch_feeds
     -- if any failed, 'punish' offenders
@@ -229,7 +229,7 @@ makeDigestsFromMem = do
   if null $ feeds_to_refresh pre
     then pure $ Right CacheOk
     else
-      rebuildFeedsFromMem (feeds_to_refresh pre) now >>= \case
+      rebuildSomeFeedsFromMem (feeds_to_refresh pre) now >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
           -- sometimes a digest would contain items with the same timestamps, but

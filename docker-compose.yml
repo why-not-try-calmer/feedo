@@ -27,14 +27,14 @@ services:
         context: .
         dockerfile: Dockerfile
       environment:
-        API_KEY: ${API_KEY}
-        TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
-        BASE_URL: ${BASE_URL}
-        ALERT_CHATID: ${ALERT_CHATID}
-        WEBHOOK_URL: ${WEBHOOK_URL}
-        MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD} 
-        MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-        PORT: 8000
+        - API_KEY}
+        - TELEGRAM_TOKEN
+        - BASE_URL
+        - ALERT_CHATID
+        - WEBHOOK_URL
+        - MONGO_INITDB_ROOT_PASSWORD 
+        - MONGO_INITDB_ROOT_USERNAME
+        - PORT
       volumes:
         - ./static:/var/www/feedfarer-webui
     

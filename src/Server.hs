@@ -104,8 +104,8 @@ makeConfig env =
         _ -> "feedfarer"
       creds =
         let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
-         in MongoCredsServer "mongo" dbName user pwd
-      port = maybe 80 read (lookup "PORT" env)
+         in MongoCredsServer "localhost" dbName user pwd
+      port = read . fromJust . lookup "PORT" $ env
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
       webhook =
         let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
@@ -146,15 +146,11 @@ initStart :: (MonadIO m, MonadReader AppConfig m, HasMongo m) => m ()
 initStart = do
   env <- ask
   loadChatsIntoMem
-  liftIO $ putStrLn "Chats loaded"
-  feeds <- getFeedsFromMem
-  liftIO . putStrLn $ "Feeds regenerated"
+  feeds <- rebuildAllFeedsFromMem
   _ <- evalDb env $ UpsertFeeds feeds
-  liftIO . putStrLn $ "Cache refreshed"
-  postProcJobs >> procNotif
-  liftIO $
-    writeChan (postjobs env) $
-      JobTgAlertAdmin "Feedo just started."
+  postProcJobs
+  procNotif
+  liftIO $ writeChan (postjobs env) $ JobTgAlertAdmin "Feedo just started."
 
 startApp :: IO ()
 startApp = do
