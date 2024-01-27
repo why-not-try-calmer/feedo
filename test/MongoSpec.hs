@@ -27,7 +27,7 @@ getConns = do
 spec :: Spec
 spec = do
   env <- runIO getConns
-  sequenceA_ [go, go1 env, go2 env, go3 env]
+  sequenceA_ [go, go1 env, go2 env, go3 env, go4 env]
  where
   go =
     let desc = describe "checkDbMapper"
@@ -78,4 +78,17 @@ spec = do
           res <- evalDb env search_query
           res `shouldSatisfy` (\case DbSearchRes keywords' results -> not $ null results && keywords == keywords'; DbErr _ -> False)
           print res
+     in desc $ as target
+  go4 env =
+    let desc = describe "upsert and get feeds"
+        as = it "test writing feeds to db as upserts"
+        target = do
+          now <- getCurrentTime
+          let items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
+              feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
+          res1 <- evalDb env (UpsertFeeds [feed])
+          res1 `shouldSatisfy` (\DbOk -> True)
+          res2 <- evalDb env GetAllFeeds
+          res2 `shouldSatisfy` (\(DbFeeds feeds) -> not $ null feeds)
+          print res2
      in desc $ as target

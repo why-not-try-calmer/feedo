@@ -336,6 +336,7 @@ renderCmds =
     `T.append` "\n\nCheck out this [document](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md) for more details."
 
 {-
+about - Information about this service (version, statistics, etc.)
 admin - manage the chat settings from the comfort of a web browser
 changelog - link to the changelog
 feed - show info about the subscribed to feeds, for the current chat or target channel_id

@@ -51,40 +51,41 @@ server =
     :<|> staticSettings
  where
   handleWebhook :: (MonadIO m) => T.Text -> Update -> App m ()
-  handleWebhook secret update =
-    ask >>= \env ->
-      let tok = bot_token . tg_config
-          finishWith cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
-          handle upd = case callback_query upd of
-            Just cbq -> processCbq cbq
-            Nothing -> case message upd of
-              Nothing -> liftIO $ putStrLn "Failed to parse message"
-              Just msg ->
-                let cid = chat_id . chat $ msg
-                    uid = user_id . fromJust . from $ msg
-                 in case reply_to_message msg of
-                      Just _ -> pure () -- ignoring replies
-                      Nothing -> case TgramInJson.text msg of
-                        Nothing -> pure () -- ignoring empty contents
-                        Just conts -> case interpretCmd conts of
-                          Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
-                          Left err -> finishWith cid err
-                          Right action ->
-                            evalTgAct uid action cid >>= \case
-                              Left err -> finishWith cid err
-                              Right r -> reply (tok env) cid r (postjobs env)
-       in if EQ == compare secret (tok env)
-            then
-              liftIO (try . runApp env . handle $ update) >>= \case
-                -- catching all leftover exceptions if any
-                Left (SomeException err) ->
-                  liftIO $
-                    writeChan (postjobs env) $
-                      JobTgAlertAdmin $
-                        "Exception thrown against handler: "
-                          `T.append` (T.pack . show $ err)
-                Right _ -> pure ()
-            else liftIO $ putStrLn "Secrets do not match."
+  handleWebhook secret update = do
+    env <- ask
+    let tok = bot_token . tg_config
+        sendReply cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
+        handle upd = case callback_query upd of
+          Just cbq -> processCbq cbq
+          Nothing -> case message upd of
+            Nothing -> liftIO $ putStrLn "Failed to parse message"
+            Just inboundMsg ->
+              let cid = chat_id . chat $ inboundMsg
+                  uid = user_id . fromJust . from $ inboundMsg
+               in case reply_to_message inboundMsg of
+                    Just _ -> pure () -- ignoring replies
+                    Nothing -> case TgramInJson.text inboundMsg of
+                      Nothing -> pure () -- ignoring empty contents
+                      Just conts -> case interpretCmd conts of
+                        Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
+                        Left err -> sendReply cid err
+                        Right action ->
+                          evalTgAct uid action cid >>= \case
+                            Left err -> sendReply cid err
+                            Right outboundMsg -> reply (tok env) cid outboundMsg (postjobs env)
+    if EQ == compare secret (tok env)
+      then
+        liftIO
+          $ (try . runApp env . handle $ update)
+          >>= \case
+            -- catching all leftover exceptions if any
+            Left (SomeException err) ->
+              writeChan (postjobs env)
+                $ JobTgAlertAdmin
+                $ "Exception thrown against handler: "
+                `T.append` (T.pack . show $ err)
+            Right _ -> pure ()
+      else liftIO $ putStrLn "Secrets do not match."
 
   staticSettings :: (MonadIO m) => ServerT Raw m
   staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
@@ -145,6 +146,7 @@ makeConfig env =
 initStart :: (MonadIO m, MonadReader AppConfig m, HasMongo m) => m ()
 initStart = do
   env <- ask
+  postProcJobs
   loadChatsIntoMem
   feeds <- rebuildAllFeedsFromMem
   _ <- evalDb env $ UpsertFeeds feeds
