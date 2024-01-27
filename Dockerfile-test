@@ -12,10 +12,7 @@ RUN stack --resolver lts-19.33 test \
   --no-run-tests \
   --only-dependencies
 
-COPY ./app app/
-COPY ./src src/
-COPY ./test test/
-COPY ./Setup.hs ./package.yaml .
+COPY . . 
 COPY /static /var/www/feedfarer-webui
 
 # Build and run tests

@@ -75,16 +75,16 @@ server =
                             Right outboundMsg -> reply (tok env) cid outboundMsg (postjobs env)
     if EQ == compare secret (tok env)
       then
-        liftIO
-          $ (try . runApp env . handle $ update)
-          >>= \case
-            -- catching all leftover exceptions if any
-            Left (SomeException err) ->
-              writeChan (postjobs env)
-                $ JobTgAlertAdmin
-                $ "Exception thrown against handler: "
-                `T.append` (T.pack . show $ err)
-            Right _ -> pure ()
+        liftIO $
+          (try . runApp env . handle $ update)
+            >>= \case
+              -- catching all leftover exceptions if any
+              Left (SomeException err) ->
+                writeChan (postjobs env) $
+                  JobTgAlertAdmin $
+                    "Exception thrown against handler: "
+                      `T.append` (T.pack . show $ err)
+              Right _ -> pure ()
       else liftIO $ putStrLn "Secrets do not match."
 
   staticSettings :: (MonadIO m) => ServerT Raw m
