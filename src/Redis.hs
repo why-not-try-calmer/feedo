@@ -18,7 +18,7 @@ import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
 import Mongo (HasMongo, evalDb)
-import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbRes (..), DbResults (DbPages), Digest (..), FromCache (..))
+import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbResults (DbPages), Digest (..), FromCache (..))
 import Utils (renderDbError)
 
 class (Monad m) => HasRedis m where

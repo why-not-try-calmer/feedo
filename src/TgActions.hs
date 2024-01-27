@@ -18,6 +18,7 @@ import Data.Time (addUTCTime, getCurrentTime)
 import Mem (withChatsFromMem)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
+import Notifications (alertAdmin)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Redis
 import Replies (Replies (FromAbout), mkReply, render)
@@ -32,7 +33,6 @@ import Types (
   CacheAction (..),
   ChatRes (ChatUpdated),
   DbAction (..),
-  DbRes (..),
   DbResults (..),
   Feed (f_items, f_link),
   FeedError (r_url),
@@ -407,7 +407,10 @@ evalTgAct uid (Announce txt) admin_chat =
             fetch_chat_types >>= \resp -> do
               let (failed, succeeded) = partitionEither resp
                   non_channels = are_non_channels succeeded
-              unless (null failed) (liftIO $ writeChan (postjobs env) (JobTgAlertAdmin $ "Telegram didn't told us the type of these chats: " `T.append` (T.pack . show $ failed)))
+              unless (null failed) $
+                alertAdmin (postjobs env) $
+                  "Telegram didn't told us the type of these chats: "
+                    `T.append` (T.pack . show $ failed)
               if null non_channels
                 then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
                 else

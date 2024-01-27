@@ -5,7 +5,6 @@ module Jobs (procNotif, postProcJobs) where
 import Control.Concurrent (
   readChan,
   threadDelay,
-  writeChan,
  )
 import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
@@ -18,8 +17,8 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
 import Mem (makeDigestsFromMem, withChatsFromMem)
-import Mongo (evalDb, saveToLog)
-import Notifications (markNotified)
+import Mongo (evalDb, markNotified, saveToLog)
+import Notifications (alertAdmin)
 import Redis
 import Replies (
   mkDigestUrl,
@@ -47,7 +46,7 @@ procNotif =
         interval = worker_interval env
         onError (SomeException err) = do
           let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
-          writeChan (postjobs env) . JobTgAlertAdmin $ report
+          alertAdmin (postjobs env) report
         -- sending digests + follows
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
           \(cid, (c, batch)) ->
@@ -93,12 +92,7 @@ procNotif =
                   notified_chats <- map fst <$> send_tg_notif notif_hmap now
                   markNotified env notified_chats now
                   modifyIORef' (last_worker_run env) $ \_ -> Just now
-            Left err ->
-              writeChan (postjobs env) $
-                JobTgAlertAdmin $
-                  "notifier: \
-                  \ failed to acquire notification package and got this error: "
-                    `T.append` err
+            Left err -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` err)
             -- to avoid an incomplete pattern
             _ -> pure ()
         wait_action = threadDelay interval >> notify
@@ -109,8 +103,13 @@ postProcJobs :: (MonadReader AppConfig m, MonadIO m) => m ()
 {- Forks a runtime thread and tasks it with handling as they come all post-processing jobs -}
 postProcJobs =
   ask >>= \env ->
-    let action = readChan (postjobs env) >>= execute env
-        handler (SomeException e) = writeChan (postjobs env) . JobTgAlertAdmin $ reportOn e
+    let action =
+          readChan (postjobs env)
+            >>= \job ->
+              alertAdmin (postjobs env) ("debug: running job... " `T.append` (T.pack . show $ job))
+                >> execute env job
+                >> alertAdmin (postjobs env) ("debug: ran job: " `T.append` (T.pack . show $ job))
+        handler (SomeException e) = alertAdmin (postjobs env) . reportOn $ e
      in liftIO $ runForever_ action handler
  where
   fork = void . async
@@ -123,7 +122,7 @@ postProcJobs =
   execute env (JobArchive feeds now) = fork $ do
     -- archiving items
     evalDb env (ArchiveItems feeds) >>= \case
-      Left err -> writeChan (postjobs env) . JobTgAlertAdmin $ "Unable to archive items. Reason: " `T.append` renderDbError err
+      Left err -> alertAdmin (postjobs env) $ "Unable to archive items. Reason: " `T.append` renderDbError err
       _ -> pure ()
     -- cleaning more than 1 month old archives
     void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)
@@ -131,8 +130,7 @@ postProcJobs =
   execute env (JobPin cid mid) = fork $ do
     runSend_ (bot_token . tg_config $ env) "pinChatMessage" (PinMessage cid mid) >>= \case
       Left _ ->
-        writeChan (postjobs env)
-          . JobTgAlertAdmin
+        alertAdmin (postjobs env)
           . with_cid_txt "Tried to pin a message in (chat_id) " cid
           $ " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
       _ -> pure ()
@@ -144,8 +142,7 @@ postProcJobs =
       threadDelay checked_delay
       runSend_ (bot_token . tg_config $ env) "deleteMessage" (DeleteMessage cid mid) >>= \case
         Left _ ->
-          writeChan (postjobs env)
-            . JobTgAlertAdmin
+          alertAdmin (postjobs env)
             . with_cid_txt "Tried to delete a message in (chat_id) " cid
             $ " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
         _ -> pure ()
@@ -157,7 +154,7 @@ postProcJobs =
             Right _ -> pure ()
             _ ->
               let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
-               in writeChan (postjobs env) (JobTgAlertAdmin report)
+               in alertAdmin (postjobs env) report
   execute env (JobTgAlertAdmin contents) = fork $ do
     let msg = ServiceReply $ "Feedo is sending an alert: " `T.append` contents
     reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg (postjobs env)

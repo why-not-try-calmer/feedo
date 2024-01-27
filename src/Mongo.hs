@@ -3,7 +3,7 @@
 
 module Mongo where
 
-import Control.Concurrent (writeChan)
+import Control.Concurrent.MVar (modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -22,6 +22,7 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
+import Notifications (alertAdmin, findNextTime)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Types
@@ -166,12 +167,11 @@ withMongo AppConfig{..} action = liftIO $ do
         pure . Left . T.pack . show $ e
       Right r -> pure $ Right r
   alert err =
-    liftIO
-      $ writeChan postjobs
-        . JobTgAlertAdmin
-      $ "withMongo failed with "
-        `T.append` (T.pack . show $ err)
-        `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+    liftIO $
+      alertAdmin postjobs $
+        "withMongo failed with "
+          `T.append` (T.pack . show $ err)
+          `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Search and indices -}
 
@@ -397,6 +397,40 @@ evalMongo env (GetXDays links days) = do
     let fresh = freshLastXDays days now $ f_items f
      in if null fresh then acc else (f_link f, fresh) : acc
   foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs
+
+markNotified :: (MonadIO m) => AppConfig -> [ChatId] -> UTCTime -> m ()
+-- marking input chats as notified
+markNotified env notified_chats now = liftIO $
+  modifyMVar_ (subs_state env) $
+    \subs ->
+      let updated_chats = updated_notified_chats notified_chats subs
+       in evalDb env (UpsertChats updated_chats) >>= \case
+            Left err -> do
+              alertAdmin (postjobs env) $
+                "notifier: failed to \
+                \ save updated chats to db because of this error"
+                  `T.append` renderDbError err
+              pure subs
+            Right DbDone -> pure updated_chats
+            _ -> pure subs
+ where
+  updated_notified_chats notified =
+    HMS.mapWithKey
+      ( \cid c ->
+          if cid `elem` notified
+            then
+              let next_digest = Just . findNextTime now . settings_digest_interval . sub_settings $ c
+               in -- updating last, next_digest, and consuming 'settings_digest_start'
+                  case settings_digest_start . sub_settings $ c of
+                    Nothing -> c{sub_last_digest = Just now, sub_next_digest = next_digest}
+                    Just _ ->
+                      c
+                        { sub_last_digest = Just now
+                        , sub_next_digest = next_digest
+                        , sub_settings = (sub_settings c){settings_digest_start = Nothing}
+                        }
+            else c
+      )
 
 {- Items -}
 

@@ -164,7 +164,7 @@ rebuildAllFeedsFromMem = do
   env <- ask
   chats <- liftIO . readMVar $ subs_state env
   let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
-      report err = writeChan (postjobs env) . JobTgAlertAdmin $ "Failed to regen feeds for this reason: " `T.append` err
+      report err = alertAdmin (postjobs env) $ "Failed to regen feeds for this reason: " `T.append` err
   liftIO $ do
     (failed, feeds) <- partitionEither <$> forConcurrently urls rebuildFeed
     unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
@@ -193,7 +193,7 @@ rebuildSomeFeedsFromMem flinks now =
     punished <- update_subchats env punishable
     -- alert admin
     let report = "Failed to update these feeds: " `T.append` T.intercalate ", " punishable
-    writeChan (postjobs env) $ JobTgAlertAdmin (report `T.append` ". Blacklist was updated accordingly.")
+    alertAdmin (postjobs env) (report `T.append` ". Blacklist was updated accordingly.")
     -- alert chats
     let msg = "This chat has been found to use a faulty RSS endpoint. It will be removed from your subscriptions."
     writeChan (postjobs env) (JobTgAlertChats punished msg)
@@ -242,11 +242,11 @@ makeDigestsFromMem = do
           liftIO $ do
             -- ensuring caching worked
             case res of
-              Left e -> writeChan (postjobs env) . JobTgAlertAdmin $ renderDbError e
+              Left e -> alertAdmin (postjobs env) $ renderDbError e
               _ -> pure ()
             -- saving to mongo
             evalDb env (ArchiveItems $ HMS.elems rebuilt) >>= \case
-              Left err -> writeChan (postjobs env) (JobTgAlertAdmin $ "Unable to archive items for this reason: " `T.append` renderDbError err)
+              Left err -> alertAdmin (postjobs env) $ "Unable to archive items for this reason: " `T.append` renderDbError err
               _ -> pure ()
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)

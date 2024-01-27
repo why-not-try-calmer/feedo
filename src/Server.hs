@@ -16,6 +16,7 @@ import Mem
 import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Notifications (alertAdmin)
 import Redis (setupRedis)
 import Requests (reply)
 import Servant
@@ -67,12 +68,15 @@ server =
                     Nothing -> case TgramInJson.text inboundMsg of
                       Nothing -> pure () -- ignoring empty contents
                       Just conts -> case interpretCmd conts of
-                        Left (Ignore _) -> pure () -- ignoring neither interpreted nor error
-                        Left err -> sendReply cid err
+                        Left err -> do
+                          alertAdmin (postjobs env) "debug: interpreted command"
+                          sendReply cid err
                         Right action ->
                           evalTgAct uid action cid >>= \case
                             Left err -> sendReply cid err
-                            Right outboundMsg -> reply (tok env) cid outboundMsg (postjobs env)
+                            Right outboundMsg -> do
+                              alertAdmin (postjobs env) "debug: evaluated command"
+                              reply (tok env) cid outboundMsg (postjobs env)
     if EQ == compare secret (tok env)
       then
         liftIO $
@@ -80,10 +84,9 @@ server =
             >>= \case
               -- catching all leftover exceptions if any
               Left (SomeException err) ->
-                writeChan (postjobs env) $
-                  JobTgAlertAdmin $
-                    "Exception thrown against handler: "
-                      `T.append` (T.pack . show $ err)
+                alertAdmin (postjobs env) $
+                  "Exception thrown against handler: "
+                    `T.append` (T.pack . show $ err)
               Right _ -> pure ()
       else liftIO $ putStrLn "Secrets do not match."
 

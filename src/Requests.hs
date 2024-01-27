@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
+import Notifications (alertAdmin)
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
 import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
 import Types
@@ -184,7 +185,7 @@ reply tok cid rep chan =
         has_markdown = if markdown then Just "Markdown" else Nothing
       report err =
         let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
-         in liftIO . writeChan chan $ JobTgAlertAdmin err_msg
+         in alertAdmin chan err_msg
       non_empty txt = if T.null txt then "No result for this command." else txt
       outbound msg@ChatReply{..} =
         let jobs mid =
@@ -222,7 +223,7 @@ reply tok cid rep chan =
    in if T.null $ reply_contents rep
         then
           let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
-           in liftIO $ writeChan chan $ JobTgAlertAdmin alert_msg
+           in alertAdmin chan alert_msg
         else outbound rep
 
 {- Feeds -}
