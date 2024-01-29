@@ -10,7 +10,7 @@ import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Reader (MonadReader, ask)
+import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
@@ -109,7 +109,7 @@ startNotifs =
         handler e = onError e >> notify
      in liftIO $ runForever_ wait_action handler >> putStrLn "startNotifs: started"
 
-startJobs :: (MonadReader AppConfig m, MonadIO m) => m ()
+startJobs :: (MonadIO m) => App m ()
 {- Forks a runtime thread and tasks it with handling as they come all post-processing jobs -}
 startJobs = do
   env <- ask
