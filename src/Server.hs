@@ -121,9 +121,10 @@ makeConfig env =
             Right c -> putStrLn "Redis...OK" >> pure c
         (pipe, connected_creds) <-
           liftIO $
-            setupDb creds >>= \case
-              Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
-              Right p -> putStrLn "Mongo...OK" >> pure p
+            setupDb creds
+              >>= \case
+                Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
+                Right p -> putStrLn "Mongo...OK" >> pure p
         pipe_ioref <- newIORef pipe
         last_run_ioref <- newIORef Nothing
         pure
@@ -160,6 +161,7 @@ startApp = do
   env <- getEnvironment
   config <- makeConfig env
   initStart config
+  print $ "Startup completed for version " `T.append` app_version config
   print $ "Running now using " ++ show port
   run port $ withServer config
  where
