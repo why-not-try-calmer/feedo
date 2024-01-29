@@ -1,6 +1,7 @@
-FROM haskell:latest
 ARG app_version=test
 ENV APP_VERSION=$app_version
+
+FROM haskell:9.0.2
 WORKDIR /opt/app
 
 # Dependencies for caching
