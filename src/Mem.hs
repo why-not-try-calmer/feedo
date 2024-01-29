@@ -18,7 +18,6 @@ import Data.Time.Clock.POSIX
 import Mongo (HasMongo (evalDb), evalDb)
 import Notifications
 import Parsing (rebuildFeed)
-import Redis (HasRedis)
 import TgramOutJson (ChatId)
 import Types
 import Utils (defaultChatSettings, feedsFromList, partitionEither, removeByUserIdx, renderDbError, sortItems, updateSettings)
@@ -44,52 +43,59 @@ withChatsFromMem action cid = do
               , sub_settings = defaultChatSettings
               }
           inserted c = HMS.insert cid c hmap
-          saveToDb c = evalDb env $ UpsertChat c
+          saveToDb c = evalDb $ UpsertChat c
        in case action of
             Link target_id ->
               getCurrentTime >>= \now ->
                 let new_chat = initialized now [] (Just target_id)
-                 in saveToDb new_chat >>= \case
-                      Left err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat: " `T.append` renderDbError err)
-                      _ -> pure (inserted new_chat, Right ChatOk)
+                 in runApp env $
+                      saveToDb new_chat >>= \case
+                        Left err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat: " `T.append` renderDbError err)
+                        _ -> pure (inserted new_chat, Right ChatOk)
             Sub links ->
               getCurrentTime >>= \now ->
                 let new_chat = initialized now links Nothing
-                 in saveToDb new_chat >>= \case
-                      Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                      _ -> pure (inserted new_chat, Right ChatOk)
+                 in runApp env $
+                      saveToDb new_chat >>= \case
+                        Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                        _ -> pure (inserted new_chat, Right ChatOk)
             _ -> pure (hmap, Left . UpdateError $ "Chat not found. Please add it by first using /sub with a valid web feed url.")
     Just c -> case action of
       Link target_id ->
         let updated_c = c{sub_linked_to = Just target_id}
             update_m = HMS.update (\_ -> Just updated_c) cid hmap
-         in evalDb env (UpsertChat updated_c) >>= \case
-              Left err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat to a new chat_id." `T.append` renderDbError err)
-              _ -> pure (update_m, Right ChatOk)
+         in runApp env $
+              evalDb (UpsertChat updated_c) >>= \case
+                Left err -> pure (hmap, Left . UpdateError $ "Db refused to link this chat to a new chat_id." `T.append` renderDbError err)
+                _ -> pure (update_m, Right ChatOk)
       Migrate to ->
         let updated_c = c{sub_chatid = to}
             update_m = HMS.insert cid updated_c hmap
-         in evalDb env (UpsertChat updated_c) >>= \case
-              Left err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
-              _ -> pure (update_m, Right ChatOk)
+         in runApp env $
+              evalDb (UpsertChat updated_c) >>= \case
+                Left err -> pure (hmap, Left . UpdateError $ "Db refused to migrate this chat." `T.append` renderDbError err)
+                _ -> pure (update_m, Right ChatOk)
       Reset ->
         let updated_c = c{sub_settings = defaultChatSettings}
             update_m = HMS.update (\_ -> Just updated_c) cid hmap
-         in evalDb env (UpsertChat updated_c) >>= \case
-              Left err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
-              _ -> pure (update_m, Right ChatOk)
+         in runApp env $
+              evalDb (UpsertChat updated_c) >>= \case
+                Left err -> pure (hmap, Left . UpdateError $ "Db refused to reset this chat's settings." `T.append` renderDbError err)
+                _ -> pure (update_m, Right ChatOk)
       Sub links ->
         let updated_c = c{sub_feeds_links = S.fromList $ links ++ (S.toList . sub_feeds_links $ c)}
             updated_m = HMS.insert cid updated_c hmap
-         in evalDb env (UpsertChat updated_c) >>= \case
-              Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-              _ -> pure (updated_m, Right ChatOk)
+         in runApp env $
+              evalDb (UpsertChat updated_c) >>= \case
+                Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                _ -> pure (updated_m, Right ChatOk)
       UnSub refs -> do
         let (byurls, byids) = foldl' (\(!us, !is) v -> case v of ByUrl u -> (u : us, is); ById i -> (us, i : is)) ([], []) refs
             update_db c' =
-              evalDb env (UpsertChat c') >>= \case
-                Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-                _ -> pure (HMS.insert cid c' hmap, Right ChatOk)
+              runApp env $
+                evalDb (UpsertChat c') >>= \case
+                  Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+                  _ -> pure (HMS.insert cid c' hmap, Right ChatOk)
         if not (null byurls) && not (null byids)
           then pure (hmap, Left . BadInput $ "You cannot mix references by urls and by ids in the same command.")
           else
@@ -103,9 +109,10 @@ withChatsFromMem action cid = do
                 let updated_c = c{sub_feeds_links = S.filter (`notElem` byurls) $ sub_feeds_links c}
                  in update_db updated_c
       Purge ->
-        evalDb env (DeleteChat cid) >>= \case
-          Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
-          _ -> pure (HMS.delete cid hmap, Right ChatOk)
+        runApp env $
+          evalDb (DeleteChat cid) >>= \case
+            Left err -> pure (hmap, Left . UpdateError $ "Db refused to subscribe you: " `T.append` renderDbError err)
+            _ -> pure (HMS.delete cid hmap, Right ChatOk)
       SetChatSettings s ->
         let updated_settings = case s of
               Parsed p -> updateSettings p $ sub_settings c
@@ -120,16 +127,18 @@ withChatsFromMem action cid = do
                       , sub_settings = updated_settings
                       }
                   updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-               in evalDb env (UpsertChat updated_c) >>= \case
-                    Left _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
-                    _ -> pure (updated_cs, Right . ChatUpdated $ updated_c)
+               in runApp env $
+                    evalDb (UpsertChat updated_c) >>= \case
+                      Left _ -> pure (hmap, Left . UpdateError $ "Db refuse to update settings.")
+                      _ -> pure (updated_cs, Right . ChatUpdated $ updated_c)
       Pause pause_or_resume ->
         let updated_sets = (sub_settings c){settings_paused = pause_or_resume}
             updated_c = c{sub_settings = updated_sets}
             updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
-         in evalDb env (UpsertChat updated_c) >>= \case
-              Left err -> pure (hmap, Left . UpdateError . renderDbError $ err)
-              _ -> pure (updated_cs, Right ChatOk)
+         in runApp env $
+              evalDb (UpsertChat updated_c) >>= \case
+                Left err -> pure (hmap, Left . UpdateError . renderDbError $ err)
+                _ -> pure (updated_cs, Right ChatOk)
       _ -> pure (hmap, Right ChatOk)
 
 loadChatsIntoMem :: (MonadIO m) => App m ()
@@ -140,12 +149,13 @@ loadChatsIntoMem = do
       \chats_hmap -> do
         now <- getCurrentTime
         putStrLn "Trying to loading chats now"
-        evalDb env GetAllChats >>= \case
-          Right (DbChats chats) -> pure $ update_chats chats now
-          Left err -> do
-            print $ renderDbError err
-            pure chats_hmap
-          _ -> pure chats_hmap
+        runApp env $
+          evalDb GetAllChats >>= \case
+            Right (DbChats chats) -> pure $ update_chats chats now
+            Left err -> do
+              liftIO $ print $ renderDbError err
+              pure chats_hmap
+            _ -> pure chats_hmap
  where
   update_chats chats now =
     HMS.fromList $
@@ -216,7 +226,7 @@ rebuildSomeFeedsFromMem flinks now =
     updateSubChats = foldl' edit_subchats
     edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
 
-makeDigestsFromMem :: (MonadIO m, MonadReader AppConfig m, HasRedis m, HasMongo m) => m (Either T.Text FromCache)
+makeDigestsFromMem :: (MonadIO m) => App m (Either T.Text FromCache)
 makeDigestsFromMem = do
   env <- ask
   (chats, now, last_run) <- liftIO $ do
@@ -235,9 +245,9 @@ makeDigestsFromMem = do
         Right rebuilt -> do
           -- sometimes a digest would contain items with the same timestamps, but
           -- we can filter them out through a simple comparison
-          last_batch <- get_last_batch rebuilt env
+          last_batch <- get_last_batch rebuilt
           -- caching
-          res <- evalDb env $ UpsertFeeds $ HMS.elems rebuilt
+          res <- evalDb $ UpsertFeeds $ HMS.elems rebuilt
           -- creating update notification payload, with 'last_run' used only for 'follow notifications'
           let post = postNotifier rebuilt last_batch pre
           liftIO $ do
@@ -246,9 +256,10 @@ makeDigestsFromMem = do
               Left e -> alertAdmin (postjobs env) $ renderDbError e
               _ -> pure ()
             -- saving to mongo
-            evalDb env (ArchiveItems $ HMS.elems rebuilt) >>= \case
-              Left err -> alertAdmin (postjobs env) $ "Unable to archive items for this reason: " `T.append` renderDbError err
-              _ -> pure ()
+            runApp env $
+              evalDb (ArchiveItems $ HMS.elems rebuilt) >>= \case
+                Left err -> alertAdmin (postjobs env) $ "Unable to archive items for this reason: " `T.append` renderDbError err
+                _ -> pure ()
             -- logging possibly too aggressive union
             unless (null $ discarded_items_links post)
               $ writeChan (postjobs env)
@@ -262,8 +273,8 @@ makeDigestsFromMem = do
             where_is_rust env pre post
           pure . Right $ CacheDigests $ batches post
  where
-  get_last_batch rebuilt env =
-    evalDb env (GetSomeFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
+  get_last_batch rebuilt =
+    evalDb (GetSomeFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
       Right (DbFeeds fs) -> pure $ map i_link $ foldMap f_items fs
       _ -> pure mempty
   where_is_rust env Pre{..} Post{..} =

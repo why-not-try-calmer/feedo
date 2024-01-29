@@ -43,7 +43,7 @@ checkDelay delay
   | delay > 30 = ("30 secs", 30000000)
   | otherwise = (show delay, delay)
 
-startNotifs :: (MonadReader AppConfig m, MonadIO m) => m ()
+startNotifs :: (MonadIO m) => App m ()
 {- Forks a thread and tasks it with checking every minute
 if any chat need a digest or follow -}
 startNotifs =
@@ -72,7 +72,7 @@ startNotifs =
                         ftitles' = S.toList . S.fromList $ ftitles
                         flinks' = S.toList . S.fromList $ flinks
                         digest = Digest Nothing now fitems flinks' ftitles'
-                    res <- evalDb env $ WriteDigest digest
+                    res <- runApp env $ evalDb $ WriteDigest digest
                     let mb_digest_link r = case r of
                           Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
                           _ -> Nothing
@@ -91,12 +91,12 @@ startNotifs =
                   -- mark chats as notified on first run
                   -- but do not send digests to avoid double-sending
                   let notified_chats = HMS.keys notif_hmap
-                  markNotified env notified_chats now
+                  runApp env $ markNotified notified_chats now
                   modifyIORef' (last_worker_run env) $ \_ -> Just now
                 Just _ -> do
                   -- this time sending digests, follows & search notifications
                   notified_chats <- map fst <$> send_tg_notif notif_hmap now
-                  markNotified env notified_chats now
+                  runApp env $ markNotified notified_chats now
                   modifyIORef' (last_worker_run env) $ \_ -> Just now
             Left err -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` err)
             -- to avoid an incomplete pattern
@@ -132,14 +132,15 @@ execute :: AppConfig -> Job -> IO ()
 execute env (JobArchive feeds now) = do
   -- archiving items
   putStrLn "Jobs received: JobArchive"
-  evalDb env (ArchiveItems feeds) >>= \case
-    Left err ->
-      let msg = "Unable to archive items. Reason: " `T.append` renderDbError err
-       in execute env $ JobTgAlertAdmin msg
-    _ -> putStrLn "successfully ran job"
+  runApp env $
+    evalDb (ArchiveItems feeds) >>= \case
+      Left err ->
+        let msg = "Unable to archive items. Reason: " `T.append` renderDbError err
+         in liftIO $ execute env $ JobTgAlertAdmin msg
+      _ -> liftIO $ putStrLn "successfully ran job"
   -- cleaning more than 1 month old archives
-  void $ evalDb env (PruneOld $ addUTCTime (-2592000) now)
-execute env (JobLog item) = saveToLog env item
+  void $ runApp env $ evalDb (PruneOld $ addUTCTime (-2592000) now)
+execute env (JobLog item) = runApp env $ saveToLog item
 execute env (JobPin cid mid) = do
   runSend_ (bot_token . tg_config $ env) "pinChatMessage" (PinMessage cid mid) >>= \case
     Left _ ->
@@ -160,7 +161,7 @@ execute env (JobRemoveMsg cid mid delay) = do
           $ " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
       _ -> pure ()
 execute env (JobSetPagination cid mid pages mb_link) =
-  let to_db = evalDb env $ InsertPages cid mid pages mb_link
+  let to_db = evalDb $ InsertPages cid mid pages mb_link
       to_cache = withKeyStore $ CacheSetPages cid mid pages mb_link
    in runApp env (to_db >> to_cache) >>= \case
         Right _ -> pure ()

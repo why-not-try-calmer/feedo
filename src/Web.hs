@@ -125,7 +125,7 @@ home = pure . H.docTypeHtml $ do
       >> H.p " and get your favorite web feeds posted to your Telegram account!"
 
 viewDigests :: (MonadIO m) => T.Text -> App m Markup
-viewDigests _id = ask >>= \env -> evalDb env (ReadDigest _id) <&> renderDbRes
+viewDigests _id = evalDb (ReadDigest _id) <&> renderDbRes
 
 viewSearchRes :: (MonadIO m) => Maybe T.Text -> Maybe T.Text -> Maybe T.Text -> App m Markup
 viewSearchRes Nothing _ _ =
@@ -134,7 +134,6 @@ viewSearchRes Nothing _ _ =
     \ /view?flinks=https://my_url1.org\\https://myurl2.org&from=2022-01-28&to=2022-01-30"
 viewSearchRes _ Nothing _ = pure "Missing a datestring (format: '2022-01-28')"
 viewSearchRes (Just flinks_txt) (Just fr) m_to = do
-  env <- ask
   if null flinks
     then
       abortWith
@@ -147,8 +146,8 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
           \ Make sure to use the format as in '2022-28-01,2022-30-01' \
           \ for the 2-days interval between January 28 and January 30, 2022. \
           \ The second parameter is optional."
-      Just [f] -> liftIO getCurrentTime >>= \now -> evalDb env (View flinks f now) <&> renderDbRes
-      Just [f, t] -> evalDb env (View flinks f t) <&> renderDbRes
+      Just [f] -> liftIO getCurrentTime >>= \now -> evalDb (View flinks f now) <&> renderDbRes
+      Just [f, t] -> evalDb (View flinks f t) <&> renderDbRes
       _ -> abortWith "Unable to parse values for 'start' and/or 'end'"
  where
   parsed =
@@ -167,7 +166,7 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
 readSettings :: (MonadIO m) => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
   env <- ask
-  evalDb env (CheckLogin hash) >>= \case
+  evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ failedWith (renderDbError err)
     Right (DbLoggedIn cid) ->
       liftIO (readMVar $ subs_state env)
@@ -182,7 +181,7 @@ readSettings (ReadReq hash) = do
 writeSettings :: (MonadIO m) => WriteReq -> App m WriteResp
 writeSettings (WriteReq hash new_settings Nothing) = do
   env <- ask
-  evalDb env (CheckLogin hash) >>= \case
+  evalDb (CheckLogin hash) >>= \case
     Left err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
     Right (DbLoggedIn cid) -> do
       chats <- liftIO . readMVar $ subs_state env
@@ -214,14 +213,13 @@ writeSettings (WriteReq hash new_settings Nothing) = do
       ]
 writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing
 writeSettings (WriteReq hash settings (Just True)) =
-  ask >>= \env ->
-    evalDb env (CheckLogin hash) >>= \case
-      Left err -> pure $ noLogin err
-      Right (DbLoggedIn cid) ->
-        withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
-          Left err -> pure . noUpdate . renderUserError $ err
-          Right _ -> pure ok
-      _ -> undefined
+  evalDb (CheckLogin hash) >>= \case
+    Left err -> pure $ noLogin err
+    Right (DbLoggedIn cid) ->
+      withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
+        Left err -> pure . noUpdate . renderUserError $ err
+        Right _ -> pure ok
+    _ -> undefined
  where
   noLogin err = WriteResp 401 (Just . renderDbError $ err) Nothing
   noUpdate err = WriteResp 500 (Just err) Nothing

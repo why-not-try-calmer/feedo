@@ -120,9 +120,10 @@ makeConfig env =
             Left err -> throwIO . userError $ T.unpack err
             Right c -> putStrLn "Redis...OK" >> pure c
         (pipe, connected_creds) <-
-          setupDb creds >>= \case
-            Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
-            Right p -> putStrLn "Mongo...OK" >> pure p
+          liftIO $
+            setupDb creds >>= \case
+              Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
+              Right p -> putStrLn "Mongo...OK" >> pure p
         pipe_ioref <- newIORef pipe
         last_run_ioref <- newIORef Nothing
         pure
@@ -147,7 +148,7 @@ initStart env = runApp env $ do
   liftIO $ putStrLn "chats loaded"
   feeds <- rebuildAllFeedsFromMem
   liftIO $ putStrLn "feeds built"
-  void $ evalDb env $ UpsertFeeds feeds
+  void $ evalDb $ UpsertFeeds feeds
   liftIO $ putStrLn "feeds saved"
   startNotifs
   liftIO $ do

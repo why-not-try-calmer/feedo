@@ -9,7 +9,7 @@ import qualified Data.Text as T
 import Data.Time
 import Database.MongoDB
 import Jobs
-import Mongo (HasMongo, withMongo)
+import Mongo (HasMongo, withDb)
 import Server
 import System.Environment
 import Test.Hspec
@@ -31,6 +31,6 @@ spec = do
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           writeChan jobs $ JobArchive [feed] now
           threadDelay 2000000
-          docs <- withMongo env $ find (select ["i_title" =: ("Nice Item" :: T.Text)] "items") >>= rest
+          docs <- runApp env $ withDb $ find (select ["i_title" =: ("Nice Item" :: T.Text)] "items") >>= rest
           docs `shouldSatisfy` (\(Right docs) -> not . null $ docs)
      in desc $ as target

@@ -33,11 +33,10 @@ instance (MonadIO m) => HasRedis (App m) where
 
   withKeyStore :: (MonadIO m) => CacheAction -> App m (Either T.Text FromCache)
   withKeyStore (CacheGetPage cid mid n) = do
-    env <- ask
     evalKeyStore query >>= \case
       Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
       _ ->
-        refresh env >>= \case
+        refresh >>= \case
           Left err -> pure . Left $ err
           Right _ ->
             evalKeyStore query >>= \case
@@ -46,7 +45,7 @@ instance (MonadIO m) => HasRedis (App m) where
                 pure
                   . Left
                   $ "TgActError while trying to refresh after pulling anew from database. Chat involved: "
-                  `T.append` (T.pack . show $ cid)
+                    `T.append` (T.pack . show $ cid)
    where
     (lk, k) = pageKeys cid mid
     query = do
@@ -57,8 +56,8 @@ instance (MonadIO m) => HasRedis (App m) where
     success p i mb_page =
       let (page', i') = (B.decodeUtf8 p, fromInteger i)
        in pure . Right $ CachePage page' i' mb_page
-    refresh env =
-      evalDb env (GetPages cid mid) >>= \case
+    refresh =
+      evalDb (GetPages cid mid) >>= \case
         Right (DbPages pages mb_link) -> withKeyStore (CacheSetPages cid mid pages mb_link)
         Left err -> pure . Left $ renderDbError err
         _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
