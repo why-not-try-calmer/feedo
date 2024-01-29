@@ -1,10 +1,9 @@
 # 9.0.2 required for static linking matching GHC version provided by lts-19.33
+FROM utdemir/ghc-musl:v25-ghc902 as builder
 ARG app_version
 ENV APP_VERSION=$app_version
 
-FROM utdemir/ghc-musl:v25-ghc902 as builder
 RUN ghcup install stack
-
 WORKDIR /opt/app/
 COPY feedfarer.cabal stack.yaml .
 
