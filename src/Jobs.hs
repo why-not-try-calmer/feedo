@@ -113,68 +113,73 @@ startJobs :: (MonadIO m) => App m ()
 {- Forks a runtime thread and tasks it with handling as they come all post-processing jobs -}
 startJobs = do
   env <- ask
-  liftIO $ runForever_ (action env) (handler env) >> putStrLn "startJobs: started"
+  liftIO $ do
+    runForever_ (action env) (handler env)
+    putStrLn "startJobs: started"
  where
   action env = do
-    job <- readChan (postjobs env)
-    print $ "startJobs: job received: " `T.append` (T.pack . show $ job)
-    execute env job
+    job <- readChan $ postjobs env
+    print $ "startJobs: job received: " `T.append` (T.pack . take 20 . show $ job)
+    runApp env $ execute job
     putStrLn "startJobs: job complete!"
   handler env (SomeException e) = do
-    print $ "Failed to execute job: " `T.append` (T.pack . show $ e)
+    print $ "Failed to execute job: " `T.append` (T.pack . take 20 . show $ e)
     alertAdmin (postjobs env) . reportFailed $ e
   reportFailed e = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
 
 interpolateCidInTxt :: (Show p) => T.Text -> p -> T.Text -> T.Text
 interpolateCidInTxt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
 
-execute :: AppConfig -> Job -> IO ()
-execute env (JobArchive feeds now) = do
+execute :: (MonadIO m) => Job -> App m ()
+execute (JobArchive feeds now) = do
   -- archiving items
-  putStrLn "Jobs received: JobArchive"
-  runApp env $
-    evalDb (ArchiveItems feeds) >>= \case
-      Left err ->
-        let msg = "Unable to archive items. Reason: " `T.append` renderDbError err
-         in liftIO $ execute env $ JobTgAlertAdmin msg
-      _ -> liftIO $ putStrLn "successfully ran job"
+  liftIO $ putStrLn "Jobs received: JobArchive"
+  evalDb (ArchiveItems feeds) >>= \case
+    Left err ->
+      let msg = "Unable to archive items. Reason: " `T.append` renderDbError err
+       in execute $ JobTgAlertAdmin msg
+    _ -> liftIO $ putStrLn "successfully ran job"
   -- cleaning more than 1 month old archives
-  void $ runApp env $ evalDb (PruneOld $ addUTCTime (-2592000) now)
-execute env (JobLog item) = runApp env $ saveToLog item
-execute env (JobPin cid mid) = do
+  void $ evalDb (PruneOld $ addUTCTime (-2592000) now)
+execute (JobLog item) = saveToLog item
+execute (JobPin cid mid) = do
+  env <- ask
   runSend_ (bot_token . tg_config $ env) "pinChatMessage" (PinMessage cid mid) >>= \case
     Left _ ->
       let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
-       in execute env (JobTgAlertAdmin msg)
+       in execute (JobTgAlertAdmin msg)
     _ -> pure ()
-execute env (JobPurge cid) = void $ runApp env (withChatsFromMem Purge cid)
-execute env (JobRemoveMsg cid mid delay) = do
+execute (JobPurge cid) = void $ withChatsFromMem Purge cid
+execute (JobRemoveMsg cid mid delay) = do
+  env <- ask
   let (msg, checked_delay) = checkDelay delay
-  putStrLn ("Removing message in " ++ msg)
+  liftIO $ putStrLn ("Removing message in " ++ msg)
   do
-    threadDelay checked_delay
+    liftIO $ threadDelay checked_delay
     runSend_ (bot_token . tg_config $ env) "deleteMessage" (DeleteMessage cid mid) >>= \case
       Left _ ->
-        execute env
+        execute
           . JobTgAlertAdmin
           . interpolateCidInTxt "Tried to delete a message in (chat_id) " cid
           $ " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
       _ -> pure ()
-execute env (JobSetPagination cid mid pages mb_link) =
+execute (JobSetPagination cid mid pages mb_link) =
   let to_db = evalDb $ InsertPages cid mid pages mb_link
       to_cache = withKeyStore $ CacheSetPages cid mid pages mb_link
-   in runApp env (to_db >> to_cache) >>= \case
+   in to_db >> to_cache >>= \case
         Right _ -> pure ()
         _ ->
           let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
-           in execute env $ JobTgAlertAdmin report
-execute env (JobTgAlertAdmin contents) = do
+           in execute $ JobTgAlertAdmin report
+execute (JobTgAlertAdmin contents) = do
+  env <- ask
   let msg = ServiceReply $ "Feedo is sending an alert: " `T.append` contents
   reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg (postjobs env)
-execute env (JobTgAlertChats chat_ids contents) =
+execute (JobTgAlertChats chat_ids contents) = do
+  env <- ask
   let msg = ServiceReply contents
       tok = bot_token . tg_config $ env
       jobs = postjobs env
-   in forConcurrently_ chat_ids $ \cid -> do
-        verdict <- isChatOfType tok cid Channel
-        unless (verdict == Right True) $ reply tok cid msg jobs
+  liftIO $ forConcurrently_ chat_ids $ \cid -> do
+    verdict <- isChatOfType tok cid Channel
+    unless (verdict == Right True) $ reply tok cid msg jobs
