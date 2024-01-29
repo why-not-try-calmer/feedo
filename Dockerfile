@@ -1,7 +1,9 @@
 # 9.0.2 required for static linking matching GHC version provided by lts-19.33
 FROM utdemir/ghc-musl:v25-ghc902 as builder
-RUN ghcup install stack
+ARG app_version
+ENV APP_VERSION=$app_version
 
+RUN ghcup install stack
 WORKDIR /opt/app/
 COPY feedfarer.cabal stack.yaml .
 
@@ -22,10 +24,7 @@ RUN stack --resolver lts-19.33 install \
   --flag feedfarer:static
 
 FROM alpine:latest as runner
-ARG app_version
-ENV APP_VERSION=$app_version
-
 WORKDIR /opt/app/
 COPY --from=builder /opt/app/feedfarer-exe .
 
-CMD ./feedfarer-exe
+CMD ["./feedfarer-exe"]

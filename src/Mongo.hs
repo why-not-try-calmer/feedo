@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Mongo where
@@ -7,6 +8,7 @@ import Control.Concurrent.MVar (modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.RWS (MonadReader (ask))
 import Crypto.Hash (SHA256 (SHA256), hashWith)
 import qualified Data.ByteString.Char8 as B
 import Data.Functor ((<&>))
@@ -36,49 +38,325 @@ class MongoDoc v where
   checks :: v -> Bool
 
 instance MongoDoc SubChat where
+  readDoc :: Document -> SubChat
   readDoc = bsonToChat
+  writeDoc :: SubChat -> Document
   writeDoc = chatToBson
+  checks :: SubChat -> Bool
   checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc Feed where
+  readDoc :: Document -> Feed
   readDoc = bsonToFeed
+  writeDoc :: Feed -> Document
   writeDoc = feedToBson
+  checks :: Feed -> Bool
   checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc Item where
+  readDoc :: Document -> Item
   readDoc = bsonToItem
+  writeDoc :: Item -> Document
   writeDoc = itemToBson
+  checks :: Item -> Bool
   checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc Digest where
+  readDoc :: Document -> Digest
   readDoc = bsonToDigest
+  writeDoc :: Digest -> Document
   writeDoc = digestToBson
+  checks :: Digest -> Bool
   checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc LogItem where
+  readDoc :: Document -> LogItem
   readDoc = undefined
+  writeDoc :: LogItem -> Document
   writeDoc = logToBson
+  checks :: LogItem -> Bool
   checks v = v == (readDoc . writeDoc $ v)
 
 instance MongoDoc AdminUser where
+  readDoc :: Document -> AdminUser
   readDoc = bsonToAdmin
+  writeDoc :: AdminUser -> Document
   writeDoc = adminToBson
+  checks :: AdminUser -> Bool
   checks v = v == (readDoc . writeDoc $ v)
 
-class HasMongo m where
-  evalDb :: AppConfig -> DbAction -> m DbRes
-  loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
-  setupDb :: MongoCreds -> m (Either DbError (Pipe, MongoCreds))
+{- Database -}
+
+class (Monad m) => HasMongo m where
+  evalDb :: DbAction -> m DbRes
+  withDb :: Action IO a -> m (Either T.Text a)
+
+setupDb :: (MonadIO m) => MongoCreds -> m (Either DbError (Pipe, MongoCreds))
+setupDb credentials = do
+  initConnectionMongo credentials >>= \case
+    Left err -> pure $ Left err
+    Right pipe -> pure $ Right (pipe, credentials)
+ where
+  initConnectionMongo creds@MongoCredsServer{..} = liftIO $ do
+    pipe <- connect $ host (T.unpack host_name)
+    verdict <- isClosed pipe
+    if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
+  initConnectionMongo creds@MongoCredsTls{..} = liftIO $ do
+    pipe <- Tls.connect (T.unpack host_name) db_port
+    verdict <- isClosed pipe
+    if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
+  initConnectionMongo creds@MongoCredsReplicaTls{..} = liftIO $ do
+    repset <- openReplicaSetTLS (replicateset, hosts)
+    mb_pipe <- primaryOrSecondary repset
+    maybe
+      (pure . Left $ PipeNotAcquired)
+      (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
+      mb_pipe
+  initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
+    repset <- openReplicaSetSRV' (T.unpack host_name)
+    mb_pipe <- primaryOrSecondary repset
+    maybe
+      (pure . Left $ PipeNotAcquired)
+      (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
+      mb_pipe
+  loginDb creds pipe = do
+    isAuth <- access pipe master admin $ auth (user_name creds) (password creds)
+    if isAuth
+      then liftIO (putStrLn "Authenticated now.") >> pure (Right pipe)
+      else liftIO (putStrLn "Authentication failed.") >> pure (Left PipeNotAcquired)
 
 instance (MonadIO m) => HasMongo (App m) where
-  evalDb = evalMongo
-  loginDb = authWith
-  setupDb = makePipe
+  withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
+  withDb action = do
+    env <- ask
+    let attemptWith pipe = try $ runMongo (database_name . mongo_creds $ env) pipe action
+        finishWith fresh_pipe = do
+          atomicModifyIORef' (ref env) (const (fresh_pipe, ()))
+          attemptGiveup fresh_pipe
+        attemptGiveup pipe =
+          attemptWith pipe >>= \case
+            Left (SomeException e) -> do
+              alert $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
+              pure . Left . T.pack . show $ e
+            Right r -> pure $ Right r
+        alert err =
+          liftIO $
+            alertAdmin (postjobs env) $
+              "withDb failed with "
+                `T.append` (T.pack . show $ err)
+                `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+    pipe <- liftIO $ acquire env
+    attempt <- liftIO $ attemptWith pipe
+    case attempt of
+      Left (ConnectionFailure failure) -> do
+        alert failure
+        setupDb (mongo_creds env) >>= \case
+          Left e -> do
+            alert $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
+            pure . Left . T.pack $ show e
+          Right (fresh_pipe, _) -> liftIO $ finishWith fresh_pipe
+      Left err -> do
+        alert err
+        liftIO $ attemptGiveup pipe
+      Right r -> pure $ Right r
+   where
+    ref = snd . connectors
+    acquire = readIORef . ref
 
-instance HasMongo IO where
-  evalDb = evalMongo
-  loginDb = authWith
-  setupDb = makePipe
+  evalDb :: (MonadIO m) => DbAction -> App m DbRes
+  evalDb (DbAskForLogin uid cid) = do
+    let selector = ["admin_uid" =: uid, "admin_chatid" =: cid]
+        get_doc = findOne $ select selector "admins"
+        write_doc h n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
+        delete_doc = deleteOne $ select selector "admins"
+    liftIO getCurrentTime >>= \now ->
+      withDb get_doc >>= \case
+        Left _ -> pure . Left $ FaultyToken
+        Right Nothing -> do
+          h <- mkSafeHash
+          _ <- withDb (write_doc h now)
+          pure . Right . DbToken $ h
+        Right (Just doc) -> do
+          when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (void $ withDb delete_doc)
+          pure . Right . DbToken . admin_token . readDoc $ doc
+   where
+    mkSafeHash =
+      liftIO getSystemTime
+        <&> T.pack
+          . show
+          . hashWith SHA256
+          . B.pack
+          . show
+  evalDb (CheckLogin h) =
+    let r = findOne (select ["admin_token" =: h] "admins")
+        del = deleteOne (select ["admin_token" =: h] "admins")
+     in liftIO getCurrentTime >>= \now ->
+          withDb r >>= \case
+            Left _ -> nope
+            Right Nothing -> nope
+            Right (Just doc) ->
+              if diffUTCTime now (admin_created . readDoc $ doc) < 2592000
+                then pure . Right . DbLoggedIn $ admin_chatid (readDoc doc)
+                else withDb del >> nope
+   where
+    nope = pure . Left $ FaultyToken
+  evalDb (ArchiveItems feeds) =
+    let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
+        action = withDb $ updateAll "items" selector
+     in action >>= \case
+          Left _ -> pure . Left $ FailedToUpdate "ArchiveItems" "Action failed during connection."
+          Right res ->
+            if failed res
+              then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
+              else pure $ Right DbDone
+  evalDb (DbSearch keywords scope last_time) =
+    let action1 = ensureIndex itemsIndex
+        action2 = aggregate "items" $ buildSearchQuery keywords last_time
+     in withDb (action1 >> action2) >>= \case
+          Left err -> pure . Left $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
+          Right res ->
+            let mkSearchRes doc =
+                  let title = M.lookup "i_title" doc
+                      link = M.lookup "i_link" doc
+                      pubdate = M.lookup "i_pubdate" doc :: Maybe UTCTime
+                      f_link = M.lookup "i_feed_link" doc
+                      score = M.lookup "score" doc :: Maybe Double
+                      nothings = [isNothing title, isNothing link, isNothing pubdate, isNothing f_link, isNothing score]
+                   in if or nothings
+                        then Nothing
+                        else
+                          Just $
+                            SearchResult
+                              { sr_title = fromJust title
+                              , sr_link = fromJust link
+                              , sr_pubdate = fromJust pubdate
+                              , sr_feedlink = fromJust f_link
+                              , sr_score = fromJust score
+                              }
+                sort_limit = take 10 . List.sortOn (Down . sr_score)
+                rescind = filter (\sr -> sr_feedlink sr `elem` scope)
+                payload r =
+                  if null scope
+                    then sort_limit r
+                    else sort_limit . rescind $ r
+             in case mapM mkSearchRes res of
+                  Nothing -> pure . Right $ DbSearchRes S.empty []
+                  Just r -> pure . Right $ DbSearchRes keywords . payload $ r
+  evalDb (DeleteChat cid) =
+    let action = withDb $ deleteOne (select ["sub_chatid" =: cid] "chats")
+     in action >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate mempty "DeleteChat failed"
+          Right _ -> pure $ Right DbDone
+  evalDb GetAllChats =
+    let action = find (select [] "chats")
+     in withDb (action >>= rest) >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllChats failed"
+          Right docs ->
+            if null docs
+              then pure . Right $ DbNoChat
+              else pure . Right . DbChats . map readDoc $ docs
+  evalDb (GetSomeFeeds flinks) =
+    let action = find (select ["f_link" =: ["$in" =: flinks]] "feeds")
+     in withDb (action >>= rest) >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllFeeds failed"
+          Right docs ->
+            if null docs
+              then pure $ Right DbNoFeed
+              else pure . Right . DbFeeds $ map readDoc docs
+  evalDb GetAllFeeds =
+    let action = find (select [] "feeds")
+     in withDb (action >>= rest) >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllFeeds failed"
+          Right docs ->
+            if null docs
+              then pure . Right $ DbNoFeed
+              else pure . Right . DbFeeds $ map readDoc docs
+  evalDb (GetPages cid mid) =
+    let action = withDb $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
+     in action >>= \case
+          Left err -> pure $ Left . BadQuery $ err
+          Right Nothing -> pure . Right $ DbNoPage cid mid
+          Right (Just doc) -> case M.lookup "pages" doc of
+            Just pages -> pure $ Right $ DbPages pages (M.lookup "url" doc)
+            Nothing -> pure . Right $ DbNoPage cid mid
+  evalDb (InsertPages cid mid pages mb_link) =
+    let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
+        payload = case mb_link of
+          Nothing -> base_payload
+          Just l -> base_payload ++ ["url" =: l]
+        action = withDb $ insert "pages" payload
+     in action >>= \case
+          Left _ -> pure . Left $ FailedToInsertPage
+          _ -> pure . Right $ DbDone
+  evalDb (PruneOld t) = do
+    let del_items = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
+        del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
+    _ <- withDb (del_items >> del_digests)
+    pure . Right $ DbDone
+  evalDb (ReadDigest _id) =
+    let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
+          Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
+            Nothing -> Left FailedToProduceValidId
+            Just n -> Right ["digest_id" =: n]
+          Just oid -> Right ["_id" =: oid]
+        action s = findOne $ select s "digests"
+     in case mkSelector of
+          Left err -> pure $ Left err
+          Right selector ->
+            withDb (action selector) >>= \case
+              Left _ -> pure . Left $ FailedToUpdate "digest" "Read digest refused to read from the database."
+              Right doc -> maybe (pure . Right $ DbNoDigest) (pure . Right . DbDigest . readDoc) doc
+  evalDb (UpsertChat chat) =
+    let action = withDb $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
+     in action >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
+          Right _ -> pure . Right $ DbDone
+  evalDb (UpsertChats chatshmap) =
+    let chats = HMS.elems chatshmap
+        selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
+        action = withDb $ updateAll "chats" selector
+     in action >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
+          Right res ->
+            if failed res
+              then pure . Left $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+              else pure . Right $ DbDone
+  evalDb (UpsertFeeds feeds) =
+    let selector = map (\f -> (["f_link" =: f_link f], writeDoc f, [Upsert])) feeds
+        action = withDb $ updateAll "feeds" selector
+     in action >>= \case
+          Left _ -> pure $ Left $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
+          Right res ->
+            if failed res
+              then pure . Left $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
+              else pure . Right $ DbDone
+  evalDb (View flinks start end) =
+    let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
+     in withDb query >>= \case
+          Left _ -> pure $ Left FailedToLoadFeeds
+          Right is -> pure . Right $ DbView (map readDoc is) start end
+  evalDb (WriteDigest digest) =
+    let action = insert "digests" $ writeDoc digest
+     in withDb action >>= \case
+          Left _ -> pure . Left $ FailedToUpdate "digest" "HasMongo refused to insert digest items"
+          Right res -> case res of
+            ObjId _id -> pure . Right . DbDigestId . T.pack . show $ _id
+            _ -> pure . Left $ FailedToProduceValidId
+  evalDb (GetXDays links days) = do
+    now <- liftIO getCurrentTime
+    evalDb GetAllFeeds
+      >>= \case
+        Left err -> pure . Left . NotFound $ renderDbError err
+        Right (DbFeeds fs) ->
+          let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
+              collected = foldFeeds listed now
+           in pure . Right . DbLinkDigest $ collected
+        _ -> pure . Left . NotFound $ "Unknown error from CacheXDays"
+   where
+    collect f acc now =
+      let fresh = freshLastXDays days now $ f_items f
+       in if null fresh then acc else (f_link f, fresh) : acc
+    foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs
 
 {- Connection -}
 
@@ -95,83 +373,10 @@ primaryOrSecondary rep =
         Right pipe -> pure $ Just pipe
     Right pipe -> pure $ Just pipe
 
-authWith :: (MonadIO m) => MongoCreds -> Pipe -> m (Either DbError Pipe)
-authWith creds pipe = do
-  isAuth <- access pipe master admin $ auth (user_name creds) (password creds)
-  if isAuth
-    then liftIO (putStrLn "Authenticated now.") >> pure (Right pipe)
-    else liftIO (putStrLn "Authentication failed.") >> pure (Left PipeNotAcquired)
-
-initConnectionMongo :: (MonadIO m) => MongoCreds -> m (Either DbError Pipe)
-initConnectionMongo creds@MongoCredsServer{..} = liftIO $ do
-  pipe <- connect $ host (T.unpack host_name)
-  verdict <- isClosed pipe
-  if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
-initConnectionMongo creds@MongoCredsTls{..} = liftIO $ do
-  pipe <- Tls.connect (T.unpack host_name) db_port
-  verdict <- isClosed pipe
-  if verdict then pure . Left $ PipeNotAcquired else loginDb creds pipe
-initConnectionMongo creds@MongoCredsReplicaTls{..} = liftIO $ do
-  repset <- openReplicaSetTLS (replicateset, hosts)
-  mb_pipe <- primaryOrSecondary repset
-  maybe
-    (pure . Left $ PipeNotAcquired)
-    (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
-    mb_pipe
-initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
-  repset <- openReplicaSetSRV' (T.unpack host_name)
-  mb_pipe <- primaryOrSecondary repset
-  maybe
-    (pure . Left $ PipeNotAcquired)
-    (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
-    mb_pipe
-
-makePipe :: (MonadIO m) => MongoCreds -> m (Either DbError (Pipe, MongoCreds))
-makePipe creds =
-  initConnectionMongo creds >>= \case
-    Left err -> pure $ Left err
-    Right pipe -> pure $ Right (pipe, creds)
-
 {- Evaluation -}
 
 runMongo :: (MonadIO m) => T.Text -> Pipe -> Action m a -> m a
 runMongo dbName pipe = access pipe master dbName
-
-withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either T.Text a)
-withMongo AppConfig{..} action = liftIO $ do
-  pipe <- acquire
-  attempt <- attemptWith pipe
-  case attempt of
-    Left (ConnectionFailure failure) -> do
-      alert failure
-      initConnectionMongo mongo_creds >>= \case
-        Left e -> do
-          alert $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
-          pure . Left . T.pack $ show e
-        Right fresh_pipe -> finishWith fresh_pipe
-    Left err -> do
-      alert err
-      attemptGiveup pipe
-    Right r -> pure $ Right r
- where
-  ref = snd connectors
-  acquire = readIORef ref
-  finishWith fresh_pipe = do
-    atomicModifyIORef' ref (const (fresh_pipe, ()))
-    attemptGiveup fresh_pipe
-  attemptWith pipe = try $ runMongo (database_name mongo_creds) pipe action
-  attemptGiveup pipe =
-    attemptWith pipe >>= \case
-      Left (SomeException e) -> do
-        alert $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
-        pure . Left . T.pack . show $ e
-      Right r -> pure $ Right r
-  alert err =
-    liftIO $
-      alertAdmin postjobs $
-        "withMongo failed with "
-          `T.append` (T.pack . show $ err)
-          `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Search and indices -}
 
@@ -203,216 +408,24 @@ itemsIndex =
 
 {- Actions -}
 
-evalMongo :: (HasMongo m, MonadIO m) => AppConfig -> DbAction -> m DbRes
-evalMongo env (DbAskForLogin uid cid) = do
-  let selector = ["admin_uid" =: uid, "admin_chatid" =: cid]
-      get_doc = findOne $ select selector "admins"
-      write_doc h n = insert_ "admins" . writeDoc $ AdminUser uid h cid n
-      delete_doc = deleteOne $ select selector "admins"
-   in liftIO getCurrentTime >>= \now ->
-        withMongo env get_doc >>= \case
-          Left _ -> pure . Left $ FaultyToken
-          Right Nothing -> do
-            h <- mkSafeHash
-            _ <- withMongo env (write_doc h now)
-            pure . Right . DbToken $ h
-          Right (Just doc) -> do
-            when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (void $ withMongo env delete_doc)
-            pure . Right . DbToken . admin_token . readDoc $ doc
- where
-  mkSafeHash =
-    liftIO getSystemTime
-      <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
-evalMongo env (CheckLogin h) =
-  let r = findOne (select ["admin_token" =: h] "admins")
-      del = deleteOne (select ["admin_token" =: h] "admins")
-   in liftIO getCurrentTime >>= \now ->
-        withMongo env r >>= \case
-          Left _ -> nope
-          Right Nothing -> nope
-          Right (Just doc) ->
-            if diffUTCTime now (admin_created . readDoc $ doc) < 2592000
-              then pure . Right . DbLoggedIn $ admin_chatid (readDoc doc)
-              else withMongo env del >> nope
- where
-  nope = pure . Left $ FaultyToken
-evalMongo env (ArchiveItems feeds) =
-  let selector = foldMap (map (\i -> (["i_link" =: i_link i], writeDoc i, [Upsert])) . f_items) feeds
-      action = withMongo env $ updateAll "items" selector
-   in action >>= \case
-        Left _ -> pure . Left $ FailedToUpdate "ArchiveItems" "Action failed during connection."
-        Right res ->
-          if failed res
-            then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
-            else pure $ Right DbDone
-evalMongo env (DbSearch keywords scope last_time) =
-  let action1 = ensureIndex itemsIndex
-      action2 = aggregate "items" $ buildSearchQuery keywords last_time
-   in withMongo env (action1 >> action2) >>= \case
-        Left err -> pure . Left $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
-        Right res ->
-          let mkSearchRes doc =
-                let title = M.lookup "i_title" doc
-                    link = M.lookup "i_link" doc
-                    pubdate = M.lookup "i_pubdate" doc :: Maybe UTCTime
-                    f_link = M.lookup "i_feed_link" doc
-                    score = M.lookup "score" doc :: Maybe Double
-                    nothings = [isNothing title, isNothing link, isNothing pubdate, isNothing f_link, isNothing score]
-                 in if or nothings
-                      then Nothing
-                      else
-                        Just $
-                          SearchResult
-                            { sr_title = fromJust title
-                            , sr_link = fromJust link
-                            , sr_pubdate = fromJust pubdate
-                            , sr_feedlink = fromJust f_link
-                            , sr_score = fromJust score
-                            }
-              sort_limit = take 10 . List.sortOn (Down . sr_score)
-              rescind = filter (\sr -> sr_feedlink sr `elem` scope)
-              payload r =
-                if null scope
-                  then sort_limit r
-                  else sort_limit . rescind $ r
-           in case mapM mkSearchRes res of
-                Nothing -> pure . Right $ DbSearchRes S.empty []
-                Just r -> pure . Right $ DbSearchRes keywords . payload $ r
-evalMongo env (DeleteChat cid) =
-  let action = withMongo env $ deleteOne (select ["sub_chatid" =: cid] "chats")
-   in action >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate mempty "DeleteChat failed"
-        Right _ -> pure $ Right DbDone
-evalMongo env GetAllChats =
-  let action = find (select [] "chats")
-   in withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllChats failed"
-        Right docs ->
-          if null docs
-            then pure . Right $ DbNoChat
-            else pure . Right . DbChats . map readDoc $ docs
-evalMongo env (GetSomeFeeds flinks) =
-  let action = find (select ["f_link" =: ["$in" =: flinks]] "feeds")
-   in withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllFeeds failed"
-        Right docs ->
-          if null docs
-            then pure $ Right DbNoFeed
-            else pure . Right . DbFeeds $ map readDoc docs
-evalMongo env GetAllFeeds =
-  let action = find (select [] "feeds")
-   in withMongo env (action >>= rest) >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate mempty "GetAllFeeds failed"
-        Right docs ->
-          if null docs
-            then pure . Right $ DbNoFeed
-            else pure . Right . DbFeeds $ map readDoc docs
-evalMongo env (GetPages cid mid) =
-  let action = withMongo env $ findOne (select ["chat_id" =: cid, "message_id" =: mid] "pages")
-   in action >>= \case
-        Left err -> pure $ Left . BadQuery $ err
-        Right Nothing -> pure . Right $ DbNoPage cid mid
-        Right (Just doc) -> case M.lookup "pages" doc of
-          Just pages -> pure $ Right $ DbPages pages (M.lookup "url" doc)
-          Nothing -> pure . Right $ DbNoPage cid mid
-evalMongo env (InsertPages cid mid pages mb_link) =
-  let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
-      payload = case mb_link of
-        Nothing -> base_payload
-        Just l -> base_payload ++ ["url" =: l]
-      action = withMongo env $ insert "pages" payload
-   in action >>= \case
-        Left _ -> pure . Left $ FailedToInsertPage
-        _ -> pure . Right $ DbDone
-evalMongo env (PruneOld t) = do
-  let del_items = deleteAll "items" [(["i_pubdate" =: ["$lt" =: (t :: UTCTime)]], [])]
-      del_digests = deleteAll "digests" [(["digest_created" =: ["$lt" =: t]], [])]
-  _ <- withMongo env (del_items >> del_digests)
-  pure . Right $ DbDone
-evalMongo env (ReadDigest _id) =
-  let mkSelector = case readMaybe . T.unpack $ _id :: Maybe ObjectId of
-        Nothing -> case readMaybe . T.unpack $ _id :: Maybe Int of
-          Nothing -> Left FailedToProduceValidId
-          Just n -> Right ["digest_id" =: n]
-        Just oid -> Right ["_id" =: oid]
-      action s = findOne $ select s "digests"
-   in case mkSelector of
-        Left err -> pure $ Left err
-        Right selector ->
-          withMongo env (action selector) >>= \case
-            Left _ -> pure . Left $ FailedToUpdate "digest" "Read digest refused to read from the database."
-            Right doc -> maybe (pure . Right $ DbNoDigest) (pure . Right . DbDigest . readDoc) doc
-evalMongo env (UpsertChat chat) =
-  let action = withMongo env $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
-   in action >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate (T.pack . show . sub_chatid $ chat) "UpsertChat failed"
-        Right _ -> pure . Right $ DbDone
-evalMongo env (UpsertChats chatshmap) =
-  let chats = HMS.elems chatshmap
-      selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
-      action = withMongo env $ updateAll "chats" selector
-   in action >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate (T.intercalate ", " (map (T.pack . show . sub_chatid) chats)) "UpsertChats failed"
-        Right res ->
-          if failed res
-            then pure . Left $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
-            else pure . Right $ DbDone
-evalMongo env (UpsertFeeds feeds) =
-  let selector = map (\f -> (["f_link" =: f_link f], writeDoc f, [Upsert])) feeds
-      action = withMongo env $ updateAll "feeds" selector
-   in action >>= \case
-        Left _ -> pure $ Left $ FailedToUpdate (T.intercalate ", " (map f_link feeds)) mempty
-        Right res ->
-          if failed res
-            then pure . Left $ FailedToUpdate "Failed to write feeds" (T.pack . show $ res)
-            else pure . Right $ DbDone
-evalMongo env (View flinks start end) =
-  let query = find (select ["i_feed_link" =: ["$in" =: (flinks :: [T.Text])], "i_pubdate" =: ["$gt" =: (start :: UTCTime), "$lt" =: (end :: UTCTime)]] "items") >>= rest
-   in withMongo env query >>= \case
-        Left _ -> pure $ Left FailedToLoadFeeds
-        Right is -> pure . Right $ DbView (map readDoc is) start end
-evalMongo env (WriteDigest digest) =
-  let action = insert "digests" $ writeDoc digest
-   in withMongo env action >>= \case
-        Left _ -> pure . Left $ FailedToUpdate "digest" "HasMongo refused to insert digest items"
-        Right res -> case res of
-          ObjId _id -> pure . Right . DbDigestId . T.pack . show $ _id
-          _ -> pure . Left $ FailedToProduceValidId
-evalMongo env (GetXDays links days) = do
-  now <- liftIO getCurrentTime
-  evalDb env GetAllFeeds
-    >>= \case
-      Left err -> pure . Left . NotFound $ renderDbError err
-      Right (DbFeeds fs) ->
-        let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
-            collected = foldFeeds listed now
-         in pure . Right . DbLinkDigest $ collected
-      _ -> pure . Left . NotFound $ "Unknown error from CacheXDays"
- where
-  collect f acc now =
-    let fresh = freshLastXDays days now $ f_items f
-     in if null fresh then acc else (f_link f, fresh) : acc
-  foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs
-
-markNotified :: (MonadIO m) => AppConfig -> [ChatId] -> UTCTime -> m ()
+markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
 -- marking input chats as notified
-markNotified env notified_chats now = liftIO $
-  modifyMVar_ (subs_state env) $
-    \subs ->
-      let updated_chats = updated_notified_chats notified_chats subs
-       in evalDb env (UpsertChats updated_chats) >>= \case
-            Left err -> do
-              alertAdmin (postjobs env) $
-                "notifier: failed to \
-                \ save updated chats to db because of this error"
-                  `T.append` renderDbError err
-              pure subs
-            Right DbDone -> pure updated_chats
-            _ -> pure subs
+markNotified notified_chats now = do
+  env <- ask
+  liftIO $
+    modifyMVar_ (subs_state env) $
+      \subs ->
+        let updated_chats = updated_notified_chats notified_chats subs
+         in runApp env $
+              evalDb (UpsertChats updated_chats) >>= \case
+                Left err -> do
+                  alertAdmin (postjobs env) $
+                    "notifier: failed to \
+                    \ save updated chats to db because of this error"
+                      `T.append` renderDbError err
+                  pure subs
+                Right DbDone -> pure updated_chats
+                _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey
@@ -631,13 +644,13 @@ logToBson (LogNotifiers pre_notifier post_notifier) =
  where
   toBson notifier = map (chatToBson . snd) $ HMS.toList notifier
 
-saveToLog :: (HasMongo m, MonadIO m) => AppConfig -> LogItem -> m ()
-saveToLog env logitem =
+saveToLog :: (HasMongo m, MonadIO m) => LogItem -> m ()
+saveToLog logitem =
   let collection = case logitem of
         LogDiscardedToRefreshRecipes{} -> "logs_discarded"
         LogMissing{} -> "logs_missing"
         LogNotifiers{} -> "logs_notifiers"
-   in void $ withMongo env (insert collection $ writeDoc logitem)
+   in void $ withDb (insert collection $ writeDoc logitem)
 
 {- Tests -}
 

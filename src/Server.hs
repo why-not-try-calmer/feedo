@@ -17,7 +17,7 @@ import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Notifications (alertAdmin)
-import Redis (setupRedis)
+import Redis (setUpKeyStore)
 import Requests (reply)
 import Servant
 import Servant.HTML.Blaze
@@ -116,13 +116,15 @@ makeConfig env =
         mvar2 <- newMVar HMS.empty
         chan <- newChan
         conn <-
-          setupRedis >>= \case
+          setUpKeyStore >>= \case
             Left err -> throwIO . userError $ T.unpack err
             Right c -> putStrLn "Redis...OK" >> pure c
         (pipe, connected_creds) <-
-          setupDb creds >>= \case
-            Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
-            Right p -> putStrLn "Mongo...OK" >> pure p
+          liftIO $
+            setupDb creds
+              >>= \case
+                Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
+                Right p -> putStrLn "Mongo...OK" >> pure p
         pipe_ioref <- newIORef pipe
         last_run_ioref <- newIORef Nothing
         pure
@@ -147,7 +149,7 @@ initStart env = runApp env $ do
   liftIO $ putStrLn "chats loaded"
   feeds <- rebuildAllFeedsFromMem
   liftIO $ putStrLn "feeds built"
-  void $ evalDb env $ UpsertFeeds feeds
+  void $ evalDb $ UpsertFeeds feeds
   liftIO $ putStrLn "feeds saved"
   startNotifs
   liftIO $ do
@@ -159,6 +161,7 @@ startApp = do
   env <- getEnvironment
   config <- makeConfig env
   initStart config
+  print $ "Startup completed for version " `T.append` app_version config
   print $ "Running now using " ++ show port
   run port $ withServer config
  where

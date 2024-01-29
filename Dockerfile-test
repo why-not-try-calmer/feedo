@@ -1,9 +1,9 @@
-FROM haskell:latest
+FROM haskell:9.0.2
 ARG app_version=test
 ENV APP_VERSION=$app_version
-WORKDIR /opt/app
 
 # Dependencies for caching
+WORKDIR /opt/app
 COPY feedfarer.cabal stack.yaml .
 RUN stack --resolver lts-19.33 test \
   --install-ghc \

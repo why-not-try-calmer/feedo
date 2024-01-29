@@ -315,14 +315,13 @@ testChannel tok chan_id jobs =
 
 subFeed :: (MonadIO m) => ChatId -> [FeedLink] -> App m Reply
 subFeed cid feeds_urls = do
-  env <- ask
   -- check url scheme
   case mapM eitherUrlScheme feeds_urls of
     Left err -> respondWith . renderUserError $ err
     Right valid_urls ->
       -- sort out already existent feeds to minimize network call
       -- , and subscribe chat to them
-      evalDb env GetAllFeeds >>= \case
+      evalDb GetAllFeeds >>= \case
         Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` renderDbError err
         Right (DbFeeds old_feeds) ->
           let urls = map renderUrl valid_urls
@@ -346,7 +345,7 @@ subFeed cid feeds_urls = do
                           if null built_feeds
                             then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
                             else
-                              evalDb env (UpsertFeeds feeds) >>= \case
+                              evalDb (UpsertFeeds feeds) >>= \case
                                 Left err -> respondWith $ renderDbError err
                                 _ ->
                                   let to_sub_to = map f_link feeds
@@ -386,7 +385,7 @@ evalTgAct _ (FeedInfo ref) cid =
          in if null subs
               then pure . Left $ NotSubscribed
               else
-                evalDb env (GetSomeFeeds subs) >>= \case
+                evalDb (GetSomeFeeds subs) >>= \case
                   Right (DbFeeds fs) ->
                     let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
                      in case found of
@@ -445,7 +444,7 @@ evalTgAct uid (AskForLogin target_id) cid = do
               if not ok
                 then pure . Left $ UserNotAdmin
                 else do
-                  evalDb env (DbAskForLogin uid cid) >>= \case
+                  evalDb (DbAskForLogin uid cid) >>= \case
                     Right (DbToken h) -> pure . Right . mkReply . FromAdmin (base_url env) $ h
                     _ ->
                       pure
@@ -461,7 +460,7 @@ evalTgAct _ (GetItems ref) cid = do
   let chats_mvar = subs_state env
   chats_hmap <- liftIO $ readMVar chats_mvar
   feeds_hmap <-
-    evalDb env GetAllFeeds >>= \case
+    evalDb GetAllFeeds >>= \case
       Right (DbFeeds fs) -> pure $ HMS.fromList $ map (\f -> (f_link f, f)) fs
       _ -> pure HMS.empty
   -- get items by url or id depending on whether the
@@ -495,7 +494,7 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
        in if null subscribed
             then pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
             else
-              evalDb env (GetXDays subscribed n) >>= \case
+              evalDb (GetXDays subscribed n) >>= \case
                 Right (DbLinkDigest res) -> pure . Right $ mkReply (FromFeedLinkItems res)
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
 evalTgAct uid (GetSubchannelSettings channel_id) _ = evalTgAct uid GetSubchatSettings channel_id
@@ -518,7 +517,7 @@ evalTgAct _ ListSubs cid = do
        in if null subs
             then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
             else
-              evalDb env GetAllFeeds >>= \case
+              evalDb GetAllFeeds >>= \case
                 Right (DbFeeds fs) ->
                   let hmap = HMS.fromList $ map (\f -> (f_link f, f)) fs
                    in case mapM (`HMS.lookup` hmap) subs of
@@ -673,7 +672,7 @@ evalTgAct _ (Search keywords) cid =
              in if null scope
                   then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
                   else
-                    evalDb env (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
+                    evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
                       Right (DbSearchRes keys sc) -> pure . Right $ mkReply (FromSearchRes keys sc)
                       _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
@@ -747,7 +746,7 @@ evalTgAct uid (UnSub feeds) cid =
               Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
 
-processCbq :: (MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
+processCbq :: (MonadReader AppConfig m, TgReqM m) => CallbackQuery -> m ()
 processCbq cbq =
   ask >>= \env ->
     let send_result n (Right (CachePage p i mb_url)) =
@@ -760,7 +759,7 @@ processCbq cbq =
           answer (bot_token . tg_config $ env) mkAnswer >>= \case
             Left err -> report err
             _ -> pure ()
-        get_page n = withCache $ CacheGetPage cid mid n
+        get_page n = withKeyStore $ CacheGetPage cid mid n
      in case cbq_data cbq
               >>= readMaybe
                 . T.unpack ::
