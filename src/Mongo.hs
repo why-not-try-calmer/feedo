@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Mongo where
@@ -65,19 +66,25 @@ instance MongoDoc AdminUser where
   writeDoc = adminToBson
   checks v = v == (readDoc . writeDoc $ v)
 
-class HasMongo m where
+class (Monad m) => HasMongo m where
   evalDb :: AppConfig -> DbAction -> m DbRes
   loginDb :: MongoCreds -> Pipe -> m (Either DbError Pipe)
   setupDb :: MongoCreds -> m (Either DbError (Pipe, MongoCreds))
 
 instance (MonadIO m) => HasMongo (App m) where
+  evalDb :: (MonadIO m) => AppConfig -> DbAction -> App m DbRes
   evalDb = evalMongo
+  loginDb :: (MonadIO m) => MongoCreds -> Pipe -> App m (Either DbError Pipe)
   loginDb = authWith
+  setupDb :: (MonadIO m) => MongoCreds -> App m (Either DbError (Pipe, MongoCreds))
   setupDb = makePipe
 
 instance HasMongo IO where
+  evalDb :: AppConfig -> DbAction -> IO DbRes
   evalDb = evalMongo
+  loginDb :: MongoCreds -> Pipe -> IO (Either DbError Pipe)
   loginDb = authWith
+  setupDb :: MongoCreds -> IO (Either DbError (Pipe, MongoCreds))
   setupDb = makePipe
 
 {- Connection -}
@@ -86,10 +93,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print $
-        "Failed to acquire primary replica, reason:"
-          ++ show err
-          ++ ". Moving to second."
+      print
+        $ "Failed to acquire primary replica, reason:"
+        ++ show err
+        ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -102,7 +109,7 @@ authWith creds pipe = do
     then liftIO (putStrLn "Authenticated now.") >> pure (Right pipe)
     else liftIO (putStrLn "Authentication failed.") >> pure (Left PipeNotAcquired)
 
-initConnectionMongo :: (MonadIO m) => MongoCreds -> m (Either DbError Pipe)
+initConnectionMongo :: (MonadIO m, HasMongo IO) => MongoCreds -> m (Either DbError Pipe)
 initConnectionMongo creds@MongoCredsServer{..} = liftIO $ do
   pipe <- connect $ host (T.unpack host_name)
   verdict <- isClosed pipe
@@ -126,7 +133,7 @@ initConnectionMongo creds@MongoCredsReplicaSrv{..} = liftIO $ do
     (\p -> isClosed p >>= \v -> if v then pure . Left $ PipeNotAcquired else loginDb creds p)
     mb_pipe
 
-makePipe :: (MonadIO m) => MongoCreds -> m (Either DbError (Pipe, MongoCreds))
+makePipe :: (MonadIO m, HasMongo IO) => MongoCreds -> m (Either DbError (Pipe, MongoCreds))
 makePipe creds =
   initConnectionMongo creds >>= \case
     Left err -> pure $ Left err
@@ -137,7 +144,7 @@ makePipe creds =
 runMongo :: (MonadIO m) => T.Text -> Pipe -> Action m a -> m a
 runMongo dbName pipe = access pipe master dbName
 
-withMongo :: (HasMongo m, MonadIO m) => AppConfig -> Action IO a -> m (Either T.Text a)
+withMongo :: (MonadIO m) => AppConfig -> Action IO a -> m (Either T.Text a)
 withMongo AppConfig{..} action = liftIO $ do
   pipe <- acquire
   attempt <- attemptWith pipe
@@ -167,11 +174,11 @@ withMongo AppConfig{..} action = liftIO $ do
         pure . Left . T.pack . show $ e
       Right r -> pure $ Right r
   alert err =
-    liftIO $
-      alertAdmin postjobs $
-        "withMongo failed with "
-          `T.append` (T.pack . show $ err)
-          `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+    liftIO
+      $ alertAdmin postjobs
+      $ "withMongo failed with "
+      `T.append` (T.pack . show $ err)
+      `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
 
 {- Search and indices -}
 
@@ -223,10 +230,10 @@ evalMongo env (DbAskForLogin uid cid) = do
   mkSafeHash =
     liftIO getSystemTime
       <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
+      . show
+      . hashWith SHA256
+      . B.pack
+      . show
 evalMongo env (CheckLogin h) =
   let r = findOne (select ["admin_token" =: h] "admins")
       del = deleteOne (select ["admin_token" =: h] "admins")
@@ -265,8 +272,8 @@ evalMongo env (DbSearch keywords scope last_time) =
                  in if or nothings
                       then Nothing
                       else
-                        Just $
-                          SearchResult
+                        Just
+                          $ SearchResult
                             { sr_title = fromJust title
                             , sr_link = fromJust link
                             , sr_pubdate = fromJust pubdate
@@ -398,21 +405,21 @@ evalMongo env (GetXDays links days) = do
      in if null fresh then acc else (f_link f, fresh) : acc
   foldFeeds fs now = HMS.foldl' (\acc f -> if f_link f `notElem` links then acc else collect f acc now) [] fs
 
-markNotified :: (MonadIO m) => AppConfig -> [ChatId] -> UTCTime -> m ()
+markNotified :: (MonadIO m, HasMongo IO) => AppConfig -> [ChatId] -> UTCTime -> m ()
 -- marking input chats as notified
-markNotified env notified_chats now = liftIO $
-  modifyMVar_ (subs_state env) $
-    \subs ->
-      let updated_chats = updated_notified_chats notified_chats subs
-       in evalDb env (UpsertChats updated_chats) >>= \case
-            Left err -> do
-              alertAdmin (postjobs env) $
-                "notifier: failed to \
+markNotified env notified_chats now = liftIO
+  $ modifyMVar_ (subs_state env)
+  $ \subs ->
+    let updated_chats = updated_notified_chats notified_chats subs
+     in evalDb env (UpsertChats updated_chats) >>= \case
+          Left err -> do
+            alertAdmin (postjobs env)
+              $ "notifier: failed to \
                 \ save updated chats to db because of this error"
-                  `T.append` renderDbError err
-              pure subs
-            Right DbDone -> pure updated_chats
-            _ -> pure subs
+              `T.append` renderDbError err
+            pure subs
+          Right DbDone -> pure updated_chats
+          _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey

@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstrainedClassMethods #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -18,41 +19,73 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
-import Mongo (HasMongo, evalDb)
-import Types (App, AppConfig (connectors), CacheAction (..), DbAction (..), DbResults (DbPages), Digest (..), FromCache (..))
+import Mongo (evalDb)
+import Types (App, AppConfig, CacheAction (..), DbAction (..), DbResults (DbPages), Digest (..), FromCache (..), connectors)
 import Utils (renderDbError)
 
 class (Monad m) => HasRedis m where
-  evalKeyStore :: AppConfig -> Redis a -> m a
-  setUpKeyStore :: m (Either T.Text Connection)
-  withKeyStore :: CacheAction -> m CacheRes
+  evalKeyStore :: Redis a -> m a
+  withKeyStore :: (MonadReader AppConfig m) => CacheAction -> m (Either T.Text FromCache)
 
 instance (MonadIO m) => HasRedis (App m) where
-  evalKeyStore :: (MonadIO m) => AppConfig -> Redis a -> App m a
-  evalKeyStore = evalRedis
-  setUpKeyStore :: (MonadIO m) => App m (Either T.Text Connection)
-  setUpKeyStore = setupRedis
-  withKeyStore :: (MonadIO m) => CacheAction -> App m CacheRes
-  withKeyStore = withCache
+  evalKeyStore :: (MonadIO m) => Redis a -> App m a
+  evalKeyStore action = ask >>= \env -> liftIO $ runRedis (fst . connectors $ env) action
 
-singleFeedsK :: T.Text -> B.ByteString
-singleFeedsK = B.append "feeds:" . T.encodeUtf8
+  withKeyStore :: (MonadIO m) => CacheAction -> App m (Either T.Text FromCache)
+  withKeyStore (CacheGetPage cid mid n) = do
+    env <- ask
+    evalKeyStore query >>= \case
+      Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
+      _ ->
+        refresh env >>= \case
+          Left err -> pure . Left $ err
+          Right _ ->
+            evalKeyStore query >>= \case
+              Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
+              _ ->
+                pure
+                  . Left
+                  $ "TgActError while trying to refresh after pulling anew from database. Chat involved: "
+                  `T.append` (T.pack . show $ cid)
+   where
+    (lk, k) = pageKeys cid mid
+    query = do
+      d <- lindex lk (toInteger $ n - 1)
+      l <- llen lk
+      url <- get k
+      pure $ (,,) <$> d <*> l <*> url
+    success p i mb_page =
+      let (page', i') = (B.decodeUtf8 p, fromInteger i)
+       in pure . Right $ CachePage page' i' mb_page
+    refresh env =
+      evalDb env (GetPages cid mid) >>= \case
+        Right (DbPages pages mb_link) -> withKeyStore (CacheSetPages cid mid pages mb_link)
+        Left err -> pure . Left $ renderDbError err
+        _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
+  withKeyStore (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
+  withKeyStore (CacheSetPages cid mid pages mb_link) =
+    let (lk, k) = pageKeys cid mid
+        action = case mb_link of
+          Nothing ->
+            evalKeyStore (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
+              Right _ -> pure $ Right CacheOk
+              Left _ -> pure $ Left "Nothing"
+          Just l ->
+            evalKeyStore
+              ( multiExec $ do
+                  q1 <- set k $ B.encodeUtf8 l
+                  q1' <- expire k 86400
+                  q2 <- lpush lk $ map B.encodeUtf8 pages
+                  q2' <- expire lk 86400
+                  pure $ (,,,) <$> q1 <*> q2 <*> q1' <*> q2'
+              )
+              >>= \case
+                TxSuccess _ -> pure $ Right CacheOk
+                _ -> pure $ Left "Nothing"
+     in action
 
-pageKeys :: Int64 -> Int -> (B.ByteString, B.ByteString)
-pageKeys cid mid = (lk, k)
- where
-  lk = "pages_cid_mid:" `B.append` f cid `B.append` f mid
-  k = "page_url_cid_mid:" `B.append` f cid `B.append` f mid
-  f :: (Show a) => a -> B.ByteString
-  f = T.encodeUtf8 . T.pack . show
-
-evalRedis :: (MonadIO m) => AppConfig -> Redis a -> m a
-evalRedis conf action =
-  let (conn, _) = connectors conf
-   in liftIO $ runRedis conn action
-
-setupRedis :: (MonadIO m) => m (Either T.Text Connection)
-setupRedis = liftIO $ do
+setUpKeyStore :: (MonadIO m) => m (Either T.Text Connection)
+setUpKeyStore = liftIO $ do
   putStrLn "Attempting to connect to default port..."
   Right <$> try_over 1
  where
@@ -73,6 +106,17 @@ setupRedis = liftIO $ do
     putStrLn "Retrying now..."
     pure $ Left ()
 
+singleFeedsK :: T.Text -> B.ByteString
+singleFeedsK = B.append "feeds:" . T.encodeUtf8
+
+pageKeys :: Int64 -> Int -> (B.ByteString, B.ByteString)
+pageKeys cid mid = (lk, k)
+ where
+  lk = "pages_cid_mid:" `B.append` f cid `B.append` f mid
+  k = "page_url_cid_mid:" `B.append` f cid `B.append` f mid
+  f :: (Show a) => a -> B.ByteString
+  f = T.encodeUtf8 . T.pack . show
+
 {- Enqueue digests on Redis -}
 
 writeDigest :: (RedisCtx m f) => Digest -> m (f Status)
@@ -88,69 +132,3 @@ readDigest digest_id =
         q1 <- get key
         q2 <- del [key]
         return $ (,) <$> q1 <*> q2
-
-{- Cache -}
-
-type CacheRes = Either T.Text FromCache
-
-class (MonadReader AppConfig m) => HasCache m where
-  withCache :: CacheAction -> m CacheRes
-
-instance (MonadIO m) => HasCache (App m) where
-  withCache = withBroker
-
-withBroker :: (MonadReader AppConfig m, MonadIO m, HasRedis m, HasMongo m) => CacheAction -> m CacheRes
-{- Cache in-app or in-data frequently requested data -}
-withBroker (CacheGetPage cid mid n) = do
-  env <- ask
-  evalKeyStore env query >>= \case
-    Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
-    _ ->
-      refresh env >>= \case
-        Left err -> pure . Left $ err
-        Right _ ->
-          evalRedis env query >>= \case
-            Right (Just page, i, mb_digest_url) -> success page i (B.decodeUtf8 <$> mb_digest_url)
-            _ ->
-              pure
-                . Left
-                $ "TgActError while trying to refresh after pulling anew from database. Chat involved: "
-                  `T.append` (T.pack . show $ cid)
- where
-  (lk, k) = pageKeys cid mid
-  query = do
-    d <- lindex lk (toInteger $ n - 1)
-    l <- llen lk
-    url <- get k
-    pure $ (,,) <$> d <*> l <*> url
-  success p i mb_page =
-    let (page', i') = (B.decodeUtf8 p, fromInteger i)
-     in pure . Right $ CachePage page' i' mb_page
-  refresh env =
-    evalDb env (GetPages cid mid) >>= \case
-      Right (DbPages pages mb_link) -> withBroker (CacheSetPages cid mid pages mb_link)
-      Left err -> pure . Left $ renderDbError err
-      _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
-withBroker (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
-withBroker (CacheSetPages cid mid pages mb_link) =
-  ask >>= \env ->
-    let (lk, k) = pageKeys cid mid
-        action = case mb_link of
-          Nothing ->
-            evalRedis env (lpush lk (map B.encodeUtf8 pages) >> expire lk 86400) >>= \case
-              Right _ -> pure $ Right CacheOk
-              Left _ -> pure $ Left "Nothing"
-          Just l ->
-            evalRedis
-              env
-              ( multiExec $ do
-                  q1 <- set k $ B.encodeUtf8 l
-                  q1' <- expire k 86400
-                  q2 <- lpush lk $ map B.encodeUtf8 pages
-                  q2' <- expire lk 86400
-                  pure $ (,,,) <$> q1 <*> q2 <*> q1' <*> q2'
-              )
-              >>= \case
-                TxSuccess _ -> pure $ Right CacheOk
-                _ -> pure $ Left "Nothing"
-     in action

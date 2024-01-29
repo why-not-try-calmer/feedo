@@ -747,7 +747,7 @@ evalTgAct uid (UnSub feeds) cid =
               Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id
 
-processCbq :: (MonadReader AppConfig m, TgReqM m, HasCache m) => CallbackQuery -> m ()
+processCbq :: (MonadReader AppConfig m, TgReqM m) => CallbackQuery -> m ()
 processCbq cbq =
   ask >>= \env ->
     let send_result n (Right (CachePage p i mb_url)) =
@@ -760,7 +760,7 @@ processCbq cbq =
           answer (bot_token . tg_config $ env) mkAnswer >>= \case
             Left err -> report err
             _ -> pure ()
-        get_page n = withCache $ CacheGetPage cid mid n
+        get_page n = withKeyStore $ CacheGetPage cid mid n
      in case cbq_data cbq
               >>= readMaybe
                 . T.unpack ::

@@ -23,7 +23,7 @@ import TgramOutJson (ChatId)
 import Types
 import Utils (defaultChatSettings, feedsFromList, partitionEither, removeByUserIdx, renderDbError, sortItems, updateSettings)
 
-withChatsFromMem :: (MonadReader AppConfig m, MonadIO m) => UserAction -> ChatId -> m (Either TgActError ChatRes)
+withChatsFromMem :: (MonadIO m) => UserAction -> ChatId -> App m (Either TgActError ChatRes)
 withChatsFromMem action cid = do
   env <- ask
   res <- liftIO $ modifyMVar (subs_state env) (`afterDb` env)
@@ -132,9 +132,10 @@ withChatsFromMem action cid = do
               _ -> pure (updated_cs, Right ChatOk)
       _ -> pure (hmap, Right ChatOk)
 
-loadChatsIntoMem :: (MonadReader AppConfig m, MonadIO m) => m ()
-loadChatsIntoMem =
-  ask >>= \env -> liftIO $
+loadChatsIntoMem :: (MonadIO m) => App m ()
+loadChatsIntoMem = do
+  env <- ask
+  liftIO $
     modifyMVar_ (subs_state env) $
       \chats_hmap -> do
         now <- getCurrentTime
@@ -159,7 +160,7 @@ loadChatsIntoMem =
         )
         chats
 
-rebuildAllFeedsFromMem :: (MonadIO m, MonadReader AppConfig m) => m [Feed]
+rebuildAllFeedsFromMem :: (MonadIO m) => App m [Feed]
 rebuildAllFeedsFromMem = do
   env <- ask
   chats <- liftIO . readMVar $ subs_state env

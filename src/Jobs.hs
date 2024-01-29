@@ -161,7 +161,7 @@ execute env (JobRemoveMsg cid mid delay) = do
       _ -> pure ()
 execute env (JobSetPagination cid mid pages mb_link) =
   let to_db = evalDb env $ InsertPages cid mid pages mb_link
-      to_cache = withCache $ CacheSetPages cid mid pages mb_link
+      to_cache = withKeyStore $ CacheSetPages cid mid pages mb_link
    in runApp env (to_db >> to_cache) >>= \case
         Right _ -> pure ()
         _ ->

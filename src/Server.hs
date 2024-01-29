@@ -17,7 +17,7 @@ import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Notifications (alertAdmin)
-import Redis (setupRedis)
+import Redis (setUpKeyStore)
 import Requests (reply)
 import Servant
 import Servant.HTML.Blaze
@@ -116,7 +116,7 @@ makeConfig env =
         mvar2 <- newMVar HMS.empty
         chan <- newChan
         conn <-
-          setupRedis >>= \case
+          setUpKeyStore >>= \case
             Left err -> throwIO . userError $ T.unpack err
             Right c -> putStrLn "Redis...OK" >> pure c
         (pipe, connected_creds) <-
