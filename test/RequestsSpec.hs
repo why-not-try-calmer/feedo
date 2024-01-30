@@ -13,6 +13,7 @@ import Data.Time (getCurrentTime)
 import Database.MongoDB (ObjectId, genObjectId)
 import Database.Redis (objectIdletime)
 import Debug.Trace (trace)
+import Hooks (withHooks)
 import Network.HTTP.Req (responseBody, responseStatusCode)
 import Network.Wai (Request (requestBody))
 import Requests (
@@ -29,24 +30,17 @@ import TgramOutJson
 import Types
 import Utils (sliceIfAboveTelegramMax)
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = do
-  runIO getConns >>= \config -> sequence_ [go, go1, go2 config]
+spec = withHooks [go, go1, go2]
  where
-  go =
+  go _ =
     let desc = describe "mkKeyboard"
         as = it "makes a keyboard adjusted for pagination"
         target = case mkKeyboard 1 2 Nothing of
           Nothing -> undefined
           Just (InlineKeyboardMarkup keyboard) -> length keyboard `shouldBe` 1
      in desc $ as target
-  go1 =
+  go1 _ =
     let desc = describe "pagination"
         as = it "splits a text into many sub-texts no longer than 606 bytes"
         target = case mkPagination lorec Nothing of
@@ -67,7 +61,7 @@ spec = do
           res <- runApp env $ reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) rep (postjobs env)
           res `shouldBe` ()
      in desc $ as target
-  go3 =
+  go3 _ =
     let desc = describe "slicing replies to avoid running into Telegram's upper bound"
         as = it "slices up messages to keep all of them under 4096 characters"
         target = do

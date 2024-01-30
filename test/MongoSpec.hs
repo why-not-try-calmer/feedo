@@ -11,6 +11,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
 import Database.MongoDB (aggregate, ensureIndex, getIndexes)
+import Hooks (withHooks)
 import Mongo
 import Redis
 import Server (makeConfig)
@@ -18,18 +19,10 @@ import System.Environment (getEnvironment)
 import Test.Hspec
 import Types
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = do
-  env <- runIO getConns
-  sequenceA_ [go, go1 env, go2 env, go3 env, go4 env]
+spec = withHooks [go, go1, go2, go3, go4]
  where
-  go =
+  go _ =
     let desc = describe "checkDbMapper"
         as = it "make sure the ORM matches the application values"
         target = do

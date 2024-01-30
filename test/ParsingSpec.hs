@@ -7,6 +7,7 @@ import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
+import Hooks (withHooks)
 import Network.HTTP.Req (renderUrl)
 import Notifications (collectDue, postNotifier, preNotifier)
 import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
@@ -16,21 +17,15 @@ import Test.Hspec
 import Types (AppConfig, Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_desc, f_items, f_link, f_title, f_type), Item (i_desc, i_feed_link, i_link, i_pubdate), Notifier (Post, Pre, batch_recipes, batches, discarded_items_links), ParsingSettings (PDigestAt), Settings (Settings, settings_digest_interval), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), i_title)
 import Utils (defaultChatSettings, mbTime, partitionEither)
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = go >> go1 >> runIO getConns >>= \env -> go2 env
+spec = withHooks [go, go1, go2]
  where
-  go =
+  go _ =
     let desc = describe "parseSettings"
         as = it "parse settings sent over Telegram in view of updating a Settings value"
         target = parseSettings ["digest_at: 08:00"] `shouldBe` Right [PDigestAt [(8, 0)]]
      in desc $ as target
-  go1 =
+  go1 _ =
     let desc = describe "eitherUrlScheme"
         as = it "parse url sent over Telegram in view of fetching a web feed"
         target = case eitherUrlScheme "https://this-week-in-rust.org/atom.xml" of

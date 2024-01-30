@@ -33,13 +33,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push to GitHub registry
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
           build-args: app_version=${{ github.sha }}
           file: Dockerfile-test
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-test
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

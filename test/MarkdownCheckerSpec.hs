@@ -4,6 +4,7 @@ module MarkdownCheckerSpec where
 
 import Control.Monad.Reader (MonadIO (liftIO), ask)
 import qualified Data.Text as T
+import Hooks (withHooks)
 import MarkdownChecker (parse, render)
 import Network.HTTP.Req (JsonResponse, responseBody)
 import Requests (TgReqM (runSend), reply)
@@ -14,17 +15,11 @@ import TgramInJson (TgGetMessageResponse (resp_msg_ok))
 import TgramOutJson (Outbound (..))
 import Types
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = go >> runIO getConns >>= go1
+spec = withHooks [go, go1]
  where
   tester = "Hello _bea||utif||ully *nested* and_ my [.my.humble.world](https://beautiful.ugly.world)"
-  go =
+  go _ =
     let desc = describe "MarkdownChecker"
         as = it "check MarkdownV2 validity"
         target = case parse tester of
