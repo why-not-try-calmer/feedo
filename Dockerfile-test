@@ -1,5 +1,6 @@
 FROM haskell:9.0.2
-ARG app_version=test
+# Version from build arg
+ARG app_version
 ENV APP_VERSION=$app_version
 
 # Dependencies for caching

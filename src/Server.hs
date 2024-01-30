@@ -110,7 +110,7 @@ makeConfig env =
         let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
          in if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
-      version = T.pack . fromMaybe "test" $ lookup "VERSION" env
+      version = T.pack . fromMaybe "(unspecified)" $ lookup "APP_VERSION" env
    in do
         mvar1 <- newMVar HMS.empty
         mvar2 <- newMVar HMS.empty
