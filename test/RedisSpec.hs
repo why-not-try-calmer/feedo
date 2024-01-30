@@ -8,20 +8,15 @@ import Data.Maybe (fromJust)
 import Data.Time (getCurrentTime)
 import Database.Redis (TxResult (TxSuccess))
 import Debug.Trace (trace)
+import Hooks (withHooks)
 import Redis (evalKeyStore, readDigest, writeDigest)
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import Types
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = runIO getConns >>= \env -> go1 env >> go2 env
+spec = withHooks [go1, go2]
  where
   go1 env =
     let desc = describe "Validates enqueuing"

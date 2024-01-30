@@ -4,6 +4,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (mapM_)
 import qualified Data.Text as T
 import GHC.IO (evaluate)
+import Hooks (withHooks)
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
@@ -11,16 +12,10 @@ import TgActions (evalTgAct, interpretCmd)
 import TgramOutJson (ChatId, UserId)
 import Types
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = go >> runIO getConns >>= go1
+spec = withHooks [go, go1]
  where
-  go =
+  go _ =
     let desc = describe "interpretCmd"
         as = it "interpret commands issued from Telegram"
         t1 = interpretCmd "/items 1" `shouldBe` Right (GetItems $ ById 1)

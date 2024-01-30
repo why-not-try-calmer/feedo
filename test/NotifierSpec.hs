@@ -8,6 +8,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
+import Hooks (withHooks)
 import Notifications
 import Parsing
 import Server (makeConfig)
@@ -16,16 +17,8 @@ import Test.Hspec
 import Types
 import Utils
 
-getConns :: IO AppConfig
-getConns = do
-  env <- getEnvironment
-  config <- makeConfig env
-  pure config
-
 spec :: Spec
-spec = do
-  env <- runIO getConns
-  mapM_ (\t -> t env) [go1, go2, go3, go4]
+spec = withHooks [go1, go2, go3, go4]
  where
   go1 env =
     let desc = describe "test digests"

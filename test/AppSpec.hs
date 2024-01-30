@@ -3,22 +3,23 @@
 module AppSpec where
 
 import Control.Concurrent (threadDelay, writeChan)
-import Control.Exception (throwIO)
+import Control.Exception (bracket, throwIO)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.IORef (readIORef)
 import qualified Data.Text as T
 import Data.Time
 import Database.MongoDB
+import Database.Redis (quit, runRedis)
+import Hooks
 import Jobs
 import Mongo (HasMongo, withDb)
 import Server
 import System.Environment
 import Test.Hspec
-import Types (AppConfig, Feed (Feed), FeedType (Rss), Item (Item), Job (JobArchive), postjobs, runApp)
+import Types (AppConfig (..), Feed (Feed), FeedType (Rss), Item (Item), Job (JobArchive), postjobs, runApp)
 
 spec :: Spec
-spec = do
-  config <- runIO $ getEnvironment >>= makeConfig
-  go config
+spec = withHooks [go]
  where
   go env =
     let desc = describe "startup"
