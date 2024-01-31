@@ -120,9 +120,9 @@ renderUserError NotFoundChat = "The chat you called from is not subscribed to an
 renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
 renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
 renderUserError (TelegramErr err) = "Telegram responded with an error: " `T.append` err
-renderUserError (Ignore input) = "Ignoring " `T.append` input
 renderUserError ChatNotPrivate = "Unwilling to share authentication credentials in a non-private chat. Please use this command in a private conversation with to the bot."
 renderUserError UserNotAdmin = "Only admins can change settings."
+renderUserError (UnknownCommand t) = "Unknown command: " `T.append` t
 
 renderDbError :: DbError -> T.Text
 renderDbError PipeNotAcquired = "Failed to open a connection against the database."

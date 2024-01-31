@@ -330,9 +330,9 @@ data TgActError
   | ParseError T.Text
   | UpdateError T.Text
   | TelegramErr T.Text
-  | Ignore T.Text
   | ChatNotPrivate
   | UserNotAdmin
+  | UnknownCommand T.Text
   deriving (Eq, Show)
 
 data ChatRes

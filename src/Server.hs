@@ -64,9 +64,11 @@ server =
               let cid = chat_id . chat $ inboundMsg
                   uid = user_id . fromJust . from $ inboundMsg
                in case reply_to_message inboundMsg of
-                    Just _ -> pure () -- ignoring replies
+                    -- ignoring replies
+                    Just _ -> pure ()
                     Nothing -> case TgramInJson.text inboundMsg of
-                      Nothing -> pure () -- ignoring empty contents
+                      -- ignoring unparsed contents
+                      Nothing -> pure ()
                       Just conts -> case interpretCmd conts of
                         Left err -> sendReply cid err
                         Right action ->

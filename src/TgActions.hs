@@ -63,13 +63,13 @@ import Types (
     BadInput,
     BadRef,
     ChatNotPrivate,
-    Ignore,
     MaxFeedsAlready,
     NotAdmin,
     NotFoundChat,
     NotFoundFeed,
     NotSubscribed,
     TelegramErr,
+    UnknownCommand,
     UserNotAdmin
   ),
   UserAction (..),
@@ -290,7 +290,7 @@ interpretCmd contents
               else case toFeedRef $ tail args of
                 Left err -> Left err
                 Right refs -> Right . UnSubChannel n $ refs
-  | otherwise = Left $ Ignore contents
+  | otherwise = Left $ UnknownCommand contents
  where
   (cmd, args) =
     let (h' : t) = T.words contents
