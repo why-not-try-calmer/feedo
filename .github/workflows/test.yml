@@ -32,18 +32,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push to GitHub registry
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          build-args: app_version=${{ github.sha }}
-          file: Dockerfile-test
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Pull test layers
+        run: docker compose pull test
 
-      - name: Pull and run tests
+      - name: Run tests
         env:
           alert_chat_id: ${{ secrets.ALERT_CHATID }}
           base_url: ${{ secrets.BASE_URL }}
@@ -58,7 +50,7 @@ jobs:
           echo "MONGO_INITDB_ROOT_USERNAME=$mongo_user" >> .env
           echo "TELEGRAM_TOKEN=$telegram_token" >> .env
           echo "WEBHOOK_URL=$webhook_url" >> .env
-          
+
           docker compose up mongo -d
           sleep 5
           docker compose exec -e TEST=1 mongo mongosh --file /scripts/mongo-startup.js

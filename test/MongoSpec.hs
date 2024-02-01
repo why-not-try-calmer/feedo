@@ -38,9 +38,10 @@ spec = withHooks [go, go1, go2, go3, go4]
           let dig = Digest Nothing now [] [] []
           object_id <-
             runApp env $
-              evalDb (WriteDigest dig) >>= \case
-                Right (DbDigestId digest_id) -> pure . Just $ digest_id
-                _ -> pure Nothing
+              evalDb (WriteDigest dig)
+                >>= \case
+                  Right (DbDigestId digest_id) -> pure . Just $ digest_id
+                  _ -> pure Nothing
           object_id `shouldSatisfy` (\case Just _ -> True; Nothing -> False)
           res <- runApp env $ evalDb (ReadDigest . fromJust $ object_id)
           res `shouldSatisfy` (\case Left _ -> False; _ -> True)
@@ -64,13 +65,17 @@ spec = withHooks [go, go1, go2, go3, go4]
         target = do
           now <- getCurrentTime
           let keywords = S.singleton "target"
+              scope = S.singleton "https://hnrss.org/frontpage/item"
               items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
-              feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
-              search_query = DbSearch keywords S.empty Nothing
+              feed = Feed Rss "HackerNews is coming for love" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
+              db_search = DbSearch keywords S.empty Nothing
+              query = aggregate "items" $ buildSearchQuery Nothing keywords scope
           res <- runApp env $ evalDb (ArchiveItems [feed])
           res `shouldSatisfy` (\(Right _) -> True)
-          res <- runApp env $ evalDb search_query
-          res `shouldSatisfy` (\case Right (DbSearchRes keywords' results) -> not $ null results && keywords == keywords'; Left _ -> False)
+          res <- runApp env $ withDb query
+          res `shouldSatisfy` (\(Right docs) -> not . null $ docs)
+          res <- runApp env $ evalDb db_search
+          res `shouldSatisfy` (\(Right (DbSearchRes keywords' _ results)) -> not $ null results && keywords == keywords')
           print res
      in desc $ as target
   go4 env =

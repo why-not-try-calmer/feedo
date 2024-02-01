@@ -58,7 +58,7 @@ import Types (
   Reply (EditReply, ServiceReply),
   ServerConfig (alert_chat, bot_token, webhook_url),
   SettingsUpdater (Parsed),
-  SubChat (sub_feeds_links, sub_linked_to, sub_settings),
+  SubChat (sub_feeds_links, sub_last_digest, sub_linked_to, sub_settings),
   TgActError (
     BadInput,
     BadRef,
@@ -672,9 +672,12 @@ evalTgAct _ (Search keywords) cid =
              in if null scope
                   then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
                   else
-                    evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
-                      Right (DbSearchRes keys sc) -> pure . Right $ mkReply (FromSearchRes keys sc)
-                      _ -> pure . Left . BadInput $ "The database was not able to run your query."
+                    let ks = S.fromList keywords
+                        sc = S.fromList scope
+                        mb_last_time = sub_last_digest c
+                     in evalDb (DbSearch ks sc mb_last_time) >>= \case
+                          Right (DbSearchRes _ _ results) -> pure . Right $ mkReply (FromSearchRes ks results)
+                          _ -> pure . Left . BadInput $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid =
   ask >>= \env ->

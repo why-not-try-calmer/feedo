@@ -293,7 +293,7 @@ mkReply (FromFeedLinkItems flinkitems) =
   let step acc (!f, !items) = acc `T.append` "New item(s) for " `T.append` escapeWhere f mkdSingles `T.append` ":\n" `T.append` render items
       payload = foldl' step mempty flinkitems
    in defaultReply payload
-mkReply (FromSearchRes keys sr_res) = ChatReply (render (keys, sr_res)) True True False True Nothing
+mkReply (FromSearchRes keys results) = ChatReply (render (keys, results)) True True False True Nothing
 mkReply FromCmds = ChatReply renderCmds True True False False Nothing
 mkReply FromStart =
   let txt =
