@@ -30,9 +30,8 @@ spec = withHooks [go, go1, go2, go3]
         as = it "parse settings sent over Telegram in view of updating a Settings value (2/2)"
         target = do
           parseSettings ["forward_to_admins:"] `shouldSatisfy` (\case (Left _) -> True; _ -> False)
-          parseSettings ["forward_to_admins: true"] `shouldBe` Right [PForwardToAdmins (ToAdmins True)]
-          parseSettings ["forward_to_admins: false"] `shouldBe` Right [PForwardToAdmins (ToAdmins False)]
-          parseSettings ["forward_to_admins: 1 2 3"] `shouldBe` Right [PForwardToAdmins (Admins [1, 2, 3])]
+          parseSettings ["forward_to_admins: true"] `shouldBe` Right [PForwardToAdmins True]
+          parseSettings ["forward_to_admins: false"] `shouldBe` Right [PForwardToAdmins False]
      in desc $ as target
   go2 _ =
     let desc = describe "eitherUrlScheme"

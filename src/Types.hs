@@ -134,7 +134,7 @@ data Settings = Settings
   , settings_digest_title :: T.Text
   , settings_disable_web_view :: Bool
   , settings_follow :: Bool
-  , settings_forward_to_admins :: T.Text
+  , settings_forward_to_admins :: Bool
   , settings_pagination :: Bool
   , settings_paused :: Bool
   , settings_pin :: Bool
@@ -192,7 +192,7 @@ instance FromJSON Settings where
             .!= False
           <*> o
             .:? "settings_forward_to_admins"
-            .!= "false"
+            .!= False
           <*> o
             .:? "settings_pagination"
             .!= True
@@ -231,6 +231,7 @@ data SubChat = SubChat
   , sub_feeds_links :: S.Set FeedLink
   , sub_linked_to :: Maybe ChatId
   , sub_settings :: Settings
+  , sub_active_admins :: HMS.HashMap UserId UTCTime
   }
   deriving (Show, Eq)
 
@@ -267,7 +268,7 @@ data ParsingSettings
   | PBlacklist (S.Set T.Text)
   | PDisableWebview Bool
   | PPagination Bool
-  | PForwardToAdmins ToAdminsOrAdmins
+  | PForwardToAdmins Bool
   | PPaused Bool
   | PPin Bool
   | PDigestCollapse Int
@@ -349,6 +350,7 @@ data TgEvalError
 data ChatRes
   = ChatUpdated SubChat
   | ChatOk
+  deriving (Show, Eq)
 
 {- Replies -}
 

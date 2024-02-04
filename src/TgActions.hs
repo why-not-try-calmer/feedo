@@ -101,23 +101,12 @@ isUserAdmin tok uid cid =
                   chat_members = resp_cm_result res_cms :: [ChatMember]
                in pure . Right $ if_admin chat_members
  where
-  getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
+  getChatAdmins = runSend tok "getchChatAdministrators" $ GetChat cid
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= (user_id . cm_user $ member) = acc
-    | cm_status member `elem` ["administrator", "creator"] = True
+    | cm_status member `elem` [Admin, Creator] = True
     | otherwise = False
-
-getChatAdministrators :: (MonadIO m) => BotToken -> ChatId -> m (Either TgEvalError [(UserId, UserFirstName)])
-getChatAdministrators tok cid = liftIO $ do
-  resp <- runSend tok "getChatAdministrators" $ GetChat cid
-  case resp of
-    Left err -> pure . Left . TelegramErr $ err
-    Right res ->
-      let chat_admins_response = responseBody res :: TgGetChatMembersResponse
-          members = resp_cm_result chat_admins_response :: [ChatMember]
-          chat_admins = map (\m -> (user_id . cm_user $ m, user_first_name . cm_user $ m)) members
-       in pure . Right $ chat_admins
 
 isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgEvalError Bool)
 isChatOfType tok cid ty =
@@ -685,7 +674,7 @@ evalTgAct _ (Search keywords) cid =
                   then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
                   else
                     evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
-                      Right (DbSearchRes keys sc) -> pure . Right $ mkReply (FromSearchRes keys sc)
+                      Right (DbSearchRes keys _ res) -> pure . Right $ mkReply (FromSearchRes keys res)
                       _ -> pure . Left . DbQueryError . BadQuery $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid =

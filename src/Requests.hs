@@ -6,13 +6,12 @@
 
 module Requests (mkPagination, setWebhook, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
-import Control.Concurrent (readMVar, writeChan)
+import Control.Concurrent (writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (for_)
-import qualified Data.HashMap.Strict as HMS
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -20,7 +19,7 @@ import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import Notifications (alertAdmin)
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), UserId)
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
 import Types
 import Utils (sliceIfAboveTelegramMax)
 
@@ -226,23 +225,20 @@ reply cid rep = do
         ChatReply txt _ _ _ _ _ -> txt
         ServiceReply txt -> txt
         EditReply _ txt _ _ -> txt
-      getAdminsToForwardTo =
-        readMVar (subs_state env)
-          >>= \chat ->
-            pure $
-              map (\w -> read . T.unpack $ w :: UserId)
-                . T.words
-                . settings_forward_to_admins
-                . sub_settings
-                <$> HMS.lookup cid chat
+      -- getAdminsToForwardTo =
+      --   readMVar (subs_state env)
+      --     >>= \chat ->
+      --       pure $
+      --         map (\w -> read . T.unpack $ w :: UserId)
+      --           . T.words
+      --           . settings_forward_to_admins
+      --           . sub_settings
+      --           <$> HMS.lookup cid chat
       processReply
         | T.null replyTxt =
             let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
              in alertAdmin chan alert_msg
-        | otherwise =
-            liftIO getAdminsToForwardTo >>= \case
-              Nothing -> send rep
-              Just _ -> send rep -- to finish in a distinct PR
+        | otherwise = send rep
   processReply
 
 {- Feeds -}

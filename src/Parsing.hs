@@ -16,7 +16,6 @@ import Requests (fetchFeed)
 import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
-import TgramOutJson (UserId)
 import Types (
   Feed (..),
   FeedError (..),
@@ -25,7 +24,6 @@ import Types (
   ParsingSettings (..),
   Settings (settings_digest_title),
   TgEvalError (BadFeed, BadFeedUrl, ParseError),
-  ToAdminsOrAdmins (Admins, ToAdmins),
  )
 import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
 
@@ -253,15 +251,8 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     | k == "digest_title" =
         if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings) : parsed) else (not_parsed, PDigestTitle txt : parsed)
     | k == "forward_errors_to_admins" =
-        let maybe_true_or_false
-              | "true" `T.isInfixOf` T.toCaseFold txt = Just True
-              | "false" `T.isInfixOf` T.toCaseFold txt = Just False
-              | otherwise = Nothing
-         in case maybe_true_or_false of
-              Just val -> (not_parsed, PForwardToAdmins (ToAdmins val) : parsed)
-              Nothing -> case mapM (read . T.unpack) $ T.words txt :: Maybe [UserId] of
-                Nothing -> ("'forward_errors_to_admins' takes as arguments either 'true', 'false' or a space-separated list of user ids all of which must refer to admins of the chat to be configured." : not_parsed, parsed)
-                Just users_ids -> (not_parsed, PForwardToAdmins (Admins users_ids) : parsed)
+        let res = "true" `T.isInfixOf` T.toCaseFold txt
+         in (not_parsed, PForwardToAdmins res : parsed)
     | k == "search_notif" =
         if T.length txt < 3
           then ("'search_notif' cannot be shorter than 3 characters." : not_parsed, parsed)

@@ -18,7 +18,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime, UTCTime)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
@@ -27,7 +27,7 @@ import GHC.IORef (atomicModifyIORef', readIORef)
 import Notifications (alertAdmin, findNextTime)
 import Replies (render)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId)
+import TgramOutJson (ChatId, UserId)
 import Types
 import Utils (defaultChatSettings, freshLastXDays)
 
@@ -141,11 +141,11 @@ instance (MonadIO m) => HasMongo (App m) where
               pure . Left . T.pack . show $ e
             Right r -> pure $ Right r
         alert err =
-          liftIO $
-            alertAdmin (postjobs env) $
-              "withDb failed with "
-                `T.append` (T.pack . show $ err)
-                `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+          liftIO
+            $ alertAdmin (postjobs env)
+            $ "withDb failed with "
+            `T.append` (T.pack . show $ err)
+            `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
     pipe <- liftIO $ acquire env
     attempt <- liftIO $ attemptWith pipe
     case attempt of
@@ -184,10 +184,10 @@ instance (MonadIO m) => HasMongo (App m) where
     mkSafeHash =
       liftIO getSystemTime
         <&> T.pack
-          . show
-          . hashWith SHA256
-          . B.pack
-          . show
+        . show
+        . hashWith SHA256
+        . B.pack
+        . show
   evalDb (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
         del = deleteOne (select ["admin_token" =: h] "admins")
@@ -349,10 +349,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print $
-        "Failed to acquire primary replica, reason:"
-          ++ show err
-          ++ ". Moving to second."
+      print
+        $ "Failed to acquire primary replica, reason:"
+        ++ show err
+        ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -408,21 +408,21 @@ markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
 -- marking input chats as notified
 markNotified notified_chats now = do
   env <- ask
-  liftIO $
-    modifyMVar_ (subs_state env) $
-      \subs ->
-        let updated_chats = updated_notified_chats notified_chats subs
-         in runApp env $
-              evalDb (UpsertChats updated_chats)
-                >>= \case
-                  Left err -> do
-                    alertAdmin (postjobs env) $
-                      "notifier: failed to \
-                      \ save updated chats to db because of this error"
-                        `T.append` render err
-                    pure subs
-                  Right DbDone -> pure updated_chats
-                  _ -> pure subs
+  liftIO
+    $ modifyMVar_ (subs_state env)
+    $ \subs ->
+      let updated_chats = updated_notified_chats notified_chats subs
+       in runApp env
+            $ evalDb (UpsertChats updated_chats)
+            >>= \case
+              Left err -> do
+                alertAdmin (postjobs env)
+                  $ "notifier: failed to \
+                    \ save updated chats to db because of this error"
+                  `T.append` render err
+                pure subs
+              Right DbDone -> pure updated_chats
+              _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey
@@ -496,6 +496,10 @@ bsonToChat doc =
   let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
       linked_to_chats = M.lookup "sub_linked_to_chats" doc :: Maybe ChatId
       settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
+      active_admins_doc = M.lookup "sub_active_admins" doc :: Maybe [Document]
+      active_admins =
+        let f d = (,) <$> (M.lookup "sub_active_userid" d :: Maybe UserId) <*> (M.lookup "sub_active_time" d :: Maybe UTCTime)
+         in maybe mempty (mapM f) active_admins_doc
       feeds_settings_docs =
         Settings
           { settings_word_matches =
@@ -543,13 +547,15 @@ bsonToChat doc =
         , sub_feeds_links = S.fromList feeds_links
         , sub_linked_to = linked_to_chats
         , sub_settings = feeds_settings_docs
+        , sub_active_admins = maybe mempty HMS.fromList active_admins
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
+chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings active_admins) =
   let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
       searchset = S.toList . match_searchset . settings_word_matches $ settings
       only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
+      active_admins' = map (\(uid, d) -> ["user_id" =: uid, "last_activity" =: d]) $ HMS.toList active_admins
       settings' =
         [ "settings_blacklist" =: blacklist
         , "settings_digest_collapse" =: settings_digest_collapse settings
@@ -558,6 +564,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
         , "settings_digest_title" =: settings_digest_title settings
         , "settings_digest_start" =: settings_digest_start settings
         , "settings_follow" =: settings_follow settings
+        , "settings_forward_to_admins" =: settings_forward_to_admins settings
         , "settings_only_search_results" =: only_search_results
         , "settings_paused" =: settings_paused settings
         , "settings_pin" =: settings_pin settings
@@ -582,6 +589,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
       , "sub_feeds_links" =: S.toList flinks
       , "sub_linked_to_chats" =: linked_to
       , "sub_settings" =: settings' ++ with_secs ++ with_at
+      , "sub_active_admins" =: active_admins'
       ]
 
 {- Digests -}
@@ -658,8 +666,8 @@ checkDbMapper = do
   let item = Item mempty mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False "false" True True False False word_matches mempty
-      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings
+      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False True True False False word_matches mempty
+      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]
       equalities =

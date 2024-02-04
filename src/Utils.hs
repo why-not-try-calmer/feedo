@@ -186,7 +186,7 @@ defaultChatSettings =
     , settings_pin = False
     , settings_share_link = True
     , settings_follow = False
-    , settings_forward_to_admins = "false"
+    , settings_forward_to_admins = False
     , settings_digest_collapse = Nothing
     , settings_digest_start = Nothing
     , settings_digest_no_collapse = mempty
@@ -221,10 +221,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
       let wm = settings_word_matches o
           wm' = wm{match_searchset = v}
        in o{settings_word_matches = wm'}
-    PForwardToAdmins v -> case v of
-      ToAdmins True -> o{settings_forward_to_admins = "true"}
-      ToAdmins False -> o{settings_forward_to_admins = "false"}
-      Admins admins -> o{settings_forward_to_admins = T.intercalate " " $ map (T.pack . show) admins}
+    PForwardToAdmins v -> o{settings_forward_to_admins = v}
     PSearchLinks v ->
       let wm = settings_word_matches o
           wm' = wm{match_only_search_results = v}

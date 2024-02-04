@@ -255,7 +255,7 @@ instance Renderable SubChat where
                   ]
               admin_part =
                 mapper
-                  [ ("Forward errors to chat or channel admins", settings_forward_to_admins sub_settings)
+                  [ ("Forward errors to chat or channel admins", if settings_forward_to_admins sub_settings then "true" else "false")
                   ]
            in status_part
                 `T.append` T.intercalate
