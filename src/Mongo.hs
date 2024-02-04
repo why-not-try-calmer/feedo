@@ -25,10 +25,11 @@ import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Notifications (alertAdmin, findNextTime)
+import Replies (render)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId)
 import Types
-import Utils (defaultChatSettings, freshLastXDays, renderDbError)
+import Utils (defaultChatSettings, freshLastXDays)
 
 {- Interface -}
 
@@ -346,7 +347,7 @@ instance (MonadIO m) => HasMongo (App m) where
     now <- liftIO getCurrentTime
     evalDb GetAllFeeds
       >>= \case
-        Left err -> pure . Left . NotFound $ renderDbError err
+        Left err -> pure . Left . NotFound $ render err
         Right (DbFeeds fs) ->
           let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
               collected = foldFeeds listed now
@@ -417,15 +418,16 @@ markNotified notified_chats now = do
       \subs ->
         let updated_chats = updated_notified_chats notified_chats subs
          in runApp env $
-              evalDb (UpsertChats updated_chats) >>= \case
-                Left err -> do
-                  alertAdmin (postjobs env) $
-                    "notifier: failed to \
-                    \ save updated chats to db because of this error"
-                      `T.append` renderDbError err
-                  pure subs
-                Right DbDone -> pure updated_chats
-                _ -> pure subs
+              evalDb (UpsertChats updated_chats)
+                >>= \case
+                  Left err -> do
+                    alertAdmin (postjobs env) $
+                      "notifier: failed to \
+                      \ save updated chats to db because of this error"
+                        `T.append` render err
+                    pure subs
+                  Right DbDone -> pure updated_chats
+                  _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey
@@ -535,6 +537,7 @@ bsonToChat doc =
           , settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc
           , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc
           , settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
+          , settings_forward_to_admins = fromMaybe (settings_forward_to_admins defaultChatSettings) $ M.lookup "settings_forward_to_admins" settings_doc
           , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
           , settings_digest_no_collapse = maybe S.empty S.fromList $ M.lookup "settings_digest_no_collapse" settings_doc
           }
@@ -660,7 +663,7 @@ checkDbMapper = do
   let item = Item mempty mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
+      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False "false" True True False False word_matches mempty
       chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]

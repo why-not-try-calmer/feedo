@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -5,13 +6,13 @@
 
 module Requests (mkPagination, setWebhook, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
-import Control.Concurrent (Chan, writeChan)
+import Control.Concurrent (readMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
-import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Reader
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (for_)
+import qualified Data.HashMap.Strict as HMS
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -19,7 +20,7 @@ import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import Notifications (alertAdmin)
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), UserId)
 import Types
 import Utils (sliceIfAboveTelegramMax)
 
@@ -36,20 +37,6 @@ instance (MonadIO m) => TgReqM (App m) where
 instance TgReqM IO where
   runSend = reqSend
   runSend_ = reqSend_
-
-{- Telegram -}
-
-setWebhook :: BotToken -> T.Text -> IO ()
-setWebhook tok webhook = do
-  resp <- withReqManager $ runReq defaultHttpConfig . pure request
-  let code = responseStatusCode (resp :: JsonResponse Value) :: Int
-      message = responseStatusMessage resp
-  when (code /= 200) $ liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message
- where
-  request =
-    req GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
-      "url"
-        =: (webhook `T.append` "/webhook/" `T.append` tok)
 
 reqSend :: (TgReqM m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
 reqSend tok postMeth encodedMsg =
@@ -81,6 +68,20 @@ reqSend_ a b c =
   reqSend a b c >>= \case
     Left txt -> pure $ Left txt
     Right (_ :: JsonResponse Value) -> pure $ Right ()
+
+{- Telegram -}
+
+setWebhook :: BotToken -> T.Text -> IO ()
+setWebhook tok webhook = do
+  resp <- withReqManager $ runReq defaultHttpConfig . pure request
+  let code = responseStatusCode (resp :: JsonResponse Value) :: Int
+      message = responseStatusMessage resp
+  when (code /= 200) $ liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message
+ where
+  request =
+    req GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
+      "url"
+        =: (webhook `T.append` "/webhook/" `T.append` tok)
 
 answer :: (TgReqM m) => BotToken -> AnswerCallbackQuery -> m (Either T.Text ())
 answer tok query =
@@ -154,14 +155,15 @@ mkDigestLinkButton link
 -}
 
 reply ::
-  (TgReqM m) =>
-  BotToken ->
+  (TgReqM m, MonadReader AppConfig m) =>
   ChatId ->
   Reply ->
-  Chan Job ->
   m ()
-reply tok cid rep chan =
-  let mid_from resp =
+reply cid rep = do
+  env <- ask
+  let tok = bot_token . tg_config $ env
+      chan = postjobs env
+      mid_from resp =
         let b = responseBody resp :: TgGetMessageResponse
          in message_id . resp_msg_result $ b
       fromReply ChatReply{..} =
@@ -187,7 +189,7 @@ reply tok cid rep chan =
         let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
          in alertAdmin chan err_msg
       -- non_empty txt = if T.null txt then "No result for this command." else txt
-      outbound msg@ChatReply{..} =
+      send msg@ChatReply{..} =
         let jobs mid =
               [ if reply_pin_on_send then Just $ JobPin cid mid else Nothing
               , if reply_pagination && isJust (mkPagination reply_contents reply_permalink)
@@ -212,11 +214,11 @@ reply tok cid rep chan =
                  in for_ (jobs mid) $ \case
                       Just j -> liftIO $ writeChan chan j
                       Nothing -> pure ()
-      outbound msg@EditReply{} =
+      send msg@EditReply{} =
         runSend_ tok "editMessageText" (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
-      outbound msg@ServiceReply{} =
+      send msg@ServiceReply{} =
         runSend_ tok "sendMessage" (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
@@ -224,11 +226,24 @@ reply tok cid rep chan =
         ChatReply txt _ _ _ _ _ -> txt
         ServiceReply txt -> txt
         EditReply _ txt _ _ -> txt
-   in if T.null replyTxt
-        then
-          let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
-           in alertAdmin chan alert_msg
-        else outbound rep
+      getAdminsToForwardTo =
+        readMVar (subs_state env)
+          >>= \chat ->
+            pure $
+              map (\w -> read . T.unpack $ w :: UserId)
+                . T.words
+                . settings_forward_to_admins
+                . sub_settings
+                <$> HMS.lookup cid chat
+      processReply
+        | T.null replyTxt =
+            let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
+             in alertAdmin chan alert_msg
+        | otherwise =
+            liftIO getAdminsToForwardTo >>= \case
+              Nothing -> send rep
+              Just _ -> send rep -- to finish in a distinct PR
+  processReply
 
 {- Feeds -}
 

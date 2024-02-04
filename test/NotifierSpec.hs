@@ -26,7 +26,7 @@ spec = withHooks [go1, go2, go3, go4]
         target = do
           let feedlinks = ["https://www.reddit.com/r/pop_os/.rss", "https://this-week-in-rust.org/atom.xml", "https://blog.rust-lang.org/inside-rust/feed.xml", "https://blog.rust-lang.org/feed.xml"]
               -- every day
-              settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
+              settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False "false" False False False False (WordMatches S.empty S.empty S.empty) S.empty
               -- last 31th of May
               chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
               chats_recipes = HMS.singleton 123 (chat, DigestFeedLinks feedlinks)
@@ -68,7 +68,7 @@ spec = withHooks [go1, go2, go3, go4]
         target = do
           let feedlinks = ["https://www.reddit.com/r/pop_os/.rss", "https://this-week-in-rust.org/atom.xml", "https://blog.rust-lang.org/inside-rust/feed.xml", "https://blog.rust-lang.org/feed.xml"]
               -- every day
-              settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
+              settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False "false" False False False False (WordMatches S.empty S.empty S.empty) S.empty
               -- last 31th of May
               chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
           (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
@@ -98,7 +98,7 @@ spec = withHooks [go1, go2, go3, go4]
               sub_to = S.singleton "haskell"
               matches = WordMatches{match_blacklist = S.empty, match_searchset = sub_to, match_only_search_results = S.singleton "https://news.ycombinator.com/rss"}
               interval = DigestInterval Nothing Nothing
-              settings = Settings Nothing interval 10 Nothing mempty False False False False False False matches S.empty
+              settings = Settings Nothing interval 10 Nothing mempty False False "false" False False False False matches S.empty
               subs = HMS.singleton 0 $ SubChat 0 Nothing Nothing sub_to Nothing settings
               pre = preNotifier now Nothing subs
               post = postNotifier feedsmap [] pre
@@ -109,7 +109,7 @@ spec = withHooks [go1, go2, go3, go4]
     let desc = describe "validates the `collectDue`"
         as = it "filters out chats that don't need a refresh"
         target = do
-          let settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
+          let settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False "false" False False False False (WordMatches S.empty S.empty S.empty) S.empty
               feedlinks = ["https://www.reddit.com/r/pop_os/.rss", "https://this-week-in-rust.org/atom.xml", "https://blog.rust-lang.org/inside-rust/feed.xml", "https://blog.rust-lang.org/feed.xml"]
               chat1 = SubChat 123 (mbTime "2022-05-31") (mbTime "2022-06-04") (S.fromList feedlinks) Nothing settings
               chat2 = SubChat 234 (mbTime "2022-05-31") (mbTime "2022-06-02") (S.fromList feedlinks) Nothing settings

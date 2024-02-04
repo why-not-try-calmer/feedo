@@ -11,11 +11,12 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import Network.HTTP.Req
-import Replies (mkdDoubles)
+import Replies (mkdDoubles, render)
 import Requests (fetchFeed)
 import Text.Read (readMaybe)
 import Text.XML
 import Text.XML.Cursor
+import TgramOutJson (UserId)
 import Types (
   Feed (..),
   FeedError (..),
@@ -23,13 +24,14 @@ import Types (
   Item (Item, i_pubdate),
   ParsingSettings (..),
   Settings (settings_digest_title),
-  TgActError (BadFeed, BadInput, ParseError),
+  TgEvalError (BadFeed, BadFeedUrl, ParseError),
+  ToAdminsOrAdmins (Admins, ToAdmins),
  )
-import Utils (averageInterval, defaultChatSettings, mbTime, renderUserError, sortTimePairs)
+import Utils (averageInterval, defaultChatSettings, mbTime, sortTimePairs)
 
 {- Feeds, Items -}
 
-buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgActError (Feed, Maybe T.Text))
+buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgEvalError (Feed, Maybe T.Text))
 -- tries parsing bytes into a Feed
 -- tries as Atom if Rss fails
 buildFeed ty url = do
@@ -112,13 +114,13 @@ buildFeed ty url = do
           then Right (f, render_optional)
           else Left . ParseError $ render_required
 
-eitherUrlScheme :: T.Text -> Either TgActError (Url 'Https)
+eitherUrlScheme :: T.Text -> Either TgEvalError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
 eitherUrlScheme s
-  | T.null s = Left . BadInput $ s
-  | head split /= "https:" = Left . BadInput $ s
+  | T.null s = Left . BadFeedUrl $ s
+  | head split /= "https:" = Left . BadFeedUrl $ s
   | length body >= 2 = Right toScheme
-  | otherwise = Left . BadInput $ "Unable to parse this input." `T.append` s
+  | otherwise = Left . BadFeedUrl $ "Unable to parse this input." `T.append` s
  where
   s' = if T.last s == T.last "/" then T.dropEnd 1 s else s
   split = T.splitOn "/" s'
@@ -131,7 +133,7 @@ getFeedFromUrlScheme scheme =
   buildFeed Rss scheme >>= \case
     Left _ ->
       buildFeed Atom scheme >>= \case
-        Left err -> pure . Left . renderUserError $ err
+        Left err -> pure . Left . render $ err
         Right (feed, warning) -> finish_successfully (feed, warning)
     Right (feed, warning) -> finish_successfully (feed, warning)
  where
@@ -140,14 +142,14 @@ getFeedFromUrlScheme scheme =
 rebuildFeed :: (MonadIO m) => T.Text -> m (Either FeedError Feed)
 -- updates a single feed
 rebuildFeed key = case eitherUrlScheme key of
-  Left err -> pure . Left $ FeedError key Nothing mempty (renderUserError err)
+  Left err -> pure . Left $ FeedError key Nothing mempty (render err)
   Right url -> liftIO $ build url
  where
   build url =
     buildFeed Rss url >>= \case
       Left _ ->
         buildFeed Atom url >>= \case
-          Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (renderUserError build_error)
+          Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (render build_error)
           Right (feed, _) -> done feed
       Right (feed, _) -> done feed
   done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed{f_last_refresh = Just now}
@@ -180,6 +182,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                   , "digest_title <title>"
                   , "disable_webview <false|true>"
                   , "follow <false|true>"
+                  , "forward_errors_to_admins <true|false|space-separated user_id(s) of admin(s)>"
                   , "only_search_notif <url1 url2 ...>"
                   , "pagination <false|true>"
                   , "pin <false|true>"
@@ -249,6 +252,16 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDisableWebview True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False : parsed) else ("'disable_webview' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "digest_title" =
         if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings) : parsed) else (not_parsed, PDigestTitle txt : parsed)
+    | k == "forward_errors_to_admins" =
+        let maybe_true_or_false
+              | "true" `T.isInfixOf` T.toCaseFold txt = Just True
+              | "false" `T.isInfixOf` T.toCaseFold txt = Just False
+              | otherwise = Nothing
+         in case maybe_true_or_false of
+              Just val -> (not_parsed, PForwardToAdmins (ToAdmins val) : parsed)
+              Nothing -> case mapM (read . T.unpack) $ T.words txt :: Maybe [UserId] of
+                Nothing -> ("'forward_errors_to_admins' takes as arguments either 'true', 'false' or a space-separated list of user ids all of which must refer to admins of the chat to be configured." : not_parsed, parsed)
+                Just users_ids -> (not_parsed, PForwardToAdmins (Admins users_ids) : parsed)
     | k == "search_notif" =
         if T.length txt < 3
           then ("'search_notif' cannot be shorter than 3 characters." : not_parsed, parsed)

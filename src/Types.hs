@@ -1,6 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Types where
 
@@ -34,13 +35,13 @@ data Reply
       , reply_pagination :: Bool
       , reply_permalink :: Maybe T.Text
       }
-  | ServiceReply T.Text
   | EditReply
       { edit_message_id :: Int
       , edit_text :: T.Text
       , edit_markdown :: Bool
       , edit_pagination_keyboard :: Maybe InlineKeyboardMarkup
       }
+  | ServiceReply T.Text
   deriving (Show)
 
 {- URLs -}
@@ -134,6 +135,7 @@ data Settings = Settings
   , settings_digest_title :: T.Text
   , settings_disable_web_view :: Bool
   , settings_follow :: Bool
+  , settings_forward_to_admins :: T.Text
   , settings_pagination :: Bool
   , settings_paused :: Bool
   , settings_pin :: Bool
@@ -189,6 +191,9 @@ instance FromJSON Settings where
           <*> o
             .:? "settings_follow"
             .!= False
+          <*> o
+            .:? "settings_forward_to_admins"
+            .!= "false"
           <*> o
             .:? "settings_pagination"
             .!= True
@@ -252,6 +257,8 @@ $(deriveJSON defaultOptions{omitNothingFields = True} ''AdminUser)
 
 {- User actions, errors -}
 
+data ToAdminsOrAdmins = ToAdmins Bool | Admins [UserId] deriving (Show, Eq)
+
 data ParsingSettings
   = PDigestAt [(Int, Int)]
   | PDigestEvery NominalDiffTime
@@ -261,6 +268,7 @@ data ParsingSettings
   | PBlacklist (S.Set T.Text)
   | PDisableWebview Bool
   | PPagination Bool
+  | PForwardToAdmins ToAdminsOrAdmins
   | PPaused Bool
   | PPin Bool
   | PDigestCollapse Int
@@ -317,11 +325,16 @@ data FeedError = FeedError
   }
   deriving (Show, Eq)
 
-data TgActError
+data InterpreterErr
+  = InterpreterErr T.Text
+  | UnknownCommand T.Text [T.Text]
+  deriving (Show, Eq)
+
+data TgEvalError
   = BadFeedUrl T.Text
-  | BadInput T.Text
-  | BadRef T.Text
   | BadFeed FeedError
+  | BadRef T.Text
+  | DbQueryError DbError
   | NotAdmin T.Text
   | NotFoundChat
   | NotFoundFeed T.Text
@@ -332,7 +345,6 @@ data TgActError
   | TelegramErr T.Text
   | ChatNotPrivate
   | UserNotAdmin
-  | UnknownCommand T.Text
   deriving (Eq, Show)
 
 data ChatRes

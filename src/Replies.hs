@@ -82,140 +82,6 @@ intoTimeLine = fst . foldl' step (mempty, 0)
             )
   finish title link = "- " `T.append` toHrefEntities Nothing title link `T.append` "\n"
 
-class Renderable e where
-  render :: e -> T.Text
-
-instance Renderable Feed where
-  render Feed{..} =
-    T.intercalate "\n" $
-      map
-        (\(k, v) -> k `T.append` ": " `T.append` v)
-        [ ("Url", f_link)
-        , ("Type", T.pack $ show f_type)
-        , ("Title", f_desc)
-        , ("Current items", T.pack . show $ length f_items)
-        , ("Avg. interval between items", renderAvgInterval f_avg_interval)
-        , ("Last refresh", maybe "None" utcToYmdHMS f_last_refresh)
-        ]
-
-instance Renderable SubChat where
-  render SubChat{..} =
-    let adjust c = if c == "0" then "00" else c
-        at = case digest_at . settings_digest_interval $ sub_settings of
-          Nothing -> mempty
-          Just ts ->
-            foldl'
-              ( \s (!h, !m) ->
-                  let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
-                      s' = if s == mempty then s else s `T.append` ", "
-                   in s' `T.append` body
-              )
-              mempty
-              ts
-        every_txt =
-          let k = "Digest step (time between two digests)"
-           in case digest_every_secs . settings_digest_interval $ sub_settings of
-                Nothing -> (mempty, mempty)
-                Just e -> if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
-        blacklist =
-          let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
-           in if null bl then "none" else T.intercalate ", " bl
-        searches =
-          let se = S.toList $ match_searchset . settings_word_matches $ sub_settings
-           in if null se then "none" else T.intercalate ", " se
-        only_search_results =
-          let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
-           in if null sr then "none" else T.intercalate ", " sr
-        rendered =
-          let mapper = T.intercalate "\n" . map (\(k, v) -> k `T.append` ": " `T.append` v)
-              status_part =
-                mapper
-                  [ ("Chat id", T.pack . show $ sub_chatid)
-                  , ("Status", if settings_paused sub_settings then "paused" else "active")
-                  , ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links)
-                  , maybe mempty (\c -> ("Linked to", T.pack . show $ c)) sub_linked_to
-                  ]
-              digest_part =
-                mapper
-                  [ maybe mempty (\t -> ("First digest", utcToYmd t)) $ settings_digest_start sub_settings
-                  , ("Digest time(s)", if T.null at then "none" else at)
-                  , every_txt
-                  , ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items")
-                  , ("Digest collapse", maybe "false" (\v -> if v == 0 then "false" else T.pack . show $ v) $ settings_digest_collapse sub_settings)
-                  , ("Digest not collapsible", if S.null (settings_digest_no_collapse sub_settings) then "none" else T.intercalate ", " $ S.toList $ settings_digest_no_collapse sub_settings)
-                  , ("Digest title", settings_digest_title sub_settings)
-                  , ("Last digest", maybe "none" utcToYmdHMS sub_last_digest)
-                  , ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest)
-                  , ("Follow", if settings_follow sub_settings then "true" else "false")
-                  ]
-              search_part =
-                mapper
-                  [ ("Blacklist", blacklist)
-                  , ("Feeds ignored unless a search keyword matches", only_search_results)
-                  , ("Search keywords", searches)
-                  ]
-              telegram_part =
-                mapper
-                  [ ("Display 'share link' button in digests", if settings_share_link sub_settings then "true" else "false")
-                  , ("Pagination in digests", if settings_pagination sub_settings then "true" else "false")
-                  , ("Pin new updates", if settings_pin sub_settings then "true" else "false")
-                  , ("Webview", if settings_disable_web_view sub_settings then "false" else "true")
-                  ]
-           in status_part
-                `T.append` "\n--\n"
-                `T.append` digest_part
-                `T.append` "\n--\n"
-                `T.append` search_part
-                `T.append` "\n--\n"
-                `T.append` telegram_part
-     in T.append rendered "\n\nToo many settings? Check out the docs for examples: https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md"
-
-instance Renderable [Item] where
-  render = intoTimeLine
-
-instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
-  render (!f_items, !collapse_size, !protected) =
-    let protected' = map T.toCaseFold protected
-        collapsing i
-          | collapse_size < length i =
-              " ("
-                `T.append` (T.pack . show $ collapse_size)
-                `T.append` " out of "
-                `T.append` (T.pack . show . length $ i)
-                `T.append` " new):\n"
-          | otherwise = ":\n"
-        into_list acc (!t, !i) =
-          acc
-            `T.append` "\n*| "
-            `T.append` t
-            `T.append` "*\n"
-            `T.append` (render . take 30 . sortOn (Down . i_pubdate) $ i)
-        into_folder acc (!t, !i) =
-          let sorted = sortOn (Down . i_pubdate)
-              is_protected =
-                let link = T.toCaseFold . i_feed_link $ head i
-                 in link `elem` protected'
-              items = if is_protected then sorted i else take collapse_size . sorted $ i
-              acc' =
-                if null items
-                  then acc
-                  else
-                    acc
-                      `T.append` "\n*| "
-                      `T.append` t
-                      `T.append` "*"
-                      `T.append` if is_protected then ":\n" `T.append` render items else collapsing i `T.append` render items
-           in acc'
-     in foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
-
-instance Renderable (S.Set T.Text, [SearchResult]) where
-  render (keys, search_res) =
-    let items = map (\SearchResult{..} -> Item sr_title mempty sr_link sr_feedlink sr_pubdate) search_res
-     in "Results from your search with keywords "
-          `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
-          `T.append` ":\n"
-          `T.append` render items
-
 toHrefEntities :: Maybe Int -> T.Text -> T.Text -> T.Text
 toHrefEntities mbcounter tag link =
   let tag' = "[" `T.append` skipWhere tag (mkdSingles ++ mkdDoubles) `T.append` "]"
@@ -307,6 +173,184 @@ mkReply FromStart =
         \ \nAll the settings and commands are explained [there](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).\
         \ \nHave fun and don't hesitate to [get in touch](https://t.me/ad_himself) if you have questions or issues."
    in (defaultReply txt){reply_disable_webview = True}
+
+class Renderable e where
+  render :: e -> T.Text
+
+instance Renderable Feed where
+  render Feed{..} =
+    T.intercalate "\n" $
+      map
+        (\(k, v) -> k `T.append` ": " `T.append` v)
+        [ ("Url", f_link)
+        , ("Type", T.pack $ show f_type)
+        , ("Title", f_desc)
+        , ("Current items", T.pack . show $ length f_items)
+        , ("Avg. interval between items", renderAvgInterval f_avg_interval)
+        , ("Last refresh", maybe "None" utcToYmdHMS f_last_refresh)
+        ]
+
+instance Renderable SubChat where
+  render SubChat{..} =
+    let adjust c = if c == "0" then "00" else c
+        at = case digest_at . settings_digest_interval $ sub_settings of
+          Nothing -> mempty
+          Just ts ->
+            foldl'
+              ( \s (!h, !m) ->
+                  let body = (T.pack . show $ h) `T.append` ":" `T.append` (adjust . T.pack . show $ m)
+                      s' = if s == mempty then s else s `T.append` ", "
+                   in s' `T.append` body
+              )
+              mempty
+              ts
+        every_txt =
+          let k = "Digest step (time between two digests)"
+           in case digest_every_secs . settings_digest_interval $ sub_settings of
+                Nothing -> (mempty, mempty)
+                Just e -> if e == 0 then (k, "not set") else (k, nomDiffToReadable e)
+        blacklist =
+          let bl = S.toList $ match_blacklist . settings_word_matches $ sub_settings
+           in if null bl then "none" else T.intercalate ", " bl
+        searches =
+          let se = S.toList $ match_searchset . settings_word_matches $ sub_settings
+           in if null se then "none" else T.intercalate ", " se
+        only_search_results =
+          let sr = S.toList $ match_only_search_results . settings_word_matches $ sub_settings
+           in if null sr then "none" else T.intercalate ", " sr
+        rendered =
+          let mapper = T.intercalate "\n" . map (\(k, v) -> k `T.append` ": " `T.append` v)
+              status_part =
+                mapper
+                  [ ("Chat id", T.pack . show $ sub_chatid)
+                  , ("Status", if settings_paused sub_settings then "paused" else "active")
+                  , ("Feeds subscribed to", T.intercalate ", " $ S.toList sub_feeds_links)
+                  , maybe mempty (\c -> ("Linked to", T.pack . show $ c)) sub_linked_to
+                  ]
+              digest_part =
+                mapper
+                  [ maybe mempty (\t -> ("First digest", utcToYmd t)) $ settings_digest_start sub_settings
+                  , ("Digest time(s)", if T.null at then "none" else at)
+                  , every_txt
+                  , ("Digest size", (T.pack . show . settings_digest_size $ sub_settings) `T.append` " items")
+                  , ("Digest collapse", maybe "false" (\v -> if v == 0 then "false" else T.pack . show $ v) $ settings_digest_collapse sub_settings)
+                  , ("Digest not collapsible", if S.null (settings_digest_no_collapse sub_settings) then "none" else T.intercalate ", " $ S.toList $ settings_digest_no_collapse sub_settings)
+                  , ("Digest title", settings_digest_title sub_settings)
+                  , ("Last digest", maybe "none" utcToYmdHMS sub_last_digest)
+                  , ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest)
+                  , ("Follow", if settings_follow sub_settings then "true" else "false")
+                  ]
+              search_part =
+                mapper
+                  [ ("Blacklist", blacklist)
+                  , ("Feeds ignored unless a search keyword matches", only_search_results)
+                  , ("Search keywords", searches)
+                  ]
+              telegram_part =
+                mapper
+                  [ ("Display 'share link' button in digests", if settings_share_link sub_settings then "true" else "false")
+                  , ("Pagination in digests", if settings_pagination sub_settings then "true" else "false")
+                  , ("Pin new updates", if settings_pin sub_settings then "true" else "false")
+                  , ("Webview", if settings_disable_web_view sub_settings then "false" else "true")
+                  ]
+              admin_part =
+                mapper
+                  [ ("Forward errors to chat or channel admins", settings_forward_to_admins sub_settings)
+                  ]
+           in status_part
+                `T.append` T.intercalate
+                  "\n--\n"
+                  [ digest_part
+                  , search_part
+                  , telegram_part
+                  , admin_part
+                  ]
+     in T.append rendered "\n\nToo many settings? Check out the docs for examples: https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md"
+
+instance Renderable [Item] where
+  render = intoTimeLine
+
+instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
+  render (!f_items, !collapse_size, !protected) =
+    let protected' = map T.toCaseFold protected
+        collapsing i
+          | collapse_size < length i =
+              " ("
+                `T.append` (T.pack . show $ collapse_size)
+                `T.append` " out of "
+                `T.append` (T.pack . show . length $ i)
+                `T.append` " new):\n"
+          | otherwise = ":\n"
+        into_list acc (!t, !i) =
+          acc
+            `T.append` "\n*| "
+            `T.append` t
+            `T.append` "*\n"
+            `T.append` (render . take 30 . sortOn (Down . i_pubdate) $ i)
+        into_folder acc (!t, !i) =
+          let sorted = sortOn (Down . i_pubdate)
+              is_protected =
+                let link = T.toCaseFold . i_feed_link $ head i
+                 in link `elem` protected'
+              items = if is_protected then sorted i else take collapse_size . sorted $ i
+              acc' =
+                if null items
+                  then acc
+                  else
+                    acc
+                      `T.append` "\n*| "
+                      `T.append` t
+                      `T.append` "*"
+                      `T.append` if is_protected then ":\n" `T.append` render items else collapsing i `T.append` render items
+           in acc'
+     in foldl' (if collapse_size == 0 then into_list else into_folder) mempty f_items
+
+instance Renderable (S.Set T.Text, [SearchResult]) where
+  render (keys, search_res) =
+    let items = map (\SearchResult{..} -> Item sr_title mempty sr_link sr_feedlink sr_pubdate) search_res
+     in "Results from your search with keywords "
+          `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
+          `T.append` ":\n"
+          `T.append` render items
+
+instance Renderable InterpreterErr where
+  render (InterpreterErr t) = T.append "I don't know what to do with this input: " t
+  render (UnknownCommand cmd args) =
+    "Unknown command: "
+      `T.append` cmd
+      `T.append` ", called with these arguments:"
+      `T.append` T.intercalate "\n" enumerate
+   where
+    enumerate = zipWith (\n arg -> (T.pack . show $ n) `T.append` ": " `T.append` arg) [1 .. length args] args
+
+instance Renderable TgEvalError where
+  render (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
+  render (BadFeed feederror) = T.append "Unable to fetch this feed: " (T.pack . show $ feederror)
+  render (BadFeedUrl t) = T.append "No feed could be found at this address: " t
+  render (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
+  render (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
+  render (ParseError input) = T.append "Parsing this input failed: " input
+  render (DbQueryError err) = T.append "Unable to update, because of this error: " $ render err
+  render (UpdateError err) = T.append "Unable to update, because of this error: " err
+  render (NotFoundFeed feed) = T.append "The feed you were looking for does not exist: " feed
+  render NotFoundChat = "The chat you called from is not subscribed to any feed yet."
+  render NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
+  render (TelegramErr err) = "Telegram responded with an error: " `T.append` err
+  render ChatNotPrivate = "Unwilling to share authentication credentials in a non-private chat. Please use this command in a private conversation with to the bot."
+  render UserNotAdmin = "Only admins can change settings."
+
+instance Renderable DbError where
+  render PipeNotAcquired = "Failed to open a connection against the database."
+  render FaultyToken = "Login failed. This token is not valid, and perhaps never was."
+  render (FailedToUpdate items reason) = "Unable to update the following items: " `T.append` items `T.append` ". Reason: " `T.append` reason
+  render (NotFound item) = "Resource could not be found from the network: " `T.append` item
+  render FailedToLog = "Failed to log."
+  render FailedToLoadFeeds = "Failed to load feeds!"
+  render (BadQuery txt) = T.append "Bad query parameters: " txt
+  render FailedToSaveDigest = "Unable to save this digest. The database didn't return a valid identifier."
+  render FailedToProduceValidId = "Db was unable to return a valid identifier"
+  render FailedToInsertPage = "Db was unable to insert these pages."
+  render FailedToGetAllPages = "Db was unable to retrieve all pages."
 
 renderCmds :: T.Text
 renderCmds =

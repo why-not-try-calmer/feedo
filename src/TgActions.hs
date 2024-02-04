@@ -33,12 +33,14 @@ import Types (
   CacheAction (..),
   ChatRes (ChatUpdated),
   DbAction (..),
+  DbError (BadQuery),
   DbResults (..),
   Feed (f_items, f_link),
   FeedError (r_url),
   FeedLink,
   FeedRef (ById, ByUrl),
   FromCache (CachePage),
+  InterpreterErr (..),
   Item (i_pubdate),
   Job (JobRemoveMsg, JobTgAlertAdmin),
   Replies (
@@ -59,23 +61,22 @@ import Types (
   ServerConfig (alert_chat, bot_token, webhook_url),
   SettingsUpdater (Parsed),
   SubChat (sub_feeds_links, sub_linked_to, sub_settings),
-  TgActError (
-    BadInput,
+  TgEvalError (
     BadRef,
     ChatNotPrivate,
+    DbQueryError,
     MaxFeedsAlready,
     NotAdmin,
     NotFoundChat,
     NotFoundFeed,
     NotSubscribed,
     TelegramErr,
-    UnknownCommand,
     UserNotAdmin
   ),
   UserAction (..),
   runApp,
  )
-import Utils (maybeUserIdx, partitionEither, renderDbError, renderUserError, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
 registerWebhook :: AppConfig -> IO ()
 registerWebhook config =
@@ -85,7 +86,7 @@ registerWebhook config =
         >> setWebhook tok webhook
         >> print ("Webhook successfully set at " `T.append` webhook)
 
-isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgActError Bool)
+isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
   isChatOfType tok cid Private >>= \case
     Left err -> pure $ Left err
@@ -107,7 +108,18 @@ isUserAdmin tok uid cid =
     | cm_status member `elem` ["administrator", "creator"] = True
     | otherwise = False
 
-isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgActError Bool)
+getChatAdministrators :: (MonadIO m) => BotToken -> ChatId -> m (Either TgEvalError [(UserId, UserFirstName)])
+getChatAdministrators tok cid = liftIO $ do
+  resp <- runSend tok "getChatAdministrators" $ GetChat cid
+  case resp of
+    Left err -> pure . Left . TelegramErr $ err
+    Right res ->
+      let chat_admins_response = responseBody res :: TgGetChatMembersResponse
+          members = resp_cm_result chat_admins_response :: [ChatMember]
+          chat_admins = map (\m -> (user_id . cm_user $ m, user_first_name . cm_user $ m)) members
+       in pure . Right $ chat_admins
+
+isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgEvalError Bool)
 isChatOfType tok cid ty =
   liftIO $
     getChatType
@@ -120,21 +132,21 @@ isChatOfType tok cid ty =
  where
   getChatType = runSend tok "getChat" $ GetChat cid
 
-exitNotAuth :: (Applicative f, Show a) => a -> f (Either TgActError b)
+exitNotAuth :: (Applicative f, Show a) => a -> f (Either TgEvalError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
 
-interpretCmd :: T.Text -> Either TgActError UserAction
+interpretCmd :: T.Text -> Either InterpreterErr UserAction
 interpretCmd contents
   | cmd == "/about" = Right About
   | cmd == "/admin" =
       if length args /= 1
-        then Left $ BadInput "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
+        then Left $ InterpreterErr "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-          Nothing -> Left . BadInput $ "The value passed to /admin could not be parsed into a valid chat_id."
+          Nothing -> Left . InterpreterErr $ "The value passed to /admin could not be parsed into a valid chat_id."
           Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
   | cmd == "/announce" =
       if null args
-        then Left . BadInput $ "/announce takes exactly 1 argument, the text to broadcast to all users."
+        then Left . InterpreterErr $ "/announce takes exactly 1 argument, the text to broadcast to all users."
         else Right . Announce . T.concat $ args
   | cmd == "/changelog" = Right Changelog
   | cmd == "/feed" || cmd == "/f" =
@@ -145,16 +157,16 @@ interpretCmd contents
         else
           if length args == 2
             then case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /feed (with 2 arguments) could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /feed (with 2 arguments) could not be parsed into a valid chat_id."
               Just channel_id -> case toFeedRef . tail $ args of
                 Left err -> Left err
                 Right single_ref -> Right . AboutChannel channel_id . head $ single_ref
-            else Left . BadInput $ "/feed must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
+            else Left . InterpreterErr $ "/feed must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
   | cmd == "/fresh" =
       if length args /= 1
-        then Left . BadInput $ "/fresh takes exactly 1 argument, standing for number of days."
+        then Left . InterpreterErr $ "/fresh takes exactly 1 argument, standing for number of days."
         else case readMaybe . T.unpack . head $ args :: Maybe Int of
-          Nothing -> Left . BadInput $ "/fresh's argument must be a valid integer."
+          Nothing -> Left . InterpreterErr $ "/fresh's argument must be a valid integer."
           Just i -> Right $ GetLastXDaysItems i
   | cmd == "/help" = Right RenderCmds
   | cmd == "/items" || cmd == "/i" =
@@ -165,82 +177,82 @@ interpretCmd contents
         else
           if length args == 2
             then case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /items (with 2 arguments) could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /items (with 2 arguments) could not be parsed into a valid chat_id."
               Just channel_id -> case toFeedRef . tail $ args of
                 Left err -> Left err
                 Right single_ref -> Right . GetChannelItems channel_id . head $ single_ref
-            else Left . BadInput $ "/items must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
+            else Left . InterpreterErr $ "/items must take at least 1 argument (feed url or #) and cannot take more than 2 (<chann_id> <feed url or #>)."
   | cmd == "/link" =
       if length args /= 1
-        then Left . BadInput $ "/link takes exactly 1 argument, standing for a chat_id."
+        then Left . InterpreterErr $ "/link takes exactly 1 argument, standing for a chat_id."
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-          Nothing -> Left . BadInput $ "The first value passed to /purge could not be parsed into a valid chat_id."
+          Nothing -> Left . InterpreterErr $ "The first value passed to /purge could not be parsed into a valid chat_id."
           Just n -> Right . Link $ n
   | cmd == "/list" =
       if null args
         then Right ListSubs
         else
           if length args > 1
-            then Left . BadInput $ "/list cannot take more than one (optional) argument (channel_id)."
+            then Left . InterpreterErr $ "/list cannot take more than one (optional) argument (channel_id)."
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /list could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /list could not be parsed into a valid chat_id."
               Just n -> Right . ListSubsChannel $ n
   | cmd == "/migrate" =
       if null args
         then
           Left
-            . BadInput
+            . InterpreterErr
             $ "/migrate takes at least one argument, standing for the chat_id of the destination you want to migrate this chat's settings to. \
               \ If you call /migrate with 2 arguments, the first should be the chat_id of the origin and the second the chat_id of the destination."
         else
           let (x : xs) = args
            in case readMaybe . T.unpack $ x :: Maybe ChatId of
-                Nothing -> Left . BadInput $ "The first value passed to /migrate could not be parsed into a valid chat_id."
+                Nothing -> Left . InterpreterErr $ "The first value passed to /migrate could not be parsed into a valid chat_id."
                 Just n ->
                   if null xs
                     then Right $ Migrate n
                     else case readMaybe . T.unpack . head $ xs :: Maybe ChatId of
-                      Nothing -> Left . BadInput $ "The second value passed to /migrate could not be parsed into a valid chat_id."
+                      Nothing -> Left . InterpreterErr $ "The second value passed to /migrate could not be parsed into a valid chat_id."
                       Just m -> Right $ MigrateChannel n m
   | cmd == "/pause" || cmd == "/p" =
       if null args
         then Right . Pause $ True
         else
           if length args > 1
-            then Left . BadInput $ "/pause cannot take more than one (optional) argument (channel_id)."
+            then Left . InterpreterErr $ "/pause cannot take more than one (optional) argument (channel_id)."
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /pause could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /pause could not be parsed into a valid chat_id."
               Just n -> Right . PauseChannel n $ True
   | cmd == "/purge" =
       if null args
         then Right Purge
         else
           if length args > 1
-            then Left . BadInput $ "/purge cannot take more than one (optional) argument (channel_id)."
+            then Left . InterpreterErr $ "/purge cannot take more than one (optional) argument (channel_id)."
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /purge could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /purge could not be parsed into a valid chat_id."
               Just n -> Right . PurgeChannel $ n
   | cmd == "/resume" =
       if null args
         then Right . Pause $ False
         else
           if length args > 1
-            then Left . BadInput $ "/resume cannot take more than one (optional) argument (channel_id)."
+            then Left . InterpreterErr $ "/resume cannot take more than one (optional) argument (channel_id)."
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /resume could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /resume could not be parsed into a valid chat_id."
               Just n -> Right . PauseChannel n $ False
   | cmd == "/reset" =
       if null args
         then Right Reset
         else
           if length args > 1
-            then Left . BadInput $ "/reset cannot take more than one (optional) argument (channel_id)."
+            then Left . InterpreterErr $ "/reset cannot take more than one (optional) argument (channel_id)."
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /reset could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /reset could not be parsed into a valid chat_id."
               Just n -> Right . ResetChannel $ n
   | cmd == "/search" || cmd == "/se" =
       if null args
-        then Left . BadInput $ "/search requires at least one keyword. Separate keywords with a space."
+        then Left . InterpreterErr $ "/search requires at least one keyword. Separate keywords with a space."
         else Right . Search $ args
   | cmd == "/set" =
       let body = tail . T.lines $ contents
@@ -248,36 +260,36 @@ interpretCmd contents
             then Right GetSubchatSettings
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
               Nothing -> case parseSettings body of
-                Left err -> Left . BadInput $ err
+                Left err -> Left . InterpreterErr $ err
                 Right settings -> Right . SetChatSettings . Parsed $ settings
               Just n ->
                 if null $ tail args
                   then Right $ GetSubchannelSettings n
                   else case parseSettings body of
-                    Left err -> Left . BadInput $ err
+                    Left err -> Left . InterpreterErr $ err
                     Right settings -> Right $ SetChannelSettings n settings
   | cmd == "/start" = Right Start
   | cmd == "/sub" || cmd == "/s" =
       if null args
-        then Left . BadInput $ "/sub <optional: channel id> <mandatory: list of url feeds>"
+        then Left . InterpreterErr $ "/sub <optional: channel id> <mandatory: list of url feeds>"
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
           Nothing -> Right . Sub $ args
           Just n ->
             if null $ tail args
-              then Left . BadInput $ "Cannot subscribe to an empty list urls..."
+              then Left . InterpreterErr $ "Cannot subscribe to an empty list urls..."
               else Right . SubChannel n $ tail args
   | cmd == "/testdigest" =
       if null args
         then Right TestDigest
         else
           if length args > 1
-            then Left . BadInput $ "/testdigest cannot take more than one (optional) argument (channel_id)."
+            then Left . InterpreterErr $ "/testdigest cannot take more than one (optional) argument (channel_id)."
             else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
-              Nothing -> Left . BadInput $ "The first value passed to /list could not be parsed into a valid chat_id."
+              Nothing -> Left . InterpreterErr $ "The first value passed to /list could not be parsed into a valid chat_id."
               Just n -> Right . TestDigestChannel $ n
   | cmd == "/unsub" =
       if null args
-        then Left . BadInput $ "/unsub <optional: channel id> <mandatory: list of #s or url feeds>"
+        then Left . InterpreterErr $ "/unsub <optional: channel id> <mandatory: list of #s or url feeds>"
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
           Nothing -> case toFeedRef args of
             Left err -> Left err
@@ -290,14 +302,14 @@ interpretCmd contents
               else case toFeedRef $ tail args of
                 Left err -> Left err
                 Right refs -> Right . UnSubChannel n $ refs
-  | otherwise = Left $ UnknownCommand contents
+  | otherwise = Left $ UnknownCommand cmd args
  where
   (cmd, args) =
     let (h' : t) = T.words contents
         (h : _) = T.splitOn "@" h'
      in (h, t)
 
-testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either TgActError ())
+testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either TgEvalError ())
 testChannel tok chan_id jobs =
   -- tries sending a message to the given channel
   -- if the response rewards the test with a message_id, it's won.
@@ -317,12 +329,12 @@ subFeed :: (MonadIO m) => ChatId -> [FeedLink] -> App m Reply
 subFeed cid feeds_urls = do
   -- check url scheme
   case mapM eitherUrlScheme feeds_urls of
-    Left err -> respondWith . renderUserError $ err
+    Left err -> respondWith . render $ err
     Right valid_urls ->
       -- sort out already existent feeds to minimize network call
       -- , and subscribe chat to them
       evalDb GetAllFeeds >>= \case
-        Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` renderDbError err
+        Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` render err
         Right (DbFeeds old_feeds) ->
           let urls = map renderUrl valid_urls
               old_keys = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
@@ -346,11 +358,11 @@ subFeed cid feeds_urls = do
                             then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
                             else
                               evalDb (UpsertFeeds feeds) >>= \case
-                                Left err -> respondWith $ renderDbError err
+                                Left err -> respondWith $ render err
                                 _ ->
                                   let to_sub_to = map f_link feeds
                                    in withChatsFromMem (Sub to_sub_to) cid >>= \case
-                                        Left err -> respondWith $ renderUserError err
+                                        Left err -> respondWith $ render err
                                         Right _ ->
                                           let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
                                               ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
@@ -367,7 +379,7 @@ evalTgAct ::
   UserId ->
   UserAction ->
   ChatId ->
-  App m (Either TgActError Reply)
+  App m (Either TgEvalError Reply)
 evalTgAct _ About _ =
   ask >>= \env ->
     pure . Right . mkReply . FromAbout . app_version $ env
@@ -415,7 +427,7 @@ evalTgAct uid (Announce txt) admin_chat =
                 else
                   let rep = mkReply $ FromAnnounce txt
                    in do
-                        liftIO (mapConcurrently_ (\cid' -> reply (bot_token . tg_config $ env) cid' rep (postjobs env)) non_channels)
+                        liftIO (mapConcurrently_ (\cid' -> runApp env $ reply cid' rep) non_channels)
                         pure . Right $ ServiceReply $ "Tried to broadcast an announce to " `T.append` (T.pack . show . length $ non_channels) `T.append` " chats."
  where
   are_non_channels :: [JsonResponse TgGetChatResponse] -> [ChatId]
@@ -468,7 +480,7 @@ evalTgAct _ (GetItems ref) cid = do
   case ref of
     ByUrl url -> urlPath url feeds_hmap chats_hmap
     ById _id -> case HMS.lookup cid chats_hmap of
-      Nothing -> pure . Right . ServiceReply . renderUserError $ NotFoundChat
+      Nothing -> pure . Right . ServiceReply . render $ NotFoundChat
       Just c -> case maybeUserIdx (sort . S.toList $ sub_feeds_links c) _id of
         Nothing -> pure . Left . BadRef $ T.pack . show $ _id
         Just r -> urlPath r feeds_hmap chats_hmap
@@ -544,7 +556,7 @@ evalTgAct uid (Link target_id) cid = do
         then exitNotAuth uid
         else
           withChatsFromMem (Link target_id) cid >>= \case
-            Left err -> pure . Right . ServiceReply . renderUserError $ err
+            Left err -> pure . Right . ServiceReply . render $ err
             Right _ -> pure . Right . ServiceReply $ succeeded
  where
   succeeded = "Successfully linked the two chats!"
@@ -580,7 +592,7 @@ evalTgAct uid (Migrate to) cid = do
         `T.append` (T.pack . show $ cid)
         `T.append` " to "
         `T.append` (T.pack . show $ to)
-  onErr err = pure . Right . ServiceReply $ renderUserError err
+  onErr err = pure . Right . ServiceReply $ render err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
 evalTgAct uid (Pause pause_or_resume) cid =
   ask >>= \env ->
@@ -592,7 +604,7 @@ evalTgAct uid (Pause pause_or_resume) cid =
               then exitNotAuth uid
               else
                 withChatsFromMem (Pause pause_or_resume) cid >>= \case
-                  Left err -> pure . Right . ServiceReply . renderUserError $ err
+                  Left err -> pure . Right . ServiceReply . render $ err
                   Right _ -> pure . Right . ServiceReply $ succeeded
  where
   succeeded =
@@ -610,7 +622,7 @@ evalTgAct uid Purge cid = do
         then exitNotAuth uid
         else
           withChatsFromMem Purge cid >>= \case
-            Left err -> pure . Right . ServiceReply $ "Unable to purge this chat" `T.append` renderUserError err
+            Left err -> pure . Right . ServiceReply $ "Unable to purge this chat" `T.append` render err
             Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
 evalTgAct _ Start cid =
@@ -655,7 +667,7 @@ evalTgAct uid Reset cid = do
         then exitNotAuth uid
         else
           withChatsFromMem Reset cid >>= \case
-            Left err -> pure . Right . ServiceReply $ renderUserError err
+            Left err -> pure . Right . ServiceReply $ render err
             Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
 evalTgAct _ (Search keywords) cid =
@@ -674,7 +686,7 @@ evalTgAct _ (Search keywords) cid =
                   else
                     evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
                       Right (DbSearchRes keys sc) -> pure . Right $ mkReply (FromSearchRes keys sc)
-                      _ -> pure . Left . BadInput $ "The database was not able to run your query."
+                      _ -> pure . Left . DbQueryError . BadQuery $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid =
   ask >>= \env ->
@@ -686,9 +698,9 @@ evalTgAct uid (SetChatSettings settings) cid =
               then exitNotAuth uid
               else
                 withChatsFromMem (SetChatSettings settings) cid >>= \case
-                  Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` renderUserError err
+                  Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` render err
                   Right (ChatUpdated c) -> pure . Right $ mkReply (FromChat c "Ok. New settings below.\n---\n")
-                  _ -> pure . Left . BadInput $ "Unable to update the settings for this chat. Please try again later."
+                  _ -> pure . Left . DbQueryError . BadQuery $ "Unable to update the settings for this chat. Please try again later."
 evalTgAct uid (SubChannel chan_id urls) _ =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
@@ -736,7 +748,7 @@ evalTgAct uid (TestDigestChannel chan_id) _ = evalTgAct uid TestDigest chan_id
 evalTgAct uid (UnSub feeds) cid =
   ask >>= \env ->
     isUserAdmin (bot_token . tg_config $ env) uid cid >>= \case
-      Left _ -> pure . Right . ServiceReply $ "TgActError occured when requesting Telegram. Try again."
+      Left _ -> pure . Right . ServiceReply $ "TgEvalError occured when requesting Telegram. Try again."
       Right is_admin ->
         if not is_admin
           then exitNotAuth uid
@@ -751,7 +763,7 @@ processCbq cbq =
   ask >>= \env ->
     let send_result n (Right (CachePage p i mb_url)) =
           let rep = EditReply mid p True (mkKeyboard n i mb_url)
-           in reply (bot_token . tg_config $ env) cid rep (postjobs env)
+           in reply cid rep
         send_result _ (Left err) = report err
         send_result _ _ = pure ()
         report err = liftIO $ writeChan (postjobs env) $ JobTgAlertAdmin err
@@ -768,7 +780,8 @@ processCbq cbq =
           Just n ->
             liftIO $
               concurrently (runApp env $ get_page n) send_answer
-                >>= send_result n
+                >>= runApp env
+                  . send_result n
                   . fst
  where
   cid = chat_id . chat . fromJust . cbq_message $ cbq

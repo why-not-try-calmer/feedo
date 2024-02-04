@@ -4,8 +4,8 @@ module TgramInJson where
 
 import Data.Aeson
 import Data.Aeson.TH (deriveJSON)
-import Data.Int (Int64)
 import Data.Text (Text)
+import TgramOutJson (ChatId, UserFirstName, UserId)
 
 data ChatType
   = Private
@@ -28,7 +28,7 @@ instance FromJSON ChatType where
   parseJSON _ = fail "Failed to parse ChatType"
 
 data Chat = Chat
-  { chat_id :: Int64
+  { chat_id :: ChatId
   , chat_type :: ChatType
   }
   deriving (Show)
@@ -40,9 +40,9 @@ data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: Chat
 $(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''TgGetChatResponse)
 
 data User = User
-  { user_id :: Int64
+  { user_id :: UserId
   , user_is_bot :: Bool
-  , user_first_name :: Text
+  , user_first_name :: UserFirstName
   , user_last_name :: Maybe Text
   , user_username :: Maybe Text
   }

@@ -20,7 +20,7 @@ spec = withHooks [go, go1]
         as = it "interpret commands issued from Telegram"
         t1 = interpretCmd "/items 1" `shouldBe` Right (GetItems $ ById 1)
         t2 = interpretCmd "/set\ndigest_size: 1\nfollow: true" `shouldBe` (Right . SetChatSettings . Parsed $ [PFollow True, PDigestSize 1])
-        t3 = interpretCmd "/unsub 1234 oh_shoot" `shouldBe` Left (BadRef "1234oh_shoot")
+        t3 = interpretCmd "/unsub 1234 oh_shoot" `shouldSatisfy` (\case Left (InterpreterErr _) -> True; _ -> False)
      in mapM_ (desc . as) [t1, t2, t3]
   go1 env =
     let desc = describe "evalTgAct"
