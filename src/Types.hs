@@ -102,7 +102,6 @@ data SearchResult = SearchResult
   , sr_link :: T.Text
   , sr_pubdate :: UTCTime
   , sr_feedlink :: T.Text
-  , sr_score :: Double
   }
   deriving (Show, Eq)
 
@@ -445,7 +444,7 @@ data DbResults
   | DbLoggedIn ChatId
   | DbToken T.Text
   | DbDone
-  | DbSearchRes Keywords [SearchResult]
+  | DbSearchRes Keywords Scope [SearchResult]
   | DbView [Item] UTCTime UTCTime
   | DbDigest Digest
   | DbDigestId T.Text

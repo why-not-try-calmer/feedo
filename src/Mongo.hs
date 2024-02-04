@@ -14,7 +14,7 @@ import qualified Data.ByteString.Char8 as B
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.List as List
-import Data.Maybe (fromJust, fromMaybe, isNothing)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -210,39 +210,23 @@ instance (MonadIO m) => HasMongo (App m) where
             if failed res
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
-  evalDb (DbSearch keywords scope last_time) =
+  evalDb (DbSearch keywords scope mb_last_time) =
     let action1 = ensureIndex itemsIndex
-        action2 = aggregate "items" $ buildSearchQuery keywords last_time
+        action2 = aggregate "items" $ buildSearchQuery mb_last_time keywords scope
      in withDb (action1 >> action2) >>= \case
           Left err -> pure . Left $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
-          Right res ->
-            let mkSearchRes doc =
-                  let title = M.lookup "i_title" doc
-                      link = M.lookup "i_link" doc
-                      pubdate = M.lookup "i_pubdate" doc :: Maybe UTCTime
-                      f_link = M.lookup "i_feed_link" doc
-                      score = M.lookup "score" doc :: Maybe Double
-                      nothings = [isNothing title, isNothing link, isNothing pubdate, isNothing f_link, isNothing score]
-                   in if or nothings
-                        then Nothing
-                        else
-                          Just $
-                            SearchResult
-                              { sr_title = fromJust title
-                              , sr_link = fromJust link
-                              , sr_pubdate = fromJust pubdate
-                              , sr_feedlink = fromJust f_link
-                              , sr_score = fromJust score
-                              }
-                sort_limit = take 10 . List.sortOn (Down . sr_score)
-                rescind = filter (\sr -> sr_feedlink sr `elem` scope)
-                payload r =
-                  if null scope
-                    then sort_limit r
-                    else sort_limit . rescind $ r
-             in case mapM mkSearchRes res of
-                  Nothing -> pure . Right $ DbSearchRes S.empty []
-                  Just r -> pure . Right $ DbSearchRes keywords . payload $ r
+          Right docs ->
+            let toSearchRes doc =
+                  SearchResult
+                    <$> M.lookup "i_title" doc
+                    <*> M.lookup "i_link" doc
+                    <*> (M.lookup "i_pubdate" doc :: Maybe UTCTime)
+                    <*> M.lookup "i_feed_link" doc
+             in pure
+                  . Right
+                  $ DbSearchRes keywords scope
+                  $ fromMaybe mempty
+                  $ mapM toSearchRes docs
   evalDb (DeleteChat cid) =
     let action = withDb $ deleteOne (select ["sub_chatid" =: cid] "chats")
      in action >>= \case
@@ -381,15 +365,26 @@ runMongo dbName pipe = access pipe master dbName
 
 {- Search and indices -}
 
-buildSearchQuery :: S.Set T.Text -> Maybe UTCTime -> [Document]
-buildSearchQuery ws mb_last_time =
-  let searchExpr = ["$search" =: T.intercalate " " (S.toList ws)]
-      matchStage Nothing =
-        ["$match" =: ["$text" =: searchExpr]]
-      matchStage (Just t) =
-        ["$match" =: ["$and" =: ["i_pubdate" =: ["$gt" =: (t :: UTCTime)]], "$text" =: searchExpr]]
+buildSearchQuery :: Maybe UTCTime -> Keywords -> Scope -> [Document]
+{-
+  Searches for the 10 best full-text matches for the given keywords, filtering in
+  items from subscribed-to feeds, filtering out items saved before the last digest.
+-}
+buildSearchQuery mb_last_time keys scope =
+  let searchExpr = ["$search" =: T.intercalate " " (S.toList keys)]
+      withLastTime stage = case mb_last_time of
+        Nothing -> stage
+        Just t -> stage ++ ["i_pubdate" =: ["$gte" =: (t :: UTCTime)]]
+      matchStage =
+        [ "$match"
+            =: [ "$and"
+                  =: [ ["$text" =: searchExpr]
+                     , ["i_feed_link" =: ["$in" =: S.toList scope]]
+                     ]
+               ]
+        ]
       sortStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]]]
-      limitStage = ["$limit" =: (20 :: Int)]
+      limitStage = ["$limit" =: (10 :: Int)]
       projectStage =
         [ "$project"
             =: [ "_id" =: (0 :: Int)
@@ -400,7 +395,7 @@ buildSearchQuery ws mb_last_time =
                , "score" =: ["$meta" =: ("searchScore" :: T.Text)]
                ]
         ]
-   in [matchStage mb_last_time, sortStage, limitStage, projectStage]
+   in [withLastTime matchStage, sortStage, limitStage, projectStage]
 
 itemsIndex :: Index
 itemsIndex =
