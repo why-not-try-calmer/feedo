@@ -6,7 +6,7 @@ module Mem where
 
 import Control.Concurrent
 import Control.Concurrent.Async (forConcurrently, mapConcurrently, wait, withAsync)
-import Control.Exception (try)
+import Control.Exception (try, SomeException)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
