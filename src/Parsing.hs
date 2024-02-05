@@ -92,7 +92,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                   , "digest_title <title>"
                   , "disable_webview <false|true>"
                   , "follow <false|true>"
-                  , "forward_errors_to_admins <true|false|space-separated user_id(s) of admin(s)>"
+                  , "forward_to_admins <true|false>"
                   , "only_search_notif <url1 url2 ...>"
                   , "pagination <false|true>"
                   , "pin <false|true>"
@@ -162,7 +162,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDisableWebview True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False : parsed) else ("'disable_webview' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "digest_title" =
         if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings) : parsed) else (not_parsed, PDigestTitle txt : parsed)
-    | k == "forward_errors_to_admins" =
+    | k == "forward_to_admins" =
         let res = "true" `T.isInfixOf` T.toCaseFold txt
          in (not_parsed, PForwardToAdmins res : parsed)
     | k == "search_notif" =
@@ -185,7 +185,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     | k == "pin" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPin True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False : parsed) else ("'pin' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "share_link" =
-        if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPaused True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False : parsed) else ("'share_link' takes only 'true' or 'false' as values." : not_parsed, parsed)
+        if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PShareLink True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False : parsed) else ("'share_link' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "follow" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False : parsed) else ("'follow' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "pagination" =

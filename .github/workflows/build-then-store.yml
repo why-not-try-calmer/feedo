@@ -39,8 +39,7 @@ jobs:
         with:
           context: .
           build-args: app_version=${{ github.sha }}
-          file: Dockerfile
-          push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          push: true
