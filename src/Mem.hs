@@ -5,7 +5,8 @@
 module Mem where
 
 import Control.Concurrent
-import Control.Concurrent.Async (forConcurrently, mapConcurrently)
+import Control.Concurrent.Async (forConcurrently, mapConcurrently, wait, withAsync)
+import Control.Exception (try)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (readIORef)
@@ -193,9 +194,19 @@ rebuildAllFeedsFromMem = do
   let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
       report err = alertAdmin (postjobs env) $ "Failed to regen feeds for this reason: " `T.append` err
   liftIO $ do
-    (failed, feeds) <- partitionEither <$> forConcurrently urls rebuildFeed
-    unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
-    pure . map sortItems $ feeds
+    let action = partitionEither <$> forConcurrently urls rebuildFeed
+    res <-
+      withAsync
+        action
+        ( \th -> do
+            threadDelay 5000000
+            try $ wait th :: IO (Either SomeException ([FeedError], [Feed]))
+        )
+    case res of
+      Left _ -> pure []
+      Right (failed, feeds) -> do
+        unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
+        pure . map sortItems $ feeds
 
 rebuildSomeFeedsFromMem ::
   (MonadReader AppConfig m, MonadIO m) =>
