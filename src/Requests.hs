@@ -9,6 +9,7 @@ module Requests (buildFeed, mkPagination, setWebhook, fetchFeed, runSend, runSen
 import Control.Concurrent (readMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
+import Control.Retry (constantDelay, limitRetries)
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (Foldable (..), for_)
@@ -72,11 +73,14 @@ reqSend_ a b c =
     Left txt -> pure $ Left txt
     Right (_ :: JsonResponse Value) -> pure $ Right ()
 
+reqManagerConfig :: HttpConfig
+reqManagerConfig = defaultHttpConfig{httpConfigRetryPolicy = constantDelay 30000 <> limitRetries 2}
+
 {- Telegram -}
 
 setWebhook :: BotToken -> T.Text -> IO ()
 setWebhook tok webhook = do
-  resp <- withReqManager $ runReq defaultHttpConfig . pure request
+  resp <- withReqManager $ runReq reqManagerConfig . pure request
   let code = responseStatusCode (resp :: JsonResponse Value) :: Int
       message = responseStatusMessage resp
   when (code /= 200) $ liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message
@@ -92,7 +96,7 @@ answer tok query =
     Left (SomeException err) -> pure . Left . T.pack . show $ err
     Right (_ :: JsonResponse Value) -> pure $ Right ()
  where
-  action = withReqManager $ runReq defaultHttpConfig . pure request
+  action = withReqManager $ runReq reqManagerConfig . pure request
   request =
     let reqUrl = https "api.telegram.org" /: tok /: "answerCallbackQuery"
      in req Network.HTTP.Req.POST reqUrl (ReqBodyJson query) jsonResponse mempty
@@ -277,7 +281,7 @@ fetchFeed url =
             then pure . Right $ contents
             else pure . Left $ FeedError (renderUrl url) (Just code) status_message "Response received but non-200 status code."
  where
-  action = withReqManager $ runReq defaultHttpConfig . pure request
+  action = withReqManager $ runReq reqManagerConfig . pure request
   request = req GET url NoReqBody lbsResponse mempty
 
 buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgEvalError (Feed, Maybe T.Text))

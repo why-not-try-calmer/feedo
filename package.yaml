@@ -33,6 +33,7 @@ dependencies:
 - mongoDB
 - mtl
 - req
+- retry
 - servant-blaze
 - servant-server
 - text

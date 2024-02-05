@@ -71,6 +71,7 @@ library
     , mongoDB
     , mtl
     , req
+    , retry
     , servant-blaze
     , servant-server
     , text
@@ -112,6 +113,7 @@ executable feedfarer-exe
     , mongoDB
     , mtl
     , req
+    , retry
     , servant-blaze
     , servant-server
     , text
@@ -170,6 +172,7 @@ test-suite feedfarer-test
     , mongoDB
     , mtl
     , req
+    , retry
     , servant-blaze
     , servant-server
     , text
