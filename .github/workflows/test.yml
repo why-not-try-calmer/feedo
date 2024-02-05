@@ -32,8 +32,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull test layers
-        run: docker compose pull test
+      - name: Build and push to GitHub registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile-test
+          build-args: app_version=${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: true
 
       - name: Run tests
         env:

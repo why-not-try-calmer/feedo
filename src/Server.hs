@@ -18,6 +18,7 @@ import Network.Wai
 import Network.Wai.Handler.Warp
 import Notifications (alertAdmin)
 import Redis (setUpKeyStore)
+import Replies (render)
 import Requests (reply)
 import Servant
 import Servant.HTML.Blaze
@@ -26,7 +27,6 @@ import Text.Blaze
 import TgActions
 import TgramInJson (Message (chat, from, reply_to_message, text), Update (callback_query, message), User (user_id), chat_id)
 import Types
-import Utils (renderUserError)
 import Web
 
 type BotAPI =
@@ -52,41 +52,41 @@ server =
     :<|> staticSettings
  where
   handleWebhook :: (MonadIO m) => T.Text -> Update -> App m ()
-  handleWebhook secret update = do
-    env <- ask
-    let tok = bot_token . tg_config
-        sendReply cid err = reply (tok env) cid (ServiceReply $ renderUserError err) (postjobs env)
-        handle upd = case callback_query upd of
-          Just cbq -> processCbq cbq
-          Nothing -> case message upd of
-            Nothing -> liftIO $ putStrLn "Failed to parse message"
-            Just inboundMsg ->
-              let cid = chat_id . chat $ inboundMsg
-                  uid = user_id . fromJust . from $ inboundMsg
-               in case reply_to_message inboundMsg of
-                    -- ignoring replies
-                    Just _ -> pure ()
-                    Nothing -> case TgramInJson.text inboundMsg of
-                      -- ignoring unparsed contents
-                      Nothing -> pure ()
-                      Just conts -> case interpretCmd conts of
-                        Left err -> sendReply cid err
-                        Right action ->
-                          evalTgAct uid action cid >>= \case
-                            Left err -> sendReply cid err
-                            Right outboundMsg -> reply (tok env) cid outboundMsg (postjobs env)
-    if EQ == compare secret (tok env)
-      then
-        liftIO $
-          (try . runApp env . handle $ update)
-            >>= \case
-              -- catching all leftover exceptions if any
-              Left (SomeException err) ->
-                alertAdmin (postjobs env) $
-                  "Exception thrown against handler: "
-                    `T.append` (T.pack . show $ err)
-              Right _ -> pure ()
-      else liftIO $ putStrLn "Secrets do not match."
+  handleWebhook secret update =
+    ask >>= \env ->
+      let tok = bot_token . tg_config $ env
+          handle upd = case callback_query upd of
+            Just cbq -> processCbq cbq
+            Nothing -> case message upd of
+              Nothing -> liftIO $ putStrLn "Failed to parse message"
+              Just inboundMsg ->
+                let cid = chat_id . chat $ inboundMsg
+                    uid = user_id . fromJust . from $ inboundMsg
+                 in case reply_to_message inboundMsg of
+                      -- ignoring replies
+                      Just _ -> pure ()
+                      Nothing -> case TgramInJson.text inboundMsg of
+                        -- ignoring unparsed contents
+                        Nothing -> pure ()
+                        Just conts -> case interpretCmd conts of
+                          Left err -> sendErrorAsServiceReply cid err
+                          Right action ->
+                            evalTgAct uid action cid >>= \case
+                              Left err -> sendErrorAsServiceReply cid err
+                              Right outboundMsg -> reply cid outboundMsg
+       in case compare secret tok of
+            EQ ->
+              liftIO $
+                (try . runApp env . handle $ update)
+                  >>= \case
+                    Left (SomeException err) ->
+                      alertAdmin (postjobs env) $
+                        "Exception thrown against handler: "
+                          `T.append` (T.pack . show $ err)
+                    Right _ -> pure ()
+            _ -> liftIO $ putStrLn "Secrets do not match."
+   where
+    sendErrorAsServiceReply cid err = reply cid (ServiceReply $ render err)
 
   staticSettings :: (MonadIO m) => ServerT Raw m
   staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"

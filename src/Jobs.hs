@@ -23,13 +23,13 @@ import Redis
 import Replies (
   mkDigestUrl,
   mkReply,
+  render,
  )
 import Requests (reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
 import TgramOutJson (Outbound (DeleteMessage, PinMessage))
 import Types
-import Utils (renderDbError)
 
 {- Background tasks -}
 
@@ -48,8 +48,7 @@ startNotifs :: (MonadIO m) => App m ()
 if any chat need a digest or follow -}
 startNotifs =
   ask >>= \env ->
-    let tok = bot_token . tg_config $ env
-        interval = worker_interval env
+    let interval = worker_interval env
         onError (SomeException err) = do
           let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
           alertAdmin (postjobs env) report
@@ -59,7 +58,7 @@ startNotifs =
             let sets = sub_settings c
              in case batch of
                   Follows fs -> do
-                    reply tok cid (mkReply (FromFollow fs sets)) (postjobs env)
+                    runApp env $ reply cid (mkReply (FromFollow fs sets))
                     pure (cid, map f_link fs)
                   Digests ds -> do
                     let (ftitles, flinks, fitems) =
@@ -76,7 +75,7 @@ startNotifs =
                     let mb_digest_link r = case r of
                           Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
                           _ -> Nothing
-                    reply tok cid (mkReply (FromDigest ds (mb_digest_link res) sets)) (postjobs env)
+                    runApp env $ reply cid (mkReply (FromDigest ds (mb_digest_link res) sets))
                     pure (cid, map f_link ds)
         notify = do
           -- rebuilding feeds and collecting notifications
@@ -120,7 +119,7 @@ startJobs = do
   action env = do
     job <- readChan $ postjobs env
     print $ "startJobs: job received: " `T.append` (T.pack . take 20 . show $ job)
-    runApp env $ execute job
+    void . async . runApp env . execute $ job
     putStrLn "startJobs: job complete!"
   handler env (SomeException e) = do
     print $ "Failed to execute job: " `T.append` (T.pack . take 20 . show $ e)
@@ -136,7 +135,7 @@ execute (JobArchive feeds now) = do
   liftIO $ putStrLn "Jobs received: JobArchive"
   evalDb (ArchiveItems feeds) >>= \case
     Left err ->
-      let msg = "Unable to archive items. Reason: " `T.append` renderDbError err
+      let msg = "Unable to archive items. Reason: " `T.append` render err
        in execute $ JobTgAlertAdmin msg
     _ -> liftIO $ putStrLn "successfully ran job"
   -- cleaning more than 1 month old archives
@@ -149,7 +148,7 @@ execute (JobPin cid mid) = do
       let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
        in execute (JobTgAlertAdmin msg)
     _ -> pure ()
-execute (JobPurge cid) = void $ withChatsFromMem Purge cid
+execute (JobPurge cid) = void $ withChatsFromMem Purge Nothing cid
 execute (JobRemoveMsg cid mid delay) = do
   env <- ask
   let (msg, checked_delay) = checkDelay delay
@@ -174,12 +173,11 @@ execute (JobSetPagination cid mid pages mb_link) =
 execute (JobTgAlertAdmin contents) = do
   env <- ask
   let msg = ServiceReply $ "Feedo is sending an alert: " `T.append` contents
-  reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) msg (postjobs env)
+  reply (alert_chat . tg_config $ env) msg
 execute (JobTgAlertChats chat_ids contents) = do
   env <- ask
   let msg = ServiceReply contents
       tok = bot_token . tg_config $ env
-      jobs = postjobs env
   liftIO $ forConcurrently_ chat_ids $ \cid -> do
     verdict <- isChatOfType tok cid Channel
-    unless (verdict == Right True) $ reply tok cid msg jobs
+    unless (verdict == Right True) $ runApp env $ reply cid msg

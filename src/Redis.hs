@@ -20,8 +20,8 @@ import qualified Data.Text.Encoding as B
 import qualified Data.Text.Encoding as T
 import Database.Redis (ConnectInfo (connectHost), Connection, Redis, RedisCtx, Status, TxResult (TxSuccess), checkedConnect, defaultConnectInfo, del, expire, get, lindex, llen, lpush, multiExec, runRedis, set)
 import Mongo (evalDb)
+import Replies (render)
 import Types (App, AppConfig, CacheAction (..), DbAction (..), DbResults (DbPages), Digest (..), FromCache (..), connectors)
-import Utils (renderDbError)
 
 class (Monad m) => HasRedis m where
   evalKeyStore :: Redis a -> m a
@@ -44,7 +44,7 @@ instance (MonadIO m) => HasRedis (App m) where
               _ ->
                 pure
                   . Left
-                  $ "TgActError while trying to refresh after pulling anew from database. Chat involved: "
+                  $ "TgEvalError while trying to refresh after pulling anew from database. Chat involved: "
                     `T.append` (T.pack . show $ cid)
    where
     (lk, k) = pageKeys cid mid
@@ -59,7 +59,7 @@ instance (MonadIO m) => HasRedis (App m) where
     refresh =
       evalDb (GetPages cid mid) >>= \case
         Right (DbPages pages mb_link) -> withKeyStore (CacheSetPages cid mid pages mb_link)
-        Left err -> pure . Left $ renderDbError err
+        Left err -> pure . Left $ render err
         _ -> pure $ Left "Unknown error while trying to refresh after pulling anew from database."
   withKeyStore (CacheSetPages _ _ [] _) = pure $ Left "No pages to set!"
   withKeyStore (CacheSetPages cid mid pages mb_link) =
@@ -101,7 +101,7 @@ setUpKeyStore = liftIO $ do
   switch_hostnames n = if even n then "redis" else "localhost"
   handleWith (Right connector) = pure $ Right connector
   handleWith (Left (SomeException e)) = do
-    print $ "Failed to connect. TgActError: " `T.append` (T.pack . show $ e)
+    print $ "Failed to connect. TgEvalError: " `T.append` (T.pack . show $ e)
     putStrLn "Retrying now..."
     pure $ Left ()
 

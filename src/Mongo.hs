@@ -25,10 +25,11 @@ import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Notifications (alertAdmin, findNextTime)
+import Replies (render)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId)
+import TgramOutJson (ChatId, UserId)
 import Types
-import Utils (defaultChatSettings, freshLastXDays, renderDbError)
+import Utils (defaultChatSettings, freshLastXDays)
 
 {- Interface -}
 
@@ -210,22 +211,25 @@ instance (MonadIO m) => HasMongo (App m) where
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
   evalDb (DbSearch keywords scope mb_last_time) =
-    let action1 = ensureIndex itemsIndex
-        action2 = aggregate "items" $ buildSearchQuery mb_last_time keywords scope
-     in withDb (action1 >> action2) >>= \case
+    let action = aggregate "items" $ buildSearchQuery keywords
+     in withDb action >>= \case
           Left err -> pure . Left $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
           Right docs ->
             let toSearchRes doc =
                   SearchResult
                     <$> M.lookup "i_title" doc
                     <*> M.lookup "i_link" doc
-                    <*> (M.lookup "i_pubdate" doc :: Maybe UTCTime)
+                    <*> M.lookup "i_pubdate" doc
                     <*> M.lookup "i_feed_link" doc
+                results = mapM toSearchRes docs
+                f sr =
+                  sr_feedlink sr
+                    `S.member` scope
+                    && maybe True (\t -> sr_pubdate sr >= t) mb_last_time
              in pure
                   . Right
                   $ DbSearchRes keywords scope
-                  $ fromMaybe mempty
-                  $ mapM toSearchRes docs
+                  $ maybe mempty (filter f) results
   evalDb (DeleteChat cid) =
     let action = withDb $ deleteOne (select ["sub_chatid" =: cid] "chats")
      in action >>= \case
@@ -330,7 +334,7 @@ instance (MonadIO m) => HasMongo (App m) where
     now <- liftIO getCurrentTime
     evalDb GetAllFeeds
       >>= \case
-        Left err -> pure . Left . NotFound $ renderDbError err
+        Left err -> pure . Left . NotFound $ render err
         Right (DbFeeds fs) ->
           let listed = HMS.fromList . map (\f -> (f_link f, f)) $ fs
               collected = foldFeeds listed now
@@ -364,23 +368,16 @@ runMongo dbName pipe = access pipe master dbName
 
 {- Search and indices -}
 
-buildSearchQuery :: Maybe UTCTime -> Keywords -> Scope -> [Document]
+buildSearchQuery :: Keywords -> [Document]
 {-
   Searches for the 10 best full-text matches for the given keywords, filtering in
   items from subscribed-to feeds, filtering out items saved before the last digest.
 -}
-buildSearchQuery mb_last_time keys scope =
+buildSearchQuery keys =
   let searchExpr = ["$search" =: T.intercalate " " (S.toList keys)]
-      withLastTime stage = case mb_last_time of
-        Nothing -> stage
-        Just t -> stage ++ ["i_pubdate" =: ["$gte" =: (t :: UTCTime)]]
       matchStage =
         [ "$match"
-            =: [ "$and"
-                  =: [ ["$text" =: searchExpr]
-                     , ["i_feed_link" =: ["$in" =: S.toList scope]]
-                     ]
-               ]
+            =: ["$text" =: searchExpr]
         ]
       sortStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]]]
       limitStage = ["$limit" =: (10 :: Int)]
@@ -394,7 +391,7 @@ buildSearchQuery mb_last_time keys scope =
                , "score" =: ["$meta" =: ("searchScore" :: T.Text)]
                ]
         ]
-   in [withLastTime matchStage, sortStage, limitStage, projectStage]
+   in [matchStage, sortStage, limitStage, projectStage]
 
 itemsIndex :: Index
 itemsIndex =
@@ -418,7 +415,7 @@ markNotified notified_chats now = do
                     alertAdmin (postjobs env) $
                       "notifier: failed to \
                       \ save updated chats to db because of this error"
-                        `T.append` renderDbError err
+                        `T.append` render err
                     pure subs
                   Right DbDone -> pure updated_chats
                   _ -> pure subs
@@ -495,6 +492,10 @@ bsonToChat doc =
   let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
       linked_to_chats = M.lookup "sub_linked_to_chats" doc :: Maybe ChatId
       settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
+      active_admins_doc = M.lookup "sub_active_admins" doc :: Maybe [Document]
+      active_admins =
+        let f d = (,) <$> (M.lookup "sub_active_userid" d :: Maybe UserId) <*> (M.lookup "sub_active_time" d :: Maybe UTCTime)
+         in maybe mempty (mapM f) active_admins_doc
       feeds_settings_docs =
         Settings
           { settings_word_matches =
@@ -531,6 +532,7 @@ bsonToChat doc =
           , settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc
           , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc
           , settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
+          , settings_forward_to_admins = fromMaybe (settings_forward_to_admins defaultChatSettings) $ M.lookup "settings_forward_to_admins" settings_doc
           , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
           , settings_digest_no_collapse = maybe S.empty S.fromList $ M.lookup "settings_digest_no_collapse" settings_doc
           }
@@ -541,13 +543,15 @@ bsonToChat doc =
         , sub_feeds_links = S.fromList feeds_links
         , sub_linked_to = linked_to_chats
         , sub_settings = feeds_settings_docs
+        , sub_active_admins = maybe mempty HMS.fromList active_admins
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
+chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings active_admins) =
   let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
       searchset = S.toList . match_searchset . settings_word_matches $ settings
       only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
+      active_admins' = map (\(uid, d) -> ["user_id" =: uid, "last_activity" =: d]) $ HMS.toList active_admins
       settings' =
         [ "settings_blacklist" =: blacklist
         , "settings_digest_collapse" =: settings_digest_collapse settings
@@ -556,6 +560,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
         , "settings_digest_title" =: settings_digest_title settings
         , "settings_digest_start" =: settings_digest_start settings
         , "settings_follow" =: settings_follow settings
+        , "settings_forward_to_admins" =: settings_forward_to_admins settings
         , "settings_only_search_results" =: only_search_results
         , "settings_paused" =: settings_paused settings
         , "settings_pin" =: settings_pin settings
@@ -580,6 +585,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings) =
       , "sub_feeds_links" =: S.toList flinks
       , "sub_linked_to_chats" =: linked_to
       , "sub_settings" =: settings' ++ with_secs ++ with_at
+      , "sub_active_admins" =: active_admins'
       ]
 
 {- Digests -}
@@ -656,8 +662,8 @@ checkDbMapper = do
   let item = Item mempty mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
-      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings
+      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False True True False False word_matches mempty
+      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]
       equalities =

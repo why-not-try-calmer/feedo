@@ -3,122 +3,34 @@
 
 module Parsing (eitherUrlScheme, rebuildFeed, getFeedFromUrlScheme, parseSettings) where
 
-import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable (foldl')
-import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import Network.HTTP.Req
-import Replies (mkdDoubles)
-import Requests (fetchFeed)
+import Replies (mkdDoubles, render)
+import Requests (buildFeed)
 import Text.Read (readMaybe)
-import Text.XML
-import Text.XML.Cursor
 import Types (
   Feed (..),
   FeedError (..),
   FeedType (..),
-  Item (Item, i_pubdate),
   ParsingSettings (..),
   Settings (settings_digest_title),
-  TgActError (BadFeed, BadInput, ParseError),
+  TgEvalError (BadFeedUrl),
  )
-import Utils (averageInterval, defaultChatSettings, mbTime, renderUserError, sortTimePairs)
+import Utils (defaultChatSettings, mbTime, sortTimePairs)
 
 {- Feeds, Items -}
 
-buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgActError (Feed, Maybe T.Text))
--- tries parsing bytes into a Feed
--- tries as Atom if Rss fails
-buildFeed ty url = do
-  now <- liftIO getCurrentTime
-  fetchFeed url >>= \case
-    Left other -> pure . Left $ BadFeed other
-    Right feed -> case parseLBS def feed of
-      Left (SomeException ex) ->
-        pure
-          . Left
-          . ParseError
-          $ "Unable to parse feed at "
-            `T.append` (T.pack . show $ url)
-            `T.append` ", bumped on this exception: "
-            `T.append` (T.pack . show $ ex)
-      Right doc ->
-        let root = fromDocument doc
-            desc = case ty of
-              Atom -> T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
-              Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
-            title = case ty of
-              Atom -> T.concat $ child root >>= laxElement "title" >>= child >>= content
-              Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
-            get_date el = case ty of
-              Atom -> mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
-              Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
-            make_item el = case ty of
-              Atom ->
-                Item
-                  (T.concat $ child el >>= laxElement "title" >>= child >>= content)
-                  (T.concat $ child el >>= laxElement "content" >>= child >>= content)
-                  (T.concat . attribute "href" . head $ child el >>= laxElement "link")
-                  (renderUrl url)
-                  (fromMaybe now $ get_date el)
-              Rss ->
-                Item
-                  (T.concat $ child el >>= element "title" >>= child >>= content)
-                  (T.concat $ child el >>= element "description" >>= child >>= content)
-                  (T.concat $ child el >>= element "link" >>= child >>= content)
-                  (renderUrl url)
-                  (fromMaybe now $ get_date el)
-            items = case ty of
-              Atom -> map make_item $ descendant root >>= laxElement "entry"
-              Rss -> map make_item $ descendant root >>= element "item"
-            interval = averageInterval . map i_pubdate $ items
-            built_feed =
-              Feed
-                { f_type = ty
-                , f_desc = if T.null desc then title else desc
-                , f_title = title
-                , f_link = renderUrl url
-                , f_items = items
-                , f_avg_interval = interval
-                , f_last_refresh = Just now
-                }
-         in pure $ faultyFeed built_feed
- where
-  faultyFeed f =
-    let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f]
-        required = ["desc", "title", "url", "items", "interval"]
-        optional = ["pubdate"]
-        missing =
-          foldl' (\acc v -> if snd v then fst v : acc else acc) [] $
-            zip (required ++ optional) holes
-        missing_required = filter (`elem` required) missing
-        render_required =
-          "The required feed could be constructed, but it's missing well-defined tags or items: "
-            `T.append` T.intercalate ", " missing_required
-            `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
-        missing_optional = filter (`elem` optional) missing
-        render_optional =
-          if null missing_optional
-            then Nothing
-            else
-              Just $
-                "A valid feed could be constructed. However, notice that the following fields could not be \
-                \ set appropriately: "
-                  `T.append` T.intercalate ", " missing_optional
-     in if null missing_required
-          then Right (f, render_optional)
-          else Left . ParseError $ render_required
-
-eitherUrlScheme :: T.Text -> Either TgActError (Url 'Https)
+eitherUrlScheme :: T.Text -> Either TgEvalError (Url 'Https)
 -- tries to make a valid Url Scheme from the given string
 eitherUrlScheme s
-  | T.null s = Left . BadInput $ s
-  | head split /= "https:" = Left . BadInput $ s
+  | T.null s = Left . BadFeedUrl $ s
+  | head split /= "https:" = Left . BadFeedUrl $ s
   | length body >= 2 = Right toScheme
-  | otherwise = Left . BadInput $ "Unable to parse this input." `T.append` s
+  | otherwise = Left . BadFeedUrl $ "Unable to parse this input." `T.append` s
  where
   s' = if T.last s == T.last "/" then T.dropEnd 1 s else s
   split = T.splitOn "/" s'
@@ -131,7 +43,7 @@ getFeedFromUrlScheme scheme =
   buildFeed Rss scheme >>= \case
     Left _ ->
       buildFeed Atom scheme >>= \case
-        Left err -> pure . Left . renderUserError $ err
+        Left err -> pure . Left . render $ err
         Right (feed, warning) -> finish_successfully (feed, warning)
     Right (feed, warning) -> finish_successfully (feed, warning)
  where
@@ -140,14 +52,14 @@ getFeedFromUrlScheme scheme =
 rebuildFeed :: (MonadIO m) => T.Text -> m (Either FeedError Feed)
 -- updates a single feed
 rebuildFeed key = case eitherUrlScheme key of
-  Left err -> pure . Left $ FeedError key Nothing mempty (renderUserError err)
+  Left err -> pure . Left $ FeedError key Nothing mempty (render err)
   Right url -> liftIO $ build url
  where
   build url =
     buildFeed Rss url >>= \case
       Left _ ->
         buildFeed Atom url >>= \case
-          Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (renderUserError build_error)
+          Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (render build_error)
           Right (feed, _) -> done feed
       Right (feed, _) -> done feed
   done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed{f_last_refresh = Just now}
@@ -180,6 +92,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
                   , "digest_title <title>"
                   , "disable_webview <false|true>"
                   , "follow <false|true>"
+                  , "forward_to_admins <true|false>"
                   , "only_search_notif <url1 url2 ...>"
                   , "pagination <false|true>"
                   , "pin <false|true>"
@@ -249,6 +162,9 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDisableWebview True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PDisableWebview False : parsed) else ("'disable_webview' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "digest_title" =
         if "reset" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PDigestTitle (settings_digest_title defaultChatSettings) : parsed) else (not_parsed, PDigestTitle txt : parsed)
+    | k == "forward_to_admins" =
+        let res = "true" `T.isInfixOf` T.toCaseFold txt
+         in (not_parsed, PForwardToAdmins res : parsed)
     | k == "search_notif" =
         if T.length txt < 3
           then ("'search_notif' cannot be shorter than 3 characters." : not_parsed, parsed)
@@ -269,7 +185,7 @@ parseSettings lns = case foldr mkPairs Nothing lns of
     | k == "pin" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPin True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False : parsed) else ("'pin' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "share_link" =
-        if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPaused True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False : parsed) else ("'share_link' takes only 'true' or 'false' as values." : not_parsed, parsed)
+        if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PShareLink True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False : parsed) else ("'share_link' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "follow" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False : parsed) else ("'follow' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "pagination" =

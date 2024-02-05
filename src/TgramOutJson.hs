@@ -9,6 +9,7 @@ import qualified Data.Text as T
 
 type ChatId = Int64
 type UserId = Int64
+type UserFirstName = T.Text
 
 data InlineKeyboardButton = InlineKeyboardButton
   { -- exactly one Maybe must be set on pain of throwing

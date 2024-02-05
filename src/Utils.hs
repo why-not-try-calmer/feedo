@@ -91,12 +91,12 @@ unFeedRef (ById s) = T.pack $ show s
 unFeedRefs :: [FeedRef] -> [T.Text]
 unFeedRefs = map unFeedRef
 
-toFeedRef :: [T.Text] -> Either TgActError [FeedRef]
+toFeedRef :: [T.Text] -> Either InterpreterErr [FeedRef]
 {-# INLINE toFeedRef #-}
 toFeedRef ss
   | all_valid_urls = Right intoUrls
   | all_ints = Right intoIds
-  | otherwise = Left . BadRef . T.concat $ ss
+  | otherwise = Left . InterpreterErr . T.concat $ ss
  where
   all_valid_urls = all (== "https://") (first8 ss)
   first8 = map (T.take 8)
@@ -104,38 +104,6 @@ toFeedRef ss
   maybeInts = mapM (readMaybe . T.unpack) ss :: Maybe [Int]
   intoUrls = map ByUrl ss
   intoIds = maybe [] (map ById) (mapM (readMaybe . T.unpack) ss)
-
-{- Errors -}
-
-renderUserError :: TgActError -> T.Text
-renderUserError (BadInput t) = T.append "I don't know what to do with this input: " t
-renderUserError (BadFeed feederror) = T.append "Unable to fetch this feed: " (T.pack . show $ feederror)
-renderUserError (BadFeedUrl t) = T.append "No feed could be found at this address: " t
-renderUserError (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
-renderUserError (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
-renderUserError (ParseError input) = T.append "Parsing this input failed: " input
-renderUserError (UpdateError err) = T.append "Unable to update, because of this error: " err
-renderUserError (NotFoundFeed feed) = T.append "The feed you were looking for does not exist: " feed
-renderUserError NotFoundChat = "The chat you called from is not subscribed to any feed yet."
-renderUserError (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
-renderUserError NotSubscribed = "The feed your were looking for could not be found. Make sure you are subscribed to it."
-renderUserError (TelegramErr err) = "Telegram responded with an error: " `T.append` err
-renderUserError ChatNotPrivate = "Unwilling to share authentication credentials in a non-private chat. Please use this command in a private conversation with to the bot."
-renderUserError UserNotAdmin = "Only admins can change settings."
-renderUserError (UnknownCommand t) = "Unknown command: " `T.append` t
-
-renderDbError :: DbError -> T.Text
-renderDbError PipeNotAcquired = "Failed to open a connection against the database."
-renderDbError FaultyToken = "Login failed. This token is not valid, and perhaps never was."
-renderDbError (FailedToUpdate items reason) = "Unable to update the following items: " `T.append` items `T.append` ". Reason: " `T.append` reason
-renderDbError (NotFound item) = "Resource could not be found from the network: " `T.append` item
-renderDbError FailedToLog = "Failed to log."
-renderDbError FailedToLoadFeeds = "Failed to load feeds!"
-renderDbError (BadQuery txt) = T.append "Bad query parameters: " txt
-renderDbError FailedToSaveDigest = "Unable to save this digest. The database didn't return a valid identifier."
-renderDbError FailedToProduceValidId = "Db was unable to return a valid identifier"
-renderDbError FailedToInsertPage = "Db was unable to insert these pages."
-renderDbError FailedToGetAllPages = "Db was unable to retrieve all pages."
 
 {- Time -}
 
@@ -218,6 +186,7 @@ defaultChatSettings =
     , settings_pin = False
     , settings_share_link = True
     , settings_follow = False
+    , settings_forward_to_admins = False
     , settings_digest_collapse = Nothing
     , settings_digest_start = Nothing
     , settings_digest_no_collapse = mempty
@@ -252,6 +221,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
       let wm = settings_word_matches o
           wm' = wm{match_searchset = v}
        in o{settings_word_matches = wm'}
+    PForwardToAdmins v -> o{settings_forward_to_admins = v}
     PSearchLinks v ->
       let wm = settings_word_matches o
           wm' = wm{match_only_search_results = v}

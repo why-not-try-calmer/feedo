@@ -19,16 +19,17 @@ import Mongo (HasMongo (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
 import Parsing (eitherUrlScheme)
+import Replies (render)
 import Text.Blaze (Markup, textValue, (!))
 import Text.Blaze.Html (toHtml)
 import qualified Text.Blaze.Html as H
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as Attr
 import Types
-import Utils (mbTime, renderDbError, renderUserError)
+import Utils (mbTime)
 
 renderDbRes :: DbRes -> H.Html
-renderDbRes (Left err) = H.toHtml . renderDbError $ err
+renderDbRes (Left err) = H.toHtml . render $ err
 renderDbRes (Right res) = case res of
   DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
   DbBadOID -> "Unable to find a digest matching this identifier."
@@ -167,7 +168,7 @@ readSettings :: (MonadIO m) => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
   env <- ask
   evalDb (CheckLogin hash) >>= \case
-    Left err -> pure $ failedWith (renderDbError err)
+    Left err -> pure $ failedWith (render err)
     Right (DbLoggedIn cid) ->
       liftIO (readMVar $ subs_state env)
         >>= \chats -> case HMS.lookup cid chats of
@@ -182,7 +183,7 @@ writeSettings :: (MonadIO m) => WriteReq -> App m WriteResp
 writeSettings (WriteReq hash new_settings Nothing) = do
   env <- ask
   evalDb (CheckLogin hash) >>= \case
-    Left err -> pure (WriteResp 504 (Just . renderDbError $ err) Nothing)
+    Left err -> pure (WriteResp 504 (Just . render $ err) Nothing)
     Right (DbLoggedIn cid) -> do
       chats <- liftIO . readMVar $ subs_state env
       case HMS.lookup cid chats of
@@ -216,11 +217,11 @@ writeSettings (WriteReq hash settings (Just True)) =
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ noLogin err
     Right (DbLoggedIn cid) ->
-      withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
-        Left err -> pure . noUpdate . renderUserError $ err
+      withChatsFromMem (SetChatSettings $ Immediate settings) Nothing cid >>= \case
+        Left err -> pure . noUpdate . render $ err
         Right _ -> pure ok
     _ -> undefined
  where
-  noLogin err = WriteResp 401 (Just . renderDbError $ err) Nothing
+  noLogin err = WriteResp 401 (Just . render $ err) Nothing
   noUpdate err = WriteResp 500 (Just err) Nothing
   ok = WriteResp 200 (Just "Updated.") Nothing

@@ -58,7 +58,7 @@ spec = withHooks [go, go1, go2]
         target = do
           let (texts, keyboard) = fromJust $ mkPagination lorec Nothing
               rep = ChatReply lorec False False False True Nothing
-          res <- runApp env $ reply (bot_token . tg_config $ env) (alert_chat . tg_config $ env) rep (postjobs env)
+          res <- runApp env $ reply (alert_chat . tg_config $ env) rep
           res `shouldBe` ()
      in desc $ as target
   go3 _ =

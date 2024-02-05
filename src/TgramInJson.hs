@@ -4,8 +4,8 @@ module TgramInJson where
 
 import Data.Aeson
 import Data.Aeson.TH (deriveJSON)
-import Data.Int (Int64)
 import Data.Text (Text)
+import TgramOutJson (ChatId, UserFirstName, UserId)
 
 data ChatType
   = Private
@@ -13,6 +13,26 @@ data ChatType
   | Supergroup
   | Channel
   deriving (Eq, Show)
+
+data UserStatus
+  = Creator
+  | Admin
+  | Member
+  | Restricted
+  deriving (Eq, Show)
+
+instance ToJSON UserStatus where
+  toJSON Creator = "creator"
+  toJSON Admin = "admin"
+  toJSON Member = "member"
+  toJSON Restricted = "restricted"
+
+instance FromJSON UserStatus where
+  parseJSON "creator" = pure Creator
+  parseJSON "admin" = pure Admin
+  parseJSON "member" = pure Member
+  parseJSON "restricted" = pure Restricted
+  parseJSON _ = fail "Failed to parse UserStatus"
 
 instance ToJSON ChatType where
   toJSON Private = "private"
@@ -28,7 +48,7 @@ instance FromJSON ChatType where
   parseJSON _ = fail "Failed to parse ChatType"
 
 data Chat = Chat
-  { chat_id :: Int64
+  { chat_id :: ChatId
   , chat_type :: ChatType
   }
   deriving (Show)
@@ -40,9 +60,9 @@ data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: Chat
 $(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''TgGetChatResponse)
 
 data User = User
-  { user_id :: Int64
+  { user_id :: UserId
   , user_is_bot :: Bool
-  , user_first_name :: Text
+  , user_first_name :: UserFirstName
   , user_last_name :: Maybe Text
   , user_username :: Maybe Text
   }
@@ -52,7 +72,7 @@ $(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''User)
 
 data ChatMember = ChatMember
   { cm_user :: User
-  , cm_status :: Text
+  , cm_status :: UserStatus
   }
 
 $(deriveJSON defaultOptions{fieldLabelModifier = drop 3} ''ChatMember)
