@@ -112,14 +112,13 @@ startJobs :: (MonadIO m) => App m ()
 {- Forks a runtime thread and tasks it with handling as they come all post-processing jobs -}
 startJobs = do
   env <- ask
-  liftIO $ do
-    runForever_ (action env) (handler env)
-    putStrLn "startJobs: started"
+  liftIO $ runForever_ (action env) (handler env)
+  liftIO $ putStrLn "startJobs: started"
  where
   action env = do
-    job <- readChan $ postjobs env
+    job <- liftIO $ readChan $ postjobs env
     print $ "startJobs: job received: " `T.append` (T.pack . take 20 . show $ job)
-    void . async . runApp env . execute $ job
+    runApp env $ execute job env
     putStrLn "startJobs: job complete!"
   handler env (SomeException e) = do
     print $ "Failed to execute job: " `T.append` (T.pack . take 20 . show $ e)
@@ -129,55 +128,55 @@ startJobs = do
 interpolateCidInTxt :: (Show p) => T.Text -> p -> T.Text -> T.Text
 interpolateCidInTxt before cid after = before `T.append` (T.pack . show $ cid) `T.append` after
 
-execute :: (MonadIO m) => Job -> App m ()
-execute (JobArchive feeds now) = do
-  -- archiving items
-  liftIO $ putStrLn "Jobs received: JobArchive"
-  evalDb (ArchiveItems feeds) >>= \case
-    Left err ->
-      let msg = "Unable to archive items. Reason: " `T.append` render err
-       in execute $ JobTgAlertAdmin msg
-    _ -> liftIO $ putStrLn "successfully ran job"
-  -- cleaning more than 1 month old archives
-  void $ evalDb (PruneOld $ addUTCTime (-2592000) now)
-execute (JobLog item) = saveToLog item
-execute (JobPin cid mid) = do
-  env <- ask
-  runSend_ (bot_token . tg_config $ env) "pinChatMessage" (PinMessage cid mid) >>= \case
-    Left _ ->
-      let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
-       in execute (JobTgAlertAdmin msg)
-    _ -> pure ()
-execute (JobPurge cid) = void $ withChatsFromMem Purge Nothing cid
-execute (JobRemoveMsg cid mid delay) = do
-  env <- ask
-  let (msg, checked_delay) = checkDelay delay
-  liftIO $ putStrLn ("Removing message in " ++ msg)
-  do
-    liftIO $ threadDelay checked_delay
-    runSend_ (bot_token . tg_config $ env) "deleteMessage" (DeleteMessage cid mid) >>= \case
+execute :: (MonadIO m) => Job -> AppConfig -> App m ()
+execute job env = liftIO $ void . async $ runApp env $ go job
+ where
+  go (JobArchive feeds now) = do
+    -- archiving items
+    liftIO $ putStrLn "Jobs received: JobArchive"
+    evalDb (ArchiveItems feeds) >>= \case
+      Left err ->
+        let msg = "Unable to archive items. Reason: " `T.append` render err
+         in execute (JobTgAlertAdmin msg) env
+      _ -> liftIO $ putStrLn "successfully ran job"
+    -- cleaning more than 1 month old archives
+    void $ evalDb (PruneOld $ addUTCTime (-2592000) now)
+  go (JobLog item) = saveToLog item
+  go (JobPin cid mid) = do
+    runSend_ (bot_token . tg_config $ env) "pinChatMessage" (PinMessage cid mid) >>= \case
       Left _ ->
-        execute
-          . JobTgAlertAdmin
-          . interpolateCidInTxt "Tried to delete a message in (chat_id) " cid
-          $ " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
+        let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
+         in execute (JobTgAlertAdmin msg) env
       _ -> pure ()
-execute (JobSetPagination cid mid pages mb_link) =
-  let to_db = evalDb $ InsertPages cid mid pages mb_link
-      to_cache = withKeyStore $ CacheSetPages cid mid pages mb_link
-   in to_db >> to_cache >>= \case
-        Right _ -> pure ()
-        _ ->
-          let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
-           in execute $ JobTgAlertAdmin report
-execute (JobTgAlertAdmin contents) = do
-  env <- ask
-  let msg = ServiceReply $ "Feedo is sending an alert: " `T.append` contents
-  reply (alert_chat . tg_config $ env) msg
-execute (JobTgAlertChats chat_ids contents) = do
-  env <- ask
-  let msg = ServiceReply contents
-      tok = bot_token . tg_config $ env
-  liftIO $ forConcurrently_ chat_ids $ \cid -> do
-    verdict <- isChatOfType tok cid Channel
-    unless (verdict == Right True) $ runApp env $ reply cid msg
+  go (JobPurge cid) = void $ withChatsFromMem Purge Nothing cid
+  go (JobRemoveMsg cid mid delay) = do
+    let (msg, checked_delay) = checkDelay delay
+    liftIO $ putStrLn ("Removing message in " ++ msg)
+    do
+      liftIO $ threadDelay checked_delay
+      runSend_ (bot_token . tg_config $ env) "deleteMessage" (DeleteMessage cid mid) >>= \case
+        Left _ ->
+          execute
+            ( JobTgAlertAdmin
+                . interpolateCidInTxt "Tried to delete a message in (chat_id) " cid
+                $ " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
+            )
+            env
+        _ -> pure ()
+  go (JobSetPagination cid mid pages mb_link) =
+    let to_db = evalDb $ InsertPages cid mid pages mb_link
+        to_cache = withKeyStore $ CacheSetPages cid mid pages mb_link
+     in to_db >> to_cache >>= \case
+          Right _ -> pure ()
+          _ ->
+            let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
+             in execute (JobTgAlertAdmin report) env
+  go (JobTgAlertAdmin contents) = do
+    let msg = ServiceReply $ "Feedo is sending an alert: " `T.append` contents
+    reply (alert_chat . tg_config $ env) msg
+  go (JobTgAlertChats chat_ids contents) = do
+    let msg = ServiceReply contents
+        tok = bot_token . tg_config $ env
+    liftIO $ forConcurrently_ chat_ids $ \cid -> do
+      verdict <- isChatOfType tok cid Channel
+      unless (verdict == Right True) $ runApp env $ reply cid msg
