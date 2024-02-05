@@ -31,3 +31,4 @@ jobs:
             docker-compose exec -e TEST=0 mongo mongosh --file /scripts/startup-mongo.js
             docker-compose up -d --force-recreate app
             docker image prune -a --force
+            echo $(docker ps)
