@@ -18,7 +18,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime, UTCTime)
+import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
@@ -141,11 +141,11 @@ instance (MonadIO m) => HasMongo (App m) where
               pure . Left . T.pack . show $ e
             Right r -> pure $ Right r
         alert err =
-          liftIO
-            $ alertAdmin (postjobs env)
-            $ "withDb failed with "
-            `T.append` (T.pack . show $ err)
-            `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
+          liftIO $
+            alertAdmin (postjobs env) $
+              "withDb failed with "
+                `T.append` (T.pack . show $ err)
+                `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
     pipe <- liftIO $ acquire env
     attempt <- liftIO $ attemptWith pipe
     case attempt of
@@ -184,10 +184,10 @@ instance (MonadIO m) => HasMongo (App m) where
     mkSafeHash =
       liftIO getSystemTime
         <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
+          . show
+          . hashWith SHA256
+          . B.pack
+          . show
   evalDb (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
         del = deleteOne (select ["admin_token" =: h] "admins")
@@ -349,10 +349,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print
-        $ "Failed to acquire primary replica, reason:"
-        ++ show err
-        ++ ". Moving to second."
+      print $
+        "Failed to acquire primary replica, reason:"
+          ++ show err
+          ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -408,21 +408,21 @@ markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
 -- marking input chats as notified
 markNotified notified_chats now = do
   env <- ask
-  liftIO
-    $ modifyMVar_ (subs_state env)
-    $ \subs ->
-      let updated_chats = updated_notified_chats notified_chats subs
-       in runApp env
-            $ evalDb (UpsertChats updated_chats)
-            >>= \case
-              Left err -> do
-                alertAdmin (postjobs env)
-                  $ "notifier: failed to \
-                    \ save updated chats to db because of this error"
-                  `T.append` render err
-                pure subs
-              Right DbDone -> pure updated_chats
-              _ -> pure subs
+  liftIO $
+    modifyMVar_ (subs_state env) $
+      \subs ->
+        let updated_chats = updated_notified_chats notified_chats subs
+         in runApp env $
+              evalDb (UpsertChats updated_chats)
+                >>= \case
+                  Left err -> do
+                    alertAdmin (postjobs env) $
+                      "notifier: failed to \
+                      \ save updated chats to db because of this error"
+                        `T.append` render err
+                    pure subs
+                  Right DbDone -> pure updated_chats
+                  _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey

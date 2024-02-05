@@ -217,7 +217,7 @@ writeSettings (WriteReq hash settings (Just True)) =
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ noLogin err
     Right (DbLoggedIn cid) ->
-      withChatsFromMem (SetChatSettings $ Immediate settings) cid >>= \case
+      withChatsFromMem (SetChatSettings $ Immediate settings) Nothing cid >>= \case
         Left err -> pure . noUpdate . render $ err
         Right _ -> pure ok
     _ -> undefined

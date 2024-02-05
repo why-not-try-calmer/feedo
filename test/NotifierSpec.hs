@@ -28,7 +28,7 @@ spec = withHooks [go1, go2, go3, go4]
               -- every day
               settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
               -- last 31th of May
-              chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
+              chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings HMS.empty
               chats_recipes = HMS.singleton 123 (chat, DigestFeedLinks feedlinks)
           (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
           now <- getCurrentTime
@@ -70,7 +70,7 @@ spec = withHooks [go1, go2, go3, go4]
               -- every day
               settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
               -- last 31th of May
-              chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings
+              chat = SubChat 123 (mbTime "2022-05-31") Nothing (S.fromList feedlinks) Nothing settings HMS.empty
           (failed, done) <- partitionEither <$> mapConcurrently rebuildFeed feedlinks
           now <- getCurrentTime
           let feedsmap = HMS.fromList . map (\f -> (f_link f, f)) $ done
@@ -99,7 +99,7 @@ spec = withHooks [go1, go2, go3, go4]
               matches = WordMatches{match_blacklist = S.empty, match_searchset = sub_to, match_only_search_results = S.singleton "https://news.ycombinator.com/rss"}
               interval = DigestInterval Nothing Nothing
               settings = Settings Nothing interval 10 Nothing mempty False False False False False False False matches S.empty
-              subs = HMS.singleton 0 $ SubChat 0 Nothing Nothing sub_to Nothing settings
+              subs = HMS.singleton 0 $ SubChat 0 Nothing Nothing sub_to Nothing settings HMS.empty
               pre = preNotifier now Nothing subs
               post = postNotifier feedsmap [] pre
               d = discarded_items_links post
@@ -111,8 +111,8 @@ spec = withHooks [go1, go2, go3, go4]
         target = do
           let settings = Settings Nothing (settings_digest_interval defaultChatSettings) 10 Nothing "Test digest" False False False False False False False (WordMatches S.empty S.empty S.empty) S.empty
               feedlinks = ["https://www.reddit.com/r/pop_os/.rss", "https://this-week-in-rust.org/atom.xml", "https://blog.rust-lang.org/inside-rust/feed.xml", "https://blog.rust-lang.org/feed.xml"]
-              chat1 = SubChat 123 (mbTime "2022-05-31") (mbTime "2022-06-04") (S.fromList feedlinks) Nothing settings
-              chat2 = SubChat 234 (mbTime "2022-05-31") (mbTime "2022-06-02") (S.fromList feedlinks) Nothing settings
+              chat1 = SubChat 123 (mbTime "2022-05-31") (mbTime "2022-06-04") (S.fromList feedlinks) Nothing settings HMS.empty
+              chat2 = SubChat 234 (mbTime "2022-05-31") (mbTime "2022-06-02") (S.fromList feedlinks) Nothing settings HMS.empty
               chats_recipes = HMS.insert 234 chat2 $ HMS.singleton 123 chat1
               collected = collectDue chats_recipes Nothing (fromJust . mbTime $ "2022-06-03")
           collected `shouldSatisfy` HMS.member 234

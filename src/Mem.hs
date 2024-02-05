@@ -19,20 +19,20 @@ import Mongo (HasMongo (evalDb), evalDb)
 import Notifications
 import Parsing (rebuildFeed)
 import Replies (render)
-import TgramOutJson (ChatId)
+import TgramOutJson (ChatId, UserId)
 import Types
 import Utils (defaultChatSettings, feedsFromList, partitionEither, removeByUserIdx, sortItems, updateSettings)
 
-withChatsFromMem :: (MonadIO m) => UserAction -> ChatId -> App m (Either TgEvalError ChatRes)
-withChatsFromMem action cid = do
+withChatsFromMem :: (MonadIO m) => UserAction -> Maybe UserId -> ChatId -> App m (Either TgEvalError ChatRes)
+withChatsFromMem action maybe_userid cid = do
   env <- ask
-  res <- liftIO $ modifyMVar (subs_state env) (`afterDb` env)
+  res <- liftIO $ modifyMVar (subs_state env) (`withHmap` env)
   case res of
     Left err -> pure $ Left err
     Right ChatOk -> pure $ Right ChatOk
     Right r -> pure . Right $ r
  where
-  afterDb hmap env = case HMS.lookup cid hmap of
+  withHmap hmap env = case HMS.lookup cid hmap of
     Nothing ->
       let initialized now flinks linked_to =
             SubChat
@@ -135,6 +135,9 @@ withChatsFromMem action cid = do
                     c
                       { sub_next_digest = updated_next_notification now
                       , sub_settings = updated_settings
+                      , sub_active_admins =
+                          let prev = sub_active_admins c
+                           in maybe prev (\uid -> HMS.insert uid now prev) maybe_userid
                       }
                   updated_cs = HMS.update (\_ -> Just updated_c) cid hmap
                in runApp env $

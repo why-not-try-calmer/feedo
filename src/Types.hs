@@ -42,6 +42,7 @@ data Reply
       , edit_pagination_keyboard :: Maybe InlineKeyboardMarkup
       }
   | ServiceReply T.Text
+  | ForwardServiceReply ChatId T.Text
   deriving (Show)
 
 {- URLs -}

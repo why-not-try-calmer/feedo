@@ -148,7 +148,7 @@ execute (JobPin cid mid) = do
       let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
        in execute (JobTgAlertAdmin msg)
     _ -> pure ()
-execute (JobPurge cid) = void $ withChatsFromMem Purge cid
+execute (JobPurge cid) = void $ withChatsFromMem Purge Nothing cid
 execute (JobRemoveMsg cid mid delay) = do
   env <- ask
   let (msg, checked_delay) = checkDelay delay

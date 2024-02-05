@@ -329,7 +329,7 @@ subFeed cid feeds_urls = do
               old_keys = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
               new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
            in do
-                unless (null old_keys) (void $ withChatsFromMem (Sub old_keys) cid)
+                unless (null old_keys) (void $ withChatsFromMem (Sub old_keys) Nothing cid)
                 if null new_url_schemes
                   then
                     respondWith $
@@ -350,7 +350,7 @@ subFeed cid feeds_urls = do
                                 Left err -> respondWith $ render err
                                 _ ->
                                   let to_sub_to = map f_link feeds
-                                   in withChatsFromMem (Sub to_sub_to) cid >>= \case
+                                   in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
                                         Left err -> respondWith $ render err
                                         Right _ ->
                                           let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
@@ -544,7 +544,7 @@ evalTgAct uid (Link target_id) cid = do
       if not authorized
         then exitNotAuth uid
         else
-          withChatsFromMem (Link target_id) cid >>= \case
+          withChatsFromMem (Link target_id) Nothing cid >>= \case
             Left err -> pure . Right . ServiceReply . render $ err
             Right _ -> pure . Right . ServiceReply $ succeeded
  where
@@ -571,8 +571,8 @@ evalTgAct uid (Migrate to) cid = do
             Left err -> restore >> onErr err
             Right _ -> onOk
  where
-  migrate = sequence <$> sequence [withChatsFromMem (Migrate to) cid, withChatsFromMem Purge cid]
-  restore = withChatsFromMem (Migrate cid) to >> withChatsFromMem Purge to
+  migrate = sequence <$> sequence [withChatsFromMem (Migrate to) Nothing cid, withChatsFromMem Purge Nothing cid]
+  restore = withChatsFromMem (Migrate cid) Nothing to >> withChatsFromMem Purge Nothing to
   onOk =
     pure
       . Right
@@ -592,7 +592,7 @@ evalTgAct uid (Pause pause_or_resume) cid =
             if not verdict
               then exitNotAuth uid
               else
-                withChatsFromMem (Pause pause_or_resume) cid >>= \case
+                withChatsFromMem (Pause pause_or_resume) Nothing cid >>= \case
                   Left err -> pure . Right . ServiceReply . render $ err
                   Right _ -> pure . Right . ServiceReply $ succeeded
  where
@@ -610,7 +610,7 @@ evalTgAct uid Purge cid = do
       if not verdict
         then exitNotAuth uid
         else
-          withChatsFromMem Purge cid >>= \case
+          withChatsFromMem Purge Nothing cid >>= \case
             Left err -> pure . Right . ServiceReply $ "Unable to purge this chat" `T.append` render err
             Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
@@ -655,7 +655,7 @@ evalTgAct uid Reset cid = do
       if not verdict
         then exitNotAuth uid
         else
-          withChatsFromMem Reset cid >>= \case
+          withChatsFromMem Reset Nothing cid >>= \case
             Left err -> pure . Right . ServiceReply $ render err
             Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
@@ -686,7 +686,7 @@ evalTgAct uid (SetChatSettings settings) cid =
             if not verdict
               then exitNotAuth uid
               else
-                withChatsFromMem (SetChatSettings settings) cid >>= \case
+                withChatsFromMem (SetChatSettings settings) Nothing cid >>= \case
                   Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` render err
                   Right (ChatUpdated c) -> pure . Right $ mkReply (FromChat c "Ok. New settings below.\n---\n")
                   _ -> pure . Left . DbQueryError . BadQuery $ "Unable to update the settings for this chat. Please try again later."
@@ -742,7 +742,7 @@ evalTgAct uid (UnSub feeds) cid =
         if not is_admin
           then exitNotAuth uid
           else
-            withChatsFromMem (UnSub feeds) cid >>= \case
+            withChatsFromMem (UnSub feeds) Nothing cid >>= \case
               Left err -> pure . Left $ err
               Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id

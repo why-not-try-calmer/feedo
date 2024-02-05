@@ -4,24 +4,28 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Requests (mkPagination, setWebhook, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
+module Requests (buildFeed, mkPagination, setWebhook, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
-import Control.Concurrent (writeChan)
+import Control.Concurrent (readMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
-import Data.Foldable (for_)
-import Data.Maybe (fromJust, isJust)
+import Data.Foldable (Foldable (..), for_)
+import qualified Data.HashMap.Strict as HMS
+import Data.Maybe (fromJust, fromMaybe, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Data.Time (UTCTime, getCurrentTime)
 import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import Notifications (alertAdmin)
+import Text.XML
+import Text.XML.Cursor
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text))
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), UserId)
 import Types
-import Utils (sliceIfAboveTelegramMax)
+import Utils (averageInterval, mbTime, sliceIfAboveTelegramMax)
 
 {- Interface -}
 
@@ -180,6 +184,7 @@ reply cid rep = do
                  in base{out_text = last pages, out_reply_markup = Just keyboard}
               else base{out_reply_markup = mkPermLinkKeyboard <$> reply_permalink}
       fromReply (ServiceReply contents) = OutboundMessage cid contents Nothing (Just True) Nothing
+      fromReply (ForwardServiceReply cid' txt) = OutboundMessage cid' txt Nothing (Just True) Nothing
       fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents has_markdown no_webview keyboard
        where
         no_webview = pure True
@@ -187,7 +192,6 @@ reply cid rep = do
       report err =
         let err_msg = "Chat " `T.append` (T.pack . show $ cid) `T.append` " ran into this error: " `T.append` err
          in alertAdmin chan err_msg
-      -- non_empty txt = if T.null txt then "No result for this command." else txt
       send msg@ChatReply{..} =
         let jobs mid =
               [ if reply_pin_on_send then Just $ JobPin cid mid else Nothing
@@ -217,23 +221,25 @@ reply cid rep = do
         runSend_ tok "editMessageText" (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
-      send msg@ServiceReply{} =
+      send msg@(ServiceReply contents) = do
+        active_admins <-
+          liftIO (readMVar $ subs_state env)
+            >>= \subs -> pure $ getActiveChatAdminsIfForwarding subs cid Nothing
+        let msg'
+              | null active_admins = msg
+              | otherwise = ForwardServiceReply (head active_admins) contents
+        runSend_ tok "sendMessage" (fromReply msg') >>= \case
+          Left err -> report err
+          Right _ -> pure ()
+      send msg@ForwardServiceReply{} =
         runSend_ tok "sendMessage" (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
       replyTxt = case rep of
         ChatReply txt _ _ _ _ _ -> txt
         ServiceReply txt -> txt
+        ForwardServiceReply _ txt -> txt
         EditReply _ txt _ _ -> txt
-      -- getAdminsToForwardTo =
-      --   readMVar (subs_state env)
-      --     >>= \chat ->
-      --       pure $
-      --         map (\w -> read . T.unpack $ w :: UserId)
-      --           . T.words
-      --           . settings_forward_to_admins
-      --           . sub_settings
-      --           <$> HMS.lookup cid chat
       processReply
         | T.null replyTxt =
             let alert_msg = "Cancelled an empty reply that was heading to this chat: " `T.append` (T.pack . show $ cid)
@@ -241,13 +247,26 @@ reply cid rep = do
         | otherwise = send rep
   processReply
 
+getActiveChatAdminsIfForwarding :: SubChats -> ChatId -> Maybe UTCTime -> [UserId]
+getActiveChatAdminsIfForwarding subchats cid after =
+  case HMS.lookup cid subchats of
+    Nothing -> mempty
+    Just c ->
+      if settings_forward_to_admins . sub_settings $ c
+        then HMS.keys $ HMS.filter pr $ sub_active_admins c
+        else mempty
+ where
+  pr x = case after of
+    Nothing -> True
+    Just t -> t <= x
+
 {- Feeds -}
 
 fetchFeed :: (MonadIO m) => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =
   liftIO (try action :: IO (Either HttpException LbsResponse)) >>= \case
     Left (VanillaHttpException exc) -> case exc of
-      HTTP.HttpExceptionRequest _ content -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack . show $ content) "Invalid request."
+      HTTP.HttpExceptionRequest _ cont -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack . show $ cont) "Invalid request."
       HTTP.InvalidUrlException url' reason -> pure . Left $ FeedError (T.pack url') Nothing (T.pack reason) "Invalid URL."
     Left (JsonHttpException msg) -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack msg) "Invalid JSON."
     Right resp ->
@@ -260,3 +279,86 @@ fetchFeed url =
  where
   action = withReqManager $ runReq defaultHttpConfig . pure request
   request = req GET url NoReqBody lbsResponse mempty
+
+buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgEvalError (Feed, Maybe T.Text))
+-- tries parsing bytes into a Feed
+-- tries as Atom if Rss fails
+buildFeed ty url = do
+  now <- liftIO getCurrentTime
+  fetchFeed url >>= \case
+    Left other -> pure . Left $ BadFeed other
+    Right feed -> case parseLBS def feed of
+      Left (SomeException ex) ->
+        pure
+          . Left
+          . ParseError
+          $ "Unable to parse feed at "
+            `T.append` (T.pack . show $ url)
+            `T.append` ", bumped on this exception: "
+            `T.append` (T.pack . show $ ex)
+      Right doc ->
+        let root = fromDocument doc
+            desc = case ty of
+              Atom -> T.concat $ child root >>= laxElement "subtitle" >>= child >>= content
+              Rss -> T.concat $ child root >>= child >>= element "description" >>= child >>= content
+            title = case ty of
+              Atom -> T.concat $ child root >>= laxElement "title" >>= child >>= content
+              Rss -> T.concat $ child root >>= child >>= element "title" >>= child >>= content
+            get_date el = case ty of
+              Atom -> mbTime $ T.unpack (T.concat $ child el >>= laxElement "updated" >>= child >>= content)
+              Rss -> mbTime $ T.unpack (T.concat $ child el >>= element "pubDate" >>= child >>= content)
+            make_item el = case ty of
+              Atom ->
+                Item
+                  (T.concat $ child el >>= laxElement "title" >>= child >>= content)
+                  (T.concat $ child el >>= laxElement "content" >>= child >>= content)
+                  (T.concat . attribute "href" . head $ child el >>= laxElement "link")
+                  (renderUrl url)
+                  (fromMaybe now $ get_date el)
+              Rss ->
+                Item
+                  (T.concat $ child el >>= element "title" >>= child >>= content)
+                  (T.concat $ child el >>= element "description" >>= child >>= content)
+                  (T.concat $ child el >>= element "link" >>= child >>= content)
+                  (renderUrl url)
+                  (fromMaybe now $ get_date el)
+            items = case ty of
+              Atom -> map make_item $ descendant root >>= laxElement "entry"
+              Rss -> map make_item $ descendant root >>= element "item"
+            interval = averageInterval . map i_pubdate $ items
+            built_feed =
+              Feed
+                { f_type = ty
+                , f_desc = if T.null desc then title else desc
+                , f_title = title
+                , f_link = renderUrl url
+                , f_items = items
+                , f_avg_interval = interval
+                , f_last_refresh = Just now
+                }
+         in pure $ faultyFeed built_feed
+ where
+  faultyFeed f =
+    let holes = [T.null $ f_desc f, T.null $ f_title f, T.null $ f_link f, null . f_items $ f]
+        required = ["desc", "title", "url", "items", "interval"]
+        optional = ["pubdate"]
+        missing =
+          foldl' (\acc v -> if snd v then fst v : acc else acc) [] $
+            zip (required ++ optional) holes
+        missing_required = filter (`elem` required) missing
+        render_required =
+          "The required feed could be constructed, but it's missing well-defined tags or items: "
+            `T.append` T.intercalate ", " missing_required
+            `T.append` ". Perhaps the source exports an alternative feed (RSS/Atom) that could work?"
+        missing_optional = filter (`elem` optional) missing
+        render_optional =
+          if null missing_optional
+            then Nothing
+            else
+              Just $
+                "A valid feed could be constructed. However, notice that the following fields could not be \
+                \ set appropriately: "
+                  `T.append` T.intercalate ", " missing_optional
+     in if null missing_required
+          then Right (f, render_optional)
+          else Left . ParseError $ render_required
