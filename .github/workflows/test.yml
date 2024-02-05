@@ -36,6 +36,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Dockerfile-test
           build-args: app_version=${{ github.sha }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           cache-from: type=gha
