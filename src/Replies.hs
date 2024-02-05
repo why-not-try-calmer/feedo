@@ -5,6 +5,7 @@
 module Replies (defaultReply, mkdSingles, mkdDoubles, renderCmds, render, Reply (..), mkReply, Replies (..), mkViewUrl, mkDigestUrl) where
 
 import Data.Foldable (foldl')
+import qualified Data.HashMap.Strict as HMS
 import Data.List (sortOn)
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
@@ -256,6 +257,7 @@ instance Renderable SubChat where
               admin_part =
                 mapper
                   [ ("Forward errors to chat or channel admins", if settings_forward_to_admins sub_settings then "true" else "false")
+                  , ("Recently active admins", T.intercalate "\n" $ map (\(u, t) -> (T.pack . show $ u) `T.append` ": " `T.append` (T.pack . show $ t)) $ HMS.toList sub_active_admins)
                   ]
            in status_part
                 `T.append` T.intercalate
