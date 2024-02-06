@@ -69,6 +69,9 @@ server =
                         -- ignoring unparsed contents
                         Nothing -> pure ()
                         Just conts -> case interpretCmd conts of
+                          Left (UnknownCommand no_command _) ->
+                            let rendered = "Not a command: " ++ T.unpack no_command
+                             in liftIO . putStrLn $ rendered
                           Left err -> sendErrorAsServiceReply cid err
                           Right action ->
                             evalTgAct uid action cid >>= \case
