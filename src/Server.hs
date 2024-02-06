@@ -7,6 +7,7 @@ module Server (startApp, registerWebhook, makeConfig) where
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
+import Data.Foldable (for_)
 import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
@@ -52,44 +53,44 @@ server =
     :<|> staticSettings
  where
   handleWebhook :: (MonadIO m) => T.Text -> Update -> App m ()
-  handleWebhook secret update =
-    ask >>= \env ->
-      let tok = bot_token . tg_config $ env
-          handle upd = case callback_query upd of
-            Just cbq -> processCbq cbq
-            Nothing -> case message upd of
-              Nothing -> liftIO $ putStrLn "Failed to parse message"
-              Just inboundMsg ->
-                let cid = chat_id . chat $ inboundMsg
-                    uid = user_id . fromJust . from $ inboundMsg
-                 in case reply_to_message inboundMsg of
-                      -- ignoring replies
-                      Just _ -> pure ()
-                      Nothing -> case TgramInJson.text inboundMsg of
-                        -- ignoring unparsed contents
-                        Nothing -> pure ()
-                        Just conts -> case interpretCmd conts of
-                          Left (UnknownCommand no_command _) ->
-                            let rendered = "Not a command: " ++ T.unpack no_command
-                             in liftIO . putStrLn $ rendered
-                          Left err -> sendErrorAsServiceReply cid err
-                          Right action ->
-                            evalTgAct uid action cid >>= \case
-                              Left err -> sendErrorAsServiceReply cid err
-                              Right outboundMsg -> reply cid outboundMsg
-       in case compare secret tok of
-            EQ ->
-              liftIO $
-                (try . runApp env . handle $ update)
-                  >>= \case
-                    Left (SomeException err) ->
-                      alertAdmin (postjobs env) $
-                        "Exception thrown against handler: "
-                          `T.append` (T.pack . show $ err)
-                    Right _ -> pure ()
-            _ -> liftIO $ putStrLn "Secrets do not match."
+  handleWebhook secret update = do
+    env <- ask
+    let tok = bot_token . tg_config $ env
+    case compare secret tok of
+      EQ -> accept env
+      _ -> decline
    where
-    sendErrorAsServiceReply cid err = reply cid (ServiceReply $ render err)
+    decline = liftIO $ putStrLn "Secrets do not match."
+    accept env = do
+      res <- liftIO . try $ runApp env $ handle update
+      case res of
+        Left (SomeException err) ->
+          let alert = "Exception thrown against handler: " `T.append` (T.pack . show $ err)
+           in alertAdmin (postjobs env) alert
+        Right _ -> pure ()
+    handle upd = case callback_query upd of
+      Just cbq -> processCbq cbq
+      Nothing -> proc_msg (message upd)
+    proc_msg msg = case msg of
+      Nothing -> liftIO $ putStrLn "Failed to parse message"
+      Just inboundMsg -> proc_rep inboundMsg
+    proc_rep msg = case reply_to_message msg of
+      Just _ -> pure ()
+      Nothing -> proc_contents msg
+    proc_contents msg = for_ (TgramInJson.text msg) (proc_cmd msg)
+    proc_cmd msg txt = case interpretCmd txt of
+      Left (UnknownCommand no_command _) ->
+        let logline = "Not a command: " ++ T.unpack no_command
+         in liftIO . putStrLn $ logline
+      Left err -> sendErrorAsServiceReply err
+      Right action ->
+        evalTgAct uid action cid >>= \case
+          Left err -> sendErrorAsServiceReply err
+          Right outboundMsg -> reply cid outboundMsg
+     where
+      cid = chat_id . chat $ msg
+      uid = user_id . fromJust . from $ msg
+      sendErrorAsServiceReply err = reply cid (ServiceReply $ render err)
 
   staticSettings :: (MonadIO m) => ServerT Raw m
   staticSettings = serveDirectoryWebApp "/var/www/feedfarer-webui"
