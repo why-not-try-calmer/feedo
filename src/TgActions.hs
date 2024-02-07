@@ -315,52 +315,48 @@ testChannel tok chan_id jobs =
               pure (Right ())
 
 subFeed :: (MonadIO m) => ChatId -> [FeedLink] -> App m Reply
-subFeed cid feeds_urls = do
-  -- check url scheme
-  case mapM eitherUrlScheme feeds_urls of
-    Left err -> respondWith . render $ err
-    Right valid_urls ->
-      -- sort out already existent feeds to minimize network call
-      -- , and subscribe chat to them
-      evalDb GetAllFeeds >>= \case
-        Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` render err
-        Right (DbFeeds old_feeds) ->
-          let urls = map renderUrl valid_urls
-              old_keys = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
-              new_url_schemes = filter (\u -> renderUrl u `notElem` old_keys) valid_urls
-           in do
-                unless (null old_keys) (void $ withChatsFromMem (Sub old_keys) Nothing cid)
-                if null new_url_schemes
-                  then
-                    respondWith $
-                      "Successfully subscribed to "
-                        `T.append` T.intercalate ", " old_keys
-                  else -- fetches feeds at remaining urls
-
-                    liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
-                      -- add feeds
-                      let (failed, built_feeds) = partitionEither r
-                          (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f : fs, w : ws)) ([], []) built_feeds
-                          all_links = old_keys ++ map f_link feeds
-                       in -- exiting early if no feed could be built
-                          if null built_feeds
-                            then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
-                            else
-                              evalDb (UpsertFeeds feeds) >>= \case
-                                Left err -> respondWith $ render err
-                                _ ->
-                                  let to_sub_to = map f_link feeds
-                                   in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
-                                        Left err -> respondWith $ render err
-                                        Right _ ->
-                                          let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
-                                              ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
-                                              warnings_text = case sequenceA warnings of
-                                                Nothing -> mempty
-                                                Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
-                                           in respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
-        _ -> respondWith "Unknown error when trying to subscribe."
+subFeed cid = startWithValidateUrls
  where
+  startWithValidateUrls urls = case mapM eitherUrlScheme urls of
+    Left err -> respondWith . render $ err
+    Right valid_urls -> getFeeds valid_urls
+  getFeeds valid_urls =
+    evalDb GetAllFeeds >>= \case
+      Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` render err
+      Right (DbFeeds old_feeds) -> do
+        let new_valid_urls = getLinks old_feeds
+            old_schemes = getScheme old_feeds
+        unless (null new_valid_urls) (void $ withChatsFromMem (Sub $ getLinks old_feeds) Nothing cid)
+        fetchMore old_schemes new_valid_urls
+      _ -> respondWith "Unknown error when trying to subscribe."
+   where
+    urls = map renderUrl valid_urls
+    getLinks old_feeds = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
+    getScheme old_feeds = filter (\u -> renderUrl u `notElem` getLinks old_feeds) valid_urls
+  fetchMore [] new_valid_urls = respondWith $ "Successfully subscribed to " `T.append` T.intercalate ", " new_valid_urls
+  fetchMore new_url_schemes old_links =
+    liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
+      let (failed, built_feeds) = partitionEither r
+          (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f : fs, w : ws)) ([], []) built_feeds
+          all_links = old_links ++ map f_link feeds
+       in if null built_feeds
+            then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
+            else upDateDb feeds warnings all_links failed
+  upDateDb feeds warnings all_links failed =
+    evalDb (UpsertFeeds feeds) >>= \case
+      Left err -> respondWith $ render err
+      _ ->
+        let to_sub_to = map f_link feeds
+         in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
+              Left err -> respondWith $ render err
+              Right _ -> respondNow warnings all_links failed
+  respondNow warnings all_links failed =
+    let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
+        ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
+        warnings_text = case sequenceA warnings of
+          Nothing -> mempty
+          Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
+     in respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
   respondWith err = pure $ ServiceReply err
 
 evalTgAct ::
