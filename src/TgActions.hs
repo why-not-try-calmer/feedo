@@ -339,16 +339,17 @@ subFeed cid = startWithValidateUrls
     let (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f : fs, w : ws)) ([], []) built_feeds
         all_links = old_links ++ map f_link feeds
     if null built_feeds
-      then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
+      then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate ", " failed
       else upDateDb feeds warnings all_links failed
   upDateDb feeds warnings all_links failed =
     evalDb (UpsertFeeds feeds) >>= \case
       Left err -> respondWith $ render err
-      _ ->
-        let to_sub_to = map f_link feeds
-         in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
-              Left err -> respondWith $ render err
-              Right _ -> respondNow warnings all_links failed
+      _ -> updateMem feeds warnings all_links failed
+  updateMem feeds warnings all_links failed =
+    let to_sub_to = map f_link feeds
+     in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
+          Left err -> respondWith $ render err
+          Right _ -> respondNow warnings all_links failed
   respondNow warnings all_links failed =
     let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
         ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
