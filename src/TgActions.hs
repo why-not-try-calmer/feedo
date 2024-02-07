@@ -334,14 +334,13 @@ subFeed cid = startWithValidateUrls
     getLinks old_feeds = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
     getScheme old_feeds = filter (\u -> renderUrl u `notElem` getLinks old_feeds) valid_urls
   fetchMore [] new_valid_urls = respondWith $ "Successfully subscribed to " `T.append` T.intercalate ", " new_valid_urls
-  fetchMore new_url_schemes old_links =
-    liftIO (mapConcurrently getFeedFromUrlScheme new_url_schemes) >>= \r ->
-      let (failed, built_feeds) = partitionEither r
-          (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f : fs, w : ws)) ([], []) built_feeds
-          all_links = old_links ++ map f_link feeds
-       in if null built_feeds
-            then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
-            else upDateDb feeds warnings all_links failed
+  fetchMore new_url_schemes old_links = do
+    (failed, built_feeds) <- liftIO $ partitionEither <$> mapConcurrently getFeedFromUrlScheme new_url_schemes
+    let (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f : fs, w : ws)) ([], []) built_feeds
+        all_links = old_links ++ map f_link feeds
+    if null built_feeds
+      then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate "," failed
+      else upDateDb feeds warnings all_links failed
   upDateDb feeds warnings all_links failed =
     evalDb (UpsertFeeds feeds) >>= \case
       Left err -> respondWith $ render err
