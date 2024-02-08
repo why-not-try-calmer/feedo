@@ -13,7 +13,6 @@ import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX
 import Mongo (HasMongo (evalDb), evalDb)
 import Notifications
@@ -199,53 +198,26 @@ rebuildAllFeedsFromMem = do
     case res of
       Nothing -> pure []
       Just (failed, feeds) -> do
-        unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds" `T.append` T.intercalate ", " (map r_url failed))
+        unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds: " `T.append` T.intercalate ", " (map r_url failed))
         pure . map sortItems $ feeds
 
 rebuildSomeFeedsFromMem ::
   (MonadReader AppConfig m, MonadIO m) =>
   [FeedLink] ->
-  UTCTime ->
   m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildSomeFeedsFromMem flinks now =
+rebuildSomeFeedsFromMem flinks =
   ask >>= \env -> liftIO $ do
     (failed, succeeded) <- fetch_feeds
     -- if any failed, 'punish' offenders
     -- that is, increment blacklist and remove urls guilty of more 3 failures
-    unless (null failed) (act_on_failed env failed succeeded)
+    unless (null failed) (logAndAlert env failed)
     -- bubble up failure if no feed could be rebuilt, else return the feeds
-    if null succeeded then pure $ Left "Failed to fetch feeds" else pure (Right . feedsFromList $ succeeded)
+    if null succeeded then pure $ Left "Failed to fetch feeds! Could not rebuild." else pure (Right . feedsFromList $ succeeded)
  where
   fetch_feeds = partitionEither <$> mapConcurrently rebuildFeed flinks
-  act_on_failed env failed succeeded = punish env failed >> writeChan (postjobs env) (JobArchive succeeded now)
-  punish env failed = do
-    -- get all failing URLs
-    punishable <- update_blacklist env failed
-    -- get all ids of chats subscribed to a failing URL
-    punished <- update_subchats env punishable
-    -- alert admin
-    let report = "Failed to update these feeds: " `T.append` T.intercalate ", " punishable
-    alertAdmin (postjobs env) (report `T.append` ". Blacklist was updated accordingly.")
-    -- alert chats
-    let msg = "This chat has been found to use a faulty RSS endpoint. It will be removed from your subscriptions."
-    writeChan (postjobs env) (JobTgAlertChats punished msg)
-  update_blacklist env failed = modifyMVar (blacklist env) $ \hmap -> pure (updateBlackList hmap failed, get_faulty_urls hmap)
-   where
-    updateBlackList = foldl' edit_blacklist
-    edit_blacklist hmap (FeedError u st_code er_msg _) =
-      HMS.alter
-        ( \case
-            Nothing -> Just (BlackListedUrl now er_msg st_code 1)
-            Just bl -> Just $ bl{last_attempt = now, offenses = offenses bl + 1}
-        )
-        u
-        hmap
-  get_faulty_urls = map fst . HMS.toList . HMS.filter (\bl -> offenses bl == 3)
-  update_subchats env urls = modifyMVar (subs_state env) $ \hmap -> pure (updateSubChats hmap urls, get_offending_chats hmap)
-   where
-    get_offending_chats = foldl' (\acc subchat -> if any (`S.member` sub_feeds_links subchat) urls then sub_chatid subchat : acc else acc) []
-    updateSubChats = foldl' edit_subchats
-    edit_subchats hmap feedlink = HMS.map (\subchat -> let filtered = S.delete feedlink (sub_feeds_links subchat) in subchat{sub_feeds_links = filtered}) hmap
+  logAndAlert env failed = do
+    writeChan (postjobs env) (JobLog $ map LogFailed failed)
+    writeChan (postjobs env) (JobTgAlertAdmin $ "Failed to fetch " `T.append` T.pack (show $ length failed) `T.append` " feeds")
 
 makeDigestsFromMem :: (MonadIO m) => App m (Either T.Text FromCache)
 makeDigestsFromMem = do
@@ -261,7 +233,7 @@ makeDigestsFromMem = do
   if null $ feeds_to_refresh pre
     then pure $ Right CacheOk
     else
-      rebuildSomeFeedsFromMem (feeds_to_refresh pre) now >>= \case
+      rebuildSomeFeedsFromMem (feeds_to_refresh pre) >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
           -- sometimes a digest would contain items with the same timestamps, but
@@ -286,11 +258,13 @@ makeDigestsFromMem = do
             unless (null $ discarded_items_links post)
               $ writeChan (postjobs env)
                 . JobLog
+              $ pure
               $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
             -- log notifiers
             writeChan (postjobs env) $
               JobLog $
-                LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
+                pure $
+                  LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
             -- Rust??
             where_is_rust env pre post
           pure . Right $ CacheDigests $ batches post
@@ -314,6 +288,7 @@ makeDigestsFromMem = do
         report =
           writeChan (postjobs env)
             . JobLog
+            $ pure
             $ LogDiscardedToRefreshRecipes
               to_refresh
               discarded

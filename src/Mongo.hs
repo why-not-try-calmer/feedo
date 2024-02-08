@@ -628,6 +628,7 @@ adminToBson AdminUser{..} =
 {- Logs -}
 
 logToBson :: LogItem -> Document
+logToBson (LogFailed (FeedError url status err _)) = ["log_url" =: url, "log_status" =: status, "log_err" =: err]
 logToBson (LogMissing missing total t) =
   [ "log_discarded_duplicates" =: missing
   , "log_total_discarded" =: total
@@ -652,6 +653,7 @@ saveToLog logitem =
         LogDiscardedToRefreshRecipes{} -> "logs_discarded"
         LogMissing{} -> "logs_missing"
         LogNotifiers{} -> "logs_notifiers"
+        LogFailed _ -> "logs_failed"
    in void $ withDb (insert collection $ writeDoc logitem)
 
 {- Tests -}

@@ -144,7 +144,7 @@ forkExecute env job =
       _ -> liftIO $ putStrLn "successfully ran job"
     -- cleaning more than 1 month old archives
     void $ evalDb (PruneOld $ addUTCTime (-2592000) now)
-  go (JobLog item) = saveToLog item
+  go (JobLog items) = mapM_ saveToLog items
   go (JobPin cid mid) = do
     runSend_ (bot_token . tg_config $ env) TgPinChatMessage (PinMessage cid mid) >>= \case
       Left _ ->

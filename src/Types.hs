@@ -324,6 +324,8 @@ data FeedError = FeedError
   }
   deriving (Show, Eq)
 
+$(deriveJSON defaultOptions{omitNothingFields = True} ''FeedError)
+
 data InterpreterErr
   = InterpreterErr T.Text
   | UnknownCommand T.Text [T.Text]
@@ -501,7 +503,8 @@ data Notifier
 {- Logs -}
 
 data LogItem
-  = LogMissing
+  = LogFailed FeedError
+  | LogMissing
       { log_feeds_with_missing :: [T.Text]
       , log_total_missed :: Int
       , log_at :: UTCTime
@@ -523,7 +526,7 @@ $(deriveFromJSON defaultOptions{omitNothingFields = True} ''LogItem)
 
 data Job
   = JobArchive [Feed] UTCTime
-  | JobLog LogItem
+  | JobLog [LogItem]
   | JobPin ChatId Int
   | JobPurge ChatId
   | JobRemoveMsg ChatId Int Int
@@ -609,12 +612,9 @@ data BlackListedUrl = BlackListedUrl
   , offenses :: Int
   }
 
-type BlacklistMap = MVar (HMS.HashMap FeedLink BlackListedUrl)
-
 data AppConfig = AppConfig
   { app_version :: T.Text
   , base_url :: T.Text
-  , blacklist :: BlacklistMap
   , connectors :: Connectors
   , last_worker_run :: IORef (Maybe UTCTime)
   , mongo_creds :: MongoCreds
