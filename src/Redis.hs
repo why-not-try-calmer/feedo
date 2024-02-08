@@ -101,7 +101,7 @@ setUpKeyStore = liftIO $ do
   switch_hostnames n = if even n then "redis" else "localhost"
   handleWith (Right connector) = pure $ Right connector
   handleWith (Left (SomeException e)) = do
-    print $ "Failed to connect. TgEvalError: " `T.append` (T.pack . show $ e)
+    putStrLn $ "Failed to connect. TgEvalError: " ++ show e
     putStrLn "Retrying now..."
     pure $ Left ()
 

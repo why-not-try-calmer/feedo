@@ -258,8 +258,6 @@ $(deriveJSON defaultOptions{omitNothingFields = True} ''AdminUser)
 
 {- User actions, errors -}
 
-data ToAdminsOrAdmins = ToAdmins Bool | Admins [UserId] deriving (Show, Eq)
-
 data ParsingSettings
   = PDigestAt [(Int, Int)]
   | PDigestEvery NominalDiffTime
@@ -625,18 +623,6 @@ data AppConfig = AppConfig
   , tg_config :: ServerConfig
   , worker_interval :: Int
   }
-
-printConfig :: AppConfig -> IO ()
-printConfig AppConfig{..} =
-  let zipped =
-        zip
-          ["api_key", "mongo_creds", "tg_config", "base_url", "worker_interval"]
-          [ T.pack $ show mongo_creds
-          , T.pack $ show tg_config
-          , base_url
-          , T.pack $ show worker_interval
-          ]
-   in print $ T.intercalate "\n" $ map (\(k, v) -> k `T.append` ": " `T.append` v) zipped
 
 {- Application -}
 

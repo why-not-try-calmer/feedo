@@ -21,18 +21,19 @@ import Data.Time (UTCTime, getCurrentTime)
 import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import Notifications (alertAdmin)
+import Replies (render)
 import Text.XML
 import Text.XML.Cursor
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), UserId)
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), TgRequestMethod (TgEditMessage, TgSendMessage), UserId)
 import Types
 import Utils (averageInterval, mbTime, sliceIfAboveTelegramMax)
 
 {- Interface -}
 
 class (MonadIO m) => TgReqM m where
-  runSend :: (FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
-  runSend_ :: BotToken -> T.Text -> Outbound -> m (Either T.Text ())
+  runSend :: (FromJSON a) => BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text (JsonResponse a))
+  runSend_ :: BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text ())
 
 instance (MonadIO m) => TgReqM (App m) where
   runSend = reqSend
@@ -42,7 +43,7 @@ instance TgReqM IO where
   runSend = reqSend
   runSend_ = reqSend_
 
-reqSend :: (TgReqM m, FromJSON a) => BotToken -> T.Text -> Outbound -> m (Either T.Text (JsonResponse a))
+reqSend :: (TgReqM m, FromJSON a) => BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text (JsonResponse a))
 reqSend tok postMeth encodedMsg =
   liftIO (try action) >>= \case
     Left (SomeException err) ->
@@ -64,10 +65,10 @@ reqSend tok postMeth encodedMsg =
     _ -> pure encodedMsg
   -- request :: (TgReqM m, FromJSON a) => Outbound -> m (JsonResponse a)
   request outbound =
-    let reqUrl = https "api.telegram.org" /: tok /: postMeth
+    let reqUrl = https "api.telegram.org" /: tok /: render postMeth
      in req Network.HTTP.Req.POST reqUrl (ReqBodyJson outbound) jsonResponse mempty
 
-reqSend_ :: (TgReqM m) => BotToken -> T.Text -> Outbound -> m (Either T.Text ())
+reqSend_ :: (TgReqM m) => BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text ())
 reqSend_ a b c =
   reqSend a b c >>= \case
     Left txt -> pure $ Left txt
@@ -193,7 +194,7 @@ reply cid rep = do
                      in Just $ JobSetPagination cid mid pages reply_permalink
                   else Nothing
               ]
-         in runSend tok "sendMessage" (fromReply msg) >>= \case
+         in runSend tok TgSendMessage (fromReply msg) >>= \case
               Left err ->
                 let forbidden = any (`T.isInfixOf` err) ["blocked", "kicked"]
                  in if not forbidden
@@ -210,7 +211,7 @@ reply cid rep = do
                       Just j -> liftIO $ writeChan chan j
                       Nothing -> pure ()
       send msg@EditReply{} =
-        runSend_ tok "editMessageText" (fromReply msg) >>= \case
+        runSend_ tok TgEditMessage (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
       send msg@(ServiceReply contents) = do
@@ -220,11 +221,11 @@ reply cid rep = do
         let msg'
               | null active_admins = msg
               | otherwise = ForwardServiceReply (head active_admins) contents
-        runSend_ tok "sendMessage" (fromReply msg') >>= \case
+        runSend_ tok TgSendMessage (fromReply msg') >>= \case
           Left err -> report err
           Right _ -> pure ()
       send msg@ForwardServiceReply{} =
-        runSend_ tok "sendMessage" (fromReply msg) >>= \case
+        runSend_ tok TgSendMessage (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
       replyTxt = case rep of

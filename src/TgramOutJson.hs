@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module TgramOutJson where
@@ -10,6 +12,15 @@ import qualified Data.Text as T
 type ChatId = Int64
 type UserId = Int64
 type UserFirstName = T.Text
+
+data TgRequestMethod
+  = TgDeleteMessage
+  | TgGetChat
+  | TgGetChatAdministrators
+  | TgEditMessage
+  | TgPinChatMessage
+  | TgSendMessage
+  deriving (Show, Eq)
 
 data InlineKeyboardButton = InlineKeyboardButton
   { -- exactly one Maybe must be set on pain of throwing
@@ -52,13 +63,6 @@ data Outbound
   | PinMessage
       { out_chat_id :: ChatId
       , out_message_id :: Int
-      }
-  | SetWebHook
-      { out_url :: T.Text
-      , out_certificates :: Maybe T.Text
-      , out_ip_address :: Maybe T.Text
-      , out_max_connections :: Maybe Int
-      , out_allowed_updates :: Maybe [T.Text]
       }
   | GetChat
       { out_chat_id :: ChatId

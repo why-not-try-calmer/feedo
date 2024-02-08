@@ -167,8 +167,8 @@ startApp = do
   env <- getEnvironment
   config <- makeConfig env
   initStart config
-  print $ "Startup completed for version " `T.append` app_version config
-  print $ "Running now using " ++ show port
+  putStrLn $ "Startup completed for version " ++ T.unpack (app_version config)
+  putStrLn $ "Running now using " ++ show port
   run port $ withServer config
  where
   port = 8000

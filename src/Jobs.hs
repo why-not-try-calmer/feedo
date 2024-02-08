@@ -28,7 +28,7 @@ import Replies (
 import Requests (reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
-import TgramOutJson (Outbound (DeleteMessage, PinMessage))
+import TgramOutJson (Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgPinChatMessage, TgDeleteMessage))
 import Types
 
 {- Background tasks -}
@@ -118,11 +118,11 @@ startJobs = do
  where
   action env = do
     job <- readChan $ postjobs env
-    print $ "startJobs: job received: " `T.append` (T.pack . take 20 . show $ job)
+    putStrLn $ "startJobs: job received: " ++ (take 20 . show $ job)
     forkExecute env job
     putStrLn "startJobs: job complete!"
   handler env (SomeException e) = do
-    print $ "Failed to go job: " `T.append` (T.pack . take 20 . show $ e)
+    putStrLn $ "Failed to go job: " ++ (take 20 . show $ e)
     alertAdmin (postjobs env) . reportFailed $ e
   reportFailed e = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
 
@@ -146,7 +146,7 @@ forkExecute env job =
     void $ evalDb (PruneOld $ addUTCTime (-2592000) now)
   go (JobLog item) = saveToLog item
   go (JobPin cid mid) = do
-    runSend_ (bot_token . tg_config $ env) "pinChatMessage" (PinMessage cid mid) >>= \case
+    runSend_ (bot_token . tg_config $ env) TgPinChatMessage (PinMessage cid mid) >>= \case
       Left _ ->
         let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
          in go (JobTgAlertAdmin msg)
@@ -157,7 +157,7 @@ forkExecute env job =
     liftIO $ putStrLn ("Removing message in " ++ msg)
     do
       liftIO $ threadDelay checked_delay
-      runSend_ (bot_token . tg_config $ env) "deleteMessage" (DeleteMessage cid mid) >>= \case
+      runSend_ (bot_token . tg_config $ env) TgDeleteMessage (DeleteMessage cid mid) >>= \case
         Left _ ->
           go
             . JobTgAlertAdmin

@@ -12,6 +12,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
+import TgramOutJson (TgRequestMethod (TgEditMessage, TgGetChat, TgGetChatAdministrators, TgSendMessage, TgPinChatMessage, TgDeleteMessage))
 import Types
 import Utils (nomDiffToReadable, renderAvgInterval, utcToYmd, utcToYmdHMS)
 
@@ -177,6 +178,14 @@ mkReply FromStart =
 
 class Renderable e where
   render :: e -> T.Text
+
+instance Renderable TgRequestMethod where
+  render TgGetChat = "getChat"
+  render TgGetChatAdministrators = "getChatAdministrators"
+  render TgSendMessage = "sendMessage"
+  render TgEditMessage = "editMessageText"
+  render TgPinChatMessage = "pinChatMessage"
+  render TgDeleteMessage = "deleteMessage"
 
 instance Renderable Feed where
   render Feed{..} =

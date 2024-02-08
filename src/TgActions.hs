@@ -93,7 +93,7 @@ isUserAdmin tok uid cid =
                   chat_members = resp_cm_result res_cms :: [ChatMember]
                in pure . Right $ if_admin chat_members
  where
-  getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
+  getChatAdmins = runSend tok TgGetChatAdministrators $ GetChat cid
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= (user_id . cm_user $ member) = acc
@@ -111,7 +111,7 @@ isChatOfType tok cid ty =
               c = resp_result chat_resp :: Chat
            in pure . Right $ chat_type c == ty
  where
-  getChatType = runSend tok "getChat" $ GetChat cid
+  getChatType = runSend tok TgGetChat $ GetChat cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either TgEvalError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -294,7 +294,7 @@ testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either TgEvalE
 testChannel tok chan_id jobs =
   -- tries sending a message to the given channel
   -- if the response rewards the test with a message_id, it's won.
-  runSend tok "sendMessage" (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing Nothing) >>= \case
+  runSend tok TgSendMessage (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing Nothing) >>= \case
     Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ chan_id) `T.append` ". Make sure the bot has administrative rights in that channel."
     Right resp ->
       let res = responseBody resp :: TgGetMessageResponse
@@ -388,7 +388,7 @@ evalTgAct uid (Announce txt) admin_chat =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
         admin_id = alert_chat . tg_config $ env
-        look cid' = runSend tok "getChat" $ GetChat cid'
+        look cid' = runSend tok TgGetChat $ GetChat cid'
         fetch_chat_types = liftIO $ readMVar (subs_state env) >>= mapConcurrently look . HMS.keys
      in if admin_id /= admin_chat
           then exitNotAuth uid

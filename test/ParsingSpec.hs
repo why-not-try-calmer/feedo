@@ -14,7 +14,7 @@ import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
-import Types (AppConfig, Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_desc, f_items, f_link, f_title, f_type), Item (i_desc, i_feed_link, i_link, i_pubdate), Notifier (Post, Pre, batch_recipes, batches, discarded_items_links), ParsingSettings (..), Settings (Settings, settings_digest_interval), SubChat (SubChat, sub_chatid), ToAdminsOrAdmins (..), WordMatches (WordMatches), i_title)
+import Types (AppConfig, Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (f_desc, f_items, f_link, f_title, f_type), Item (i_desc, i_feed_link, i_link, i_pubdate), Notifier (Post, Pre, batch_recipes, batches, discarded_items_links), ParsingSettings (..), Settings (Settings, settings_digest_interval), SubChat (SubChat, sub_chatid), WordMatches (WordMatches), i_title)
 import Utils (defaultChatSettings, mbTime, partitionEither)
 
 spec :: Spec

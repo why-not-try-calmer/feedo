@@ -170,7 +170,7 @@ loadChatsIntoMem = do
             >>= \case
               Right (DbChats chats) -> pure $ update_chats chats now
               Left err -> do
-                liftIO $ print $ render err
+                liftIO $ putStrLn $ T.unpack $ render err
                 pure chats_hmap
               _ -> pure chats_hmap
  where

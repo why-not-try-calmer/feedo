@@ -12,7 +12,8 @@ import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import TgramInJson (TgGetMessageResponse (resp_msg_ok))
-import TgramOutJson (Outbound (..))
+import TgramOutJson
+    ( Outbound(..), TgRequestMethod(TgSendMessage) )
 import Types
 
 spec :: Spec
@@ -45,7 +46,7 @@ spec = withHooks [go, go1]
      in desc $ as target
    where
     action tok cid contents =
-      runSend tok "sendMessage" $
+      runSend tok TgSendMessage $
         OutboundMessage
           { out_chat_id = cid
           , out_text = contents

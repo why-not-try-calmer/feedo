@@ -352,7 +352,7 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      print $
+      putStrLn $
         "Failed to acquire primary replica, reason:"
           ++ show err
           ++ ". Moving to second."
