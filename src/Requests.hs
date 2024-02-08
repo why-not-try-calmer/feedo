@@ -4,10 +4,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Requests (buildFeed, mkPagination, setWebhook, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
+module Requests (buildFeed, mkPagination, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
 import Control.Concurrent (readMVar, writeChan)
-import Control.Exception (SomeException (SomeException), throwIO, try)
+import Control.Exception (SomeException (SomeException), try)
 import Control.Monad.Reader
 import Control.Retry (constantDelay, limitRetries)
 import Data.Aeson.Types
@@ -77,18 +77,6 @@ reqManagerConfig :: HttpConfig
 reqManagerConfig = defaultHttpConfig{httpConfigRetryPolicy = constantDelay 30000 <> limitRetries 2}
 
 {- Telegram -}
-
-setWebhook :: BotToken -> T.Text -> IO ()
-setWebhook tok webhook = do
-  resp <- withReqManager $ runReq reqManagerConfig . pure request
-  let code = responseStatusCode (resp :: JsonResponse Value) :: Int
-      message = responseStatusMessage resp
-  when (code /= 200) $ liftIO . throwIO . userError $ "Failed to set webhook, error message reads: " ++ show message
- where
-  request =
-    req GET (https "api.telegram.org" /: tok /: "setWebhook") NoReqBody jsonResponse $
-      "url"
-        =: (webhook `T.append` "/webhook/" `T.append` tok)
 
 answer :: (TgReqM m) => BotToken -> AnswerCallbackQuery -> m (Either T.Text ())
 answer tok query =

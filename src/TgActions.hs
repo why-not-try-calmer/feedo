@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
-module TgActions (registerWebhook, isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
+module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
 
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
@@ -22,7 +22,7 @@ import Notifications (alertAdmin)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Redis
 import Replies (Replies (FromAbout), mkReply, render)
-import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, setWebhook)
+import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -58,7 +58,7 @@ import Types (
     FromStart
   ),
   Reply (EditReply, ServiceReply),
-  ServerConfig (alert_chat, bot_token, webhook_url),
+  ServerConfig (alert_chat, bot_token),
   SettingsUpdater (Parsed),
   SubChat (sub_feeds_links, sub_linked_to, sub_settings),
   TgEvalError (
@@ -78,14 +78,6 @@ import Types (
  )
 import Utils (maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
-registerWebhook :: AppConfig -> IO ()
-registerWebhook config =
-  let tok = bot_token . tg_config $ config
-      webhook = webhook_url . tg_config $ config
-   in putStrLn "Trying to set webhook"
-        >> setWebhook tok webhook
-        >> print ("Webhook successfully set at " `T.append` webhook)
-
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
   isChatOfType tok cid Private >>= \case
@@ -101,7 +93,7 @@ isUserAdmin tok uid cid =
                   chat_members = resp_cm_result res_cms :: [ChatMember]
                in pure . Right $ if_admin chat_members
  where
-  getChatAdmins = runSend tok "getchChatAdministrators" $ GetChat cid
+  getChatAdmins = runSend tok "getChatAdministrators" $ GetChat cid
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= (user_id . cm_user $ member) = acc
