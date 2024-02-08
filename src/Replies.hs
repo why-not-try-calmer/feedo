@@ -12,7 +12,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
-import TgramOutJson (TgRequestMethod (TgEditMessage, TgGetChat, TgGetChatAdministrators, TgSendMessage, TgPinChatMessage, TgDeleteMessage))
+import TgramOutJson (TgRequestMethod (TgDeleteMessage, TgEditMessage, TgGetChat, TgGetChatAdministrators, TgPinChatMessage, TgSendMessage))
 import Types
 import Utils (nomDiffToReadable, renderAvgInterval, utcToYmd, utcToYmdHMS)
 

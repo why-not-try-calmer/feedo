@@ -28,7 +28,7 @@ import Replies (
 import Requests (reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
-import TgramOutJson (Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgPinChatMessage, TgDeleteMessage))
+import TgramOutJson (Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgDeleteMessage, TgPinChatMessage))
 import Types
 
 {- Background tasks -}

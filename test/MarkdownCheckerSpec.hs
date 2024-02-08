@@ -12,8 +12,10 @@ import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import TgramInJson (TgGetMessageResponse (resp_msg_ok))
-import TgramOutJson
-    ( Outbound(..), TgRequestMethod(TgSendMessage) )
+import TgramOutJson (
+  Outbound (..),
+  TgRequestMethod (TgSendMessage),
+ )
 import Types
 
 spec :: Spec
