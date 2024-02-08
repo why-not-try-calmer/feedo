@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Server (startApp, registerWebhook, makeConfig) where
+module Server (startApp, makeConfig) where
 
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
