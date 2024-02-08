@@ -39,7 +39,7 @@ spec = withHooks [go, go1, go2]
     let desc = describe "subscribe"
         as = it "subscribe a chat or channel to a feed"
         target = do
-          let url = "https://www.reddit.com/r/NixOS/.rss"
+          let url = "https://www.phoronix.com/rss.php"
               cid = 123
               mem_action = subFeed cid [url]
               db_action = withDb $ findOne (select ["sub_chatid" =: cid] "subchats")
