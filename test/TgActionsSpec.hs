@@ -6,8 +6,10 @@ import Data.Foldable (mapM_)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Database.MongoDB (Select (select), findOne, (=:))
 import GHC.IO (evaluate)
 import Hooks (withHooks)
+import Mongo (HasMongo (evalDb, withDb), MongoDoc (readDoc))
 import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
@@ -37,12 +39,15 @@ spec = withHooks [go, go1, go2]
     let desc = describe "subscribe"
         as = it "subscribe a chat or channel to a feed"
         target = do
-          let url = "https://reddit.com/r/haskell.rss"
+          let url = "https://www.reddit.com/r/NixOS/.rss"
               cid = 123
-              action = subFeed cid [url]
-          res <- runApp env action
-          res `shouldSatisfy` (\(ServiceReply reply) -> T.isInfixOf "Added and subscribed" reply)
+              mem_action = subFeed cid [url]
+              db_action = withDb $ findOne (select ["sub_chat_id" =: cid] "subchats")
+          mem_res <- runApp env mem_action
+          mem_res `shouldSatisfy` (\(ServiceReply reply) -> T.isInfixOf "Added and subscribed" reply)
           all_subs <- readMVar (subs_state env)
-          let res = HMS.lookup cid all_subs
-          res `shouldSatisfy` (\case Just chat -> url `S.member` sub_feeds_links chat; Nothing -> False)
+          let mem_lookup = HMS.lookup cid all_subs
+          mem_lookup `shouldSatisfy` (\case Just chat -> url `S.member` sub_feeds_links chat; Nothing -> False)
+          db_res <- runApp env db_action
+          db_res `shouldSatisfy` (\case Right (Just doc) -> let chat = readDoc doc :: SubChat in url `S.member` sub_feeds_links chat)
      in desc $ as target
