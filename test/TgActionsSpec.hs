@@ -7,7 +7,7 @@ import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Database.MongoDB (Select (select), findOne, (=:))
-import GHC.IO (evaluate)
+import GHC.IO (evaluate, unsafePerformIO)
 import Hooks (withHooks)
 import Mongo (HasMongo (evalDb, withDb), MongoDoc (readDoc))
 import Server (makeConfig)
@@ -40,14 +40,16 @@ spec = withHooks [go, go1, go2]
         as = it "subscribe a chat or channel to a feed"
         target = do
           let url = "https://www.phoronix.com/rss.php"
-              cid = 123
+              cid = 123 :: ChatId
               mem_action = subFeed cid [url]
-              db_action = withDb $ findOne (select ["sub_chatid" =: cid] "subchats")
+              db_action = withDb $ findOne (select ["sub_chatid" =: cid] "chats")
           mem_res <- runApp env mem_action
-          mem_res `shouldSatisfy` (\(ServiceReply reply) -> T.isInfixOf "Added and subscribed" reply)
+          mem_res `shouldSatisfy` (\(ServiceReply reply) -> reply == "Successfully subscribed to " `T.append` url)
           all_subs <- readMVar (subs_state env)
           let mem_lookup = HMS.lookup cid all_subs
           mem_lookup `shouldSatisfy` (\case Just chat -> url `S.member` sub_feeds_links chat; Nothing -> False)
           db_res <- runApp env db_action
-          db_res `shouldSatisfy` (\case Right (Just doc) -> let chat = readDoc doc :: SubChat in url `S.member` sub_feeds_links chat)
+          let checkRes (Right (Just doc)) = let chat = readDoc doc :: SubChat in url `S.member` sub_feeds_links chat
+              checkRes something_else = unsafePerformIO $ print something_else >> pure False
+          db_res `shouldSatisfy` checkRes
      in desc $ as target

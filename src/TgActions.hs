@@ -332,23 +332,24 @@ subFeed cid = startWithValidateUrls
         all_links = old_links ++ map f_link feeds
     if null built_feeds
       then prepareResponseWith $ "No feed could be built; reason(s): " `T.append` T.intercalate ", " failed
-      else upDateDb feeds warnings all_links failed
-  upDateDb feeds warnings all_links failed =
+      else saveFeeds feeds warnings all_links failed
+  saveFeeds feeds warnings all_links failed =
     evalDb (UpsertFeeds feeds) >>= \case
       Left err -> prepareResponseWith $ render err
-      _ -> updateMem feeds warnings all_links failed
-  updateMem feeds warnings all_links failed =
+      _ -> updateChatInMem feeds warnings all_links failed
+  updateChatInMem feeds warnings all_links failed =
     let to_sub_to = map f_link feeds
      in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
           Left err -> prepareResponseWith $ render err
           Right _ -> prepareResponse warnings all_links failed
   prepareResponse warnings all_links failed =
-    let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
-        ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
+    let failed_txt = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
+        ok_txt = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
         warnings_text = case sequenceA warnings of
           Nothing -> mempty
           Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
-     in prepareResponseWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
+        contents = (if null failed then ok_txt `T.append` warnings_text else T.append ok_txt failed_txt)
+     in prepareResponseWith contents
   prepareResponseWith txt = pure $ ServiceReply txt
 
 evalTgAct ::
