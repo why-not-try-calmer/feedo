@@ -42,7 +42,7 @@ spec = withHooks [go, go1, go2]
           let url = "https://www.reddit.com/r/NixOS/.rss"
               cid = 123
               mem_action = subFeed cid [url]
-              db_action = withDb $ findOne (select ["sub_chat_id" =: cid] "subchats")
+              db_action = withDb $ findOne (select ["sub_chatid" =: cid] "subchats")
           mem_res <- runApp env mem_action
           mem_res `shouldSatisfy` (\(ServiceReply reply) -> T.isInfixOf "Added and subscribed" reply)
           all_subs <- readMVar (subs_state env)
