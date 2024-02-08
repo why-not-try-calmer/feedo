@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
-module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct) where
+module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct, subFeed) where
 
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
@@ -310,46 +310,46 @@ subFeed :: (MonadIO m) => ChatId -> [FeedLink] -> App m Reply
 subFeed cid = startWithValidateUrls
  where
   startWithValidateUrls urls = case mapM eitherUrlScheme urls of
-    Left err -> respondWith . render $ err
+    Left err -> prepareResponseWith . render $ err
     Right valid_urls -> getFeeds valid_urls
   getFeeds valid_urls =
     evalDb GetAllFeeds >>= \case
-      Left err -> respondWith $ "Unable to acquire feeds. Reason: " `T.append` render err
+      Left err -> prepareResponseWith $ "Unable to acquire feeds. Reason: " `T.append` render err
       Right (DbFeeds old_feeds) -> do
         let new_valid_urls = getLinks old_feeds
             old_schemes = getScheme old_feeds
         unless (null new_valid_urls) (void $ withChatsFromMem (Sub $ getLinks old_feeds) Nothing cid)
         fetchMore old_schemes new_valid_urls
-      _ -> respondWith "Unknown error when trying to subscribe."
+      _ -> prepareResponseWith "Unknown error when trying to subscribe."
    where
     urls = map renderUrl valid_urls
     getLinks old_feeds = map f_link $ filter (\f -> f_link f `elem` urls) old_feeds
     getScheme old_feeds = filter (\u -> renderUrl u `notElem` getLinks old_feeds) valid_urls
-  fetchMore [] new_valid_urls = respondWith $ "Successfully subscribed to " `T.append` T.intercalate ", " new_valid_urls
+  fetchMore [] new_valid_urls = prepareResponseWith $ "Successfully subscribed to " `T.append` T.intercalate ", " new_valid_urls
   fetchMore new_url_schemes old_links = do
     (failed, built_feeds) <- liftIO $ partitionEither <$> mapConcurrently getFeedFromUrlScheme new_url_schemes
     let (feeds, warnings) = foldl' (\(fs, ws) (f, w) -> (f : fs, w : ws)) ([], []) built_feeds
         all_links = old_links ++ map f_link feeds
     if null built_feeds
-      then respondWith $ "No feed could be built; reason(s): " `T.append` T.intercalate ", " failed
+      then prepareResponseWith $ "No feed could be built; reason(s): " `T.append` T.intercalate ", " failed
       else upDateDb feeds warnings all_links failed
   upDateDb feeds warnings all_links failed =
     evalDb (UpsertFeeds feeds) >>= \case
-      Left err -> respondWith $ render err
+      Left err -> prepareResponseWith $ render err
       _ -> updateMem feeds warnings all_links failed
   updateMem feeds warnings all_links failed =
     let to_sub_to = map f_link feeds
      in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
-          Left err -> respondWith $ render err
-          Right _ -> respondNow warnings all_links failed
-  respondNow warnings all_links failed =
+          Left err -> prepareResponseWith $ render err
+          Right _ -> prepareResponse warnings all_links failed
+  prepareResponse warnings all_links failed =
     let failed_text = ". Failed to subscribe to these feeds: " `T.append` T.intercalate ", " failed
         ok_text = "Added and subscribed to these feeds: " `T.append` T.intercalate ", " all_links
         warnings_text = case sequenceA warnings of
           Nothing -> mempty
           Just ws -> "However, the following warnings were raised: " `T.append` T.intercalate ", " ws
-     in respondWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
-  respondWith err = pure $ ServiceReply err
+     in prepareResponseWith (if null failed then ok_text `T.append` warnings_text else T.append ok_text failed_text)
+  prepareResponseWith txt = pure $ ServiceReply txt
 
 evalTgAct ::
   (MonadIO m) =>
