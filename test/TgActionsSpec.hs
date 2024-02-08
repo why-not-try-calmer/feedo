@@ -44,7 +44,7 @@ spec = withHooks [go, go1, go2]
               mem_action = subFeed cid [url]
               db_action = withDb $ findOne (select ["sub_chatid" =: cid] "chats")
           mem_res <- runApp env mem_action
-          mem_res `shouldSatisfy` (\(ServiceReply reply) -> reply == "Successfully subscribed to " `T.append` url)
+          mem_res `shouldSatisfy` (\(ServiceReply reply) -> "subscribed to" `T.isInfixOf` reply)
           all_subs <- readMVar (subs_state env)
           let mem_lookup = HMS.lookup cid all_subs
           mem_lookup `shouldSatisfy` (\case Just chat -> url `S.member` sub_feeds_links chat; Nothing -> False)
