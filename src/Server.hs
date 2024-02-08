@@ -118,8 +118,7 @@ makeConfig env =
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
       version = T.pack . fromMaybe "(unspecified)" $ lookup "APP_VERSION" env
    in do
-        mvar1 <- newMVar HMS.empty
-        mvar2 <- newMVar HMS.empty
+        mvar <- newMVar HMS.empty
         chan <- newChan
         conn <-
           setUpKeyStore >>= \case
@@ -136,12 +135,11 @@ makeConfig env =
         pure
           AppConfig
             { app_version = version
-            , blacklist = mvar1
             , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
             , base_url = base
             , mongo_creds = connected_creds
             , last_worker_run = last_run_ioref
-            , subs_state = mvar2
+            , subs_state = mvar
             , postjobs = chan
             , worker_interval = interval
             , connectors = (conn, pipe_ioref)
