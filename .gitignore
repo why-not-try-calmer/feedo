@@ -1,8 +1,9 @@
 .stack-work/
-*.lock
 .env
+stack.yaml.lock
 playgrounds/
 .vscode/settings.json
 .venv/
+.direnv/
 cert.pem
 private.key
