@@ -6,7 +6,7 @@ import Control.Concurrent (
   readChan,
   threadDelay,
  )
-import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, withAsync)
+import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, withAsync, wait)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -122,7 +122,7 @@ startJobs = do
     forkExecute env job
     putStrLn "startJobs: job complete!"
   handler env (SomeException e) = do
-    putStrLn $ "Failed to go job: " ++ (take 20 . show $ e)
+    putStrLn $ "Failed to run job: " ++ (take 20 . show $ e)
     alertAdmin (postjobs env) . reportFailed $ e
   reportFailed e = "postProcJobs: Exception met : " `T.append` (T.pack . show $ e)
 
@@ -132,7 +132,7 @@ interpolateCidInTxt before cid after = before `T.append` (T.pack . show $ cid) `
 forkExecute :: (MonadIO m) => AppConfig -> Job -> m ()
 forkExecute env job =
   let todo = runApp env $ go job
-   in liftIO $ withAsync todo (\_ -> pure ())
+   in liftIO $ withAsync todo wait
  where
   go (JobArchive feeds now) = do
     -- archiving items

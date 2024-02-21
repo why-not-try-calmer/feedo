@@ -31,7 +31,7 @@ spec = withHooks [go]
               items = [Item "Nice Item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           writeChan jobs $ JobArchive [feed] now
-          threadDelay 2000000
+          threadDelay 5000000
           docs <- runApp env $ withDb $ find (select ["i_title" =: ("Nice Item" :: T.Text)] "items") >>= rest
           docs `shouldSatisfy` (\(Right docs) -> not . null $ docs)
      in desc $ as target
