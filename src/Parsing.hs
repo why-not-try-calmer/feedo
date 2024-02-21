@@ -18,7 +18,7 @@ import Types (
   FeedType (..),
   ParsingSettings (..),
   Settings (settings_digest_title),
-  TgEvalError (BadFeedUrl),
+  TgEvalError (BadFeed, BadFeedUrl),
  )
 import Utils (defaultChatSettings, mbTime, sortTimePairs)
 
@@ -41,6 +41,8 @@ eitherUrlScheme s
 getFeedFromUrlScheme :: (MonadIO m) => Url scheme -> m (Either T.Text (Feed, Maybe T.Text))
 getFeedFromUrlScheme scheme =
   buildFeed Rss scheme >>= \case
+    Left err@(BadFeed _) ->
+      pure . Left $ "Exception when trying to fetch feed: " `T.append` render err
     Left _ ->
       buildFeed Atom scheme >>= \case
         Left err -> pure . Left . render $ err
@@ -57,6 +59,10 @@ rebuildFeed key = case eitherUrlScheme key of
  where
   build url =
     buildFeed Rss url >>= \case
+      Left err@(BadFeed _) ->
+        pure
+          . Left
+          $ FeedError "Exception when trying to fetch feed." Nothing mempty (render err)
       Left _ ->
         buildFeed Atom url >>= \case
           Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (render build_error)
