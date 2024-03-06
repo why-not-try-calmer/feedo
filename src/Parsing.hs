@@ -62,7 +62,12 @@ rebuildFeed key = case eitherUrlScheme key of
       Left err@(BadFeed _) ->
         pure
           . Left
-          $ FeedError "Exception when trying to fetch feed." Nothing mempty (render err)
+          $ FeedError
+            { r_url = renderUrl url
+            , r_error_message = "Exception when trying to fetch feed: " `T.append` render err
+            , r_status_code = Nothing
+            , r_user_message = mempty
+            }
       Left _ ->
         buildFeed Atom url >>= \case
           Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (render build_error)
@@ -84,27 +89,27 @@ parseSettings lns = case foldr mkPairs Nothing lns of
      in if null not_parsed
           then Right parsed
           else
-            Left $
-              T.intercalate ", " not_parsed
-                `T.append` ". Make sure to use only valid key-value pairs: "
-                `T.append` T.intercalate
-                  "\n"
-                  [ "blacklist <keyword keyword ...>"
-                  , "digest_at <HH:MM HH:MM ...>"
-                  , "digest_collapse <n>"
-                  , "digest_every <n> <m|h|d>"
-                  , "digest_size <n>"
-                  , "digest_start <YYYY-mm-dd>"
-                  , "digest_title <title>"
-                  , "disable_webview <false|true>"
-                  , "follow <false|true>"
-                  , "forward_to_admins <true|false>"
-                  , "only_search_notif <url1 url2 ...>"
-                  , "pagination <false|true>"
-                  , "pin <false|true>"
-                  , "search_notif <keyword keyword ...>"
-                  , "share_link <false|true>"
-                  ]
+            Left
+              $ T.intercalate ", " not_parsed
+              `T.append` ". Make sure to use only valid key-value pairs: "
+              `T.append` T.intercalate
+                "\n"
+                [ "blacklist <keyword keyword ...>"
+                , "digest_at <HH:MM HH:MM ...>"
+                , "digest_collapse <n>"
+                , "digest_every <n> <m|h|d>"
+                , "digest_size <n>"
+                , "digest_start <YYYY-mm-dd>"
+                , "digest_title <title>"
+                , "disable_webview <false|true>"
+                , "follow <false|true>"
+                , "forward_to_admins <true|false>"
+                , "only_search_notif <url1 url2 ...>"
+                , "pagination <false|true>"
+                , "pin <false|true>"
+                , "search_notif <keyword keyword ...>"
+                , "share_link <false|true>"
+                ]
  where
   intoParsing (!not_parsed, !parsed) (!k, !txt)
     | k == "digest_at" =
