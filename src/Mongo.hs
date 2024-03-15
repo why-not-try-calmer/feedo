@@ -632,7 +632,7 @@ logToBson (LogFailed (FeedError url status err _ attempt)) =
   [ "log_url" =: url
   , "log_status" =: status
   , "log_err" =: err
-  , "log_last_attempts" =: attempt
+  , "log_last_attempt" =: attempt
   ]
 logToBson (LogMissing missing total t) =
   [ "log_discarded_duplicates" =: missing
