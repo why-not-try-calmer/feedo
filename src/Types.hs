@@ -321,6 +321,7 @@ data FeedError = FeedError
   , r_status_code :: Maybe Int
   , r_error_message :: T.Text
   , r_user_message :: T.Text
+  , r_last_attempt :: UTCTime
   }
   deriving (Show, Eq)
 
