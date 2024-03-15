@@ -257,18 +257,20 @@ getActiveChatAdminsIfForwarding subchats cid after =
 
 fetchFeed :: (MonadIO m) => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =
-  liftIO (try action :: IO (Either HttpException LbsResponse)) >>= \case
-    Left (VanillaHttpException exc) -> case exc of
-      HTTP.HttpExceptionRequest _ cont -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack . show $ cont) "Invalid request."
-      HTTP.InvalidUrlException url' reason -> pure . Left $ FeedError (T.pack url') Nothing (T.pack reason) "Invalid URL."
-    Left (JsonHttpException msg) -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack msg) "Invalid JSON."
-    Right resp ->
-      let code = responseStatusCode resp :: Int
-          status_message = T.decodeUtf8 $ responseStatusMessage resp
-          contents = responseBody resp
-       in if code == 200
-            then pure . Right $ contents
-            else pure . Left $ FeedError (renderUrl url) (Just code) status_message "Response received but non-200 status code."
+  liftIO $ do
+    now <- getCurrentTime
+    (try action :: IO (Either HttpException LbsResponse)) >>= \case
+      Left (VanillaHttpException exc) -> case exc of
+        HTTP.HttpExceptionRequest _ cont -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack . show $ cont) "Invalid request." now
+        HTTP.InvalidUrlException url' reason -> pure . Left $ FeedError (T.pack url') Nothing (T.pack reason) "Invalid URL." now
+      Left (JsonHttpException msg) -> pure . Left $ FeedError (renderUrl url) Nothing (T.pack msg) "Invalid JSON." now
+      Right resp ->
+        let code = responseStatusCode resp :: Int
+            status_message = T.decodeUtf8 $ responseStatusMessage resp
+            contents = responseBody resp
+         in if code == 200
+              then pure . Right $ contents
+              else pure . Left $ FeedError (renderUrl url) (Just code) status_message "Response received but non-200 status code." now
  where
   action = withReqManager $ runReq reqManagerConfig . pure request
   request = req GET url NoReqBody lbsResponse mempty

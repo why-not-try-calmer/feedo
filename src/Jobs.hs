@@ -6,7 +6,7 @@ import Control.Concurrent (
   readChan,
   threadDelay,
  )
-import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, withAsync, wait)
+import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, wait, withAsync)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
