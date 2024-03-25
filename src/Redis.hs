@@ -45,7 +45,7 @@ instance (MonadIO m) => HasRedis (App m) where
                 pure
                   . Left
                   $ "TgEvalError while trying to refresh after pulling anew from database. Chat involved: "
-                    `T.append` (T.pack . show $ cid)
+                  `T.append` (T.pack . show $ cid)
    where
     (lk, k) = pageKeys cid mid
     query = do
@@ -89,16 +89,14 @@ setUpKeyStore = liftIO $ do
   Right <$> try_over 1
  where
   try_over n =
-    let hostname = switch_hostnames n
-     in try (checkedConnect defaultConnectInfo{connectHost = hostname})
-          >>= ( handleWith >=> \case
-                  Left () ->
-                    if n == 5
-                      then throwIO $ userError "Giving up"
-                      else threadDelay (1000000 * n * 2) >> try_over (n + 1)
-                  Right c -> pure c
-              )
-  switch_hostnames n = if even n then "redis" else "localhost"
+    try (checkedConnect defaultConnectInfo{connectHost = "redis"})
+      >>= ( handleWith >=> \case
+              Left () ->
+                if n == 5
+                  then throwIO $ userError "Giving up"
+                  else threadDelay (1000000 * n * 2) >> try_over (n + 1)
+              Right c -> pure c
+          )
   handleWith (Right connector) = pure $ Right connector
   handleWith (Left (SomeException e)) = do
     putStrLn $ "Failed to connect. TgEvalError: " ++ show e
