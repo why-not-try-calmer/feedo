@@ -66,8 +66,6 @@ services:
       command: redis-server --maxmemory 250mb --maxmemory-policy volatile-lfu
       volumes:
         - redis-data:/data/redis-store
-      ports:
-        - "27017:27017"
 
 volumes:
   mongo-data:
