@@ -128,41 +128,26 @@ setupDb credentials = do
 
 instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
-  withDb action = do
-    env <- ask
-    let attemptWith pipe = try $ runMongo (database_name . mongo_creds $ env) pipe action
-        finishWith fresh_pipe = do
-          atomicModifyIORef' (ref env) (const (fresh_pipe, ()))
-          attemptGiveup fresh_pipe
-        attemptGiveup pipe =
-          attemptWith pipe >>= \case
-            Left (SomeException e) -> do
-              alert $ "Giving up after successful re-authentication and despite replacing the broken Pipe, on: " ++ show e
-              pure . Left . T.pack . show $ e
-            Right r -> pure $ Right r
-        alert err =
-          liftIO
-            $ alertAdmin (postjobs env)
-            $ "withDb failed with "
-            `T.append` (T.pack . show $ err)
-            `T.append` " If the connector timed out, one retry will be carried out, using the same Connection."
-    pipe <- liftIO $ acquire env
-    attempt <- liftIO $ attemptWith pipe
-    case attempt of
-      Left (ConnectionFailure failure) -> do
-        alert failure
-        setupDb (mongo_creds env) >>= \case
-          Left e -> do
-            alert $ "Giving up after first_pass failed and re-authentication failed on: " ++ show e
-            pure . Left . T.pack $ show e
-          Right (fresh_pipe, _) -> liftIO $ finishWith fresh_pipe
-      Left err -> do
-        alert err
-        liftIO $ attemptGiveup pipe
-      Right r -> pure $ Right r
+  withDb action =
+    ask >>= \env -> liftIO $ do
+      pipe <- readIORef (snd . connectors $ env)
+      let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
+      tryOnce >>= \case
+        Left (SomeException err1) -> do
+          close pipe
+          alertAdmin (postjobs env) $ "Unable to connect; choked on: " `T.append` T.pack (show err1) `T.append` " Retrying once..."
+          tryOnce >>= \case
+            Left (SomeException err2) -> do
+              close pipe
+              let msg = "Failed to connect twice; giving up. Last failure because of: " `T.append` T.pack (show err2)
+              alertAdmin (postjobs env) msg
+              pure . Left $ msg
+            Right ok -> replacePipe env pipe ok
+        Right ok -> replacePipe env pipe ok
    where
-    ref = snd . connectors
-    acquire = readIORef . ref
+    replacePipe env p ok = do
+      atomicModifyIORef' (snd . connectors $ env) (const (p, ()))
+      pure $ Right ok
 
   evalDb :: (MonadIO m) => DbAction -> App m DbRes
   evalDb (DbAskForLogin uid cid) = do
@@ -184,10 +169,10 @@ instance (MonadIO m) => HasMongo (App m) where
     mkSafeHash =
       liftIO getSystemTime
         <&> T.pack
-        . show
-        . hashWith SHA256
-        . B.pack
-        . show
+          . show
+          . hashWith SHA256
+          . B.pack
+          . show
   evalDb (CheckLogin h) =
     let r = findOne (select ["admin_token" =: h] "admins")
         del = deleteOne (select ["admin_token" =: h] "admins")
@@ -352,10 +337,10 @@ primaryOrSecondary :: ReplicaSet -> IO (Maybe Pipe)
 primaryOrSecondary rep =
   try (primary rep) >>= \case
     Left (SomeException err) -> do
-      putStrLn
-        $ "Failed to acquire primary replica, reason:"
-        ++ show err
-        ++ ". Moving to second."
+      putStrLn $
+        "Failed to acquire primary replica, reason:"
+          ++ show err
+          ++ ". Moving to second."
       try (secondaryOk rep) >>= \case
         Left (SomeException _) -> pure Nothing
         Right pipe -> pure $ Just pipe
@@ -404,21 +389,21 @@ markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
 -- marking input chats as notified
 markNotified notified_chats now = do
   env <- ask
-  liftIO
-    $ modifyMVar_ (subs_state env)
-    $ \subs ->
-      let updated_chats = updated_notified_chats notified_chats subs
-       in runApp env
-            $ evalDb (UpsertChats updated_chats)
-            >>= \case
-              Left err -> do
-                alertAdmin (postjobs env)
-                  $ "notifier: failed to \
-                    \ save updated chats to db because of this error"
-                  `T.append` render err
-                pure subs
-              Right DbDone -> pure updated_chats
-              _ -> pure subs
+  liftIO $
+    modifyMVar_ (subs_state env) $
+      \subs ->
+        let updated_chats = updated_notified_chats notified_chats subs
+         in runApp env $
+              evalDb (UpsertChats updated_chats)
+                >>= \case
+                  Left err -> do
+                    alertAdmin (postjobs env) $
+                      "notifier: failed to \
+                      \ save updated chats to db because of this error"
+                        `T.append` render err
+                    pure subs
+                  Right DbDone -> pure updated_chats
+                  _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey
