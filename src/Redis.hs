@@ -45,7 +45,7 @@ instance (MonadIO m) => HasRedis (App m) where
                 pure
                   . Left
                   $ "TgEvalError while trying to refresh after pulling anew from database. Chat involved: "
-                  `T.append` (T.pack . show $ cid)
+                    `T.append` (T.pack . show $ cid)
    where
     (lk, k) = pageKeys cid mid
     query = do

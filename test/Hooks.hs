@@ -20,4 +20,6 @@ afterTest config = do
 
 withHooks tests = do
   conf <- runIO beforeTest
-  afterTest conf `afterAll_` mapM_ (\t -> t conf) tests
+  mapM_ (\t -> t conf) tests
+
+-- afterTest conf `afterAll_` mapM_ (\t -> t conf) tests
