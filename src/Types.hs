@@ -514,6 +514,7 @@ data LogItem
       { discarded :: [T.Text]
       , to_refresh :: [T.Text]
       , recipes :: [T.Text]
+      , discarded_at :: UTCTime
       }
   deriving (Eq, Show)
 
