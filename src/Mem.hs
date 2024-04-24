@@ -260,11 +260,6 @@ makeDigestsFromMem = do
                 . JobLog
               $ pure
               $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
-            -- log notifiers
-            writeChan (postjobs env) $
-              JobLog $
-                pure $
-                  LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
             -- Rust??
             where_is_rust env pre post
           pure . Right $ CacheDigests $ batches post

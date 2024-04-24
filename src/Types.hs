@@ -515,10 +515,6 @@ data LogItem
       , to_refresh :: [T.Text]
       , recipes :: [T.Text]
       }
-  | LogNotifiers
-      { pre_notifier_subchats :: HMS.HashMap ChatId SubChat
-      , post_notifier_subchats :: HMS.HashMap ChatId SubChat
-      }
   deriving (Eq, Show)
 
 $(deriveFromJSON defaultOptions{omitNothingFields = True} ''LogItem)

@@ -1,9 +1,9 @@
 services:    
     
-    test:
+    app_test:
       image: ghcr.io/why-not-try-calmer/feedo-test:latest
       profiles: [test]
-      depends_on: [mongo, redis]
+      depends_on: [mongo_test, redis]
       container_name: feedfarer-test
       restart: "no"
       build: 
@@ -38,7 +38,7 @@ services:
     mongo:
       image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
       restart: "on-failure"
-      command: --wiredTigerCacheSizeGB 0.25 # trying to fight RAM exhaustion
+      command: --maxConns 5 --wiredTigerCacheSizeGB 0.25 # trying to fight RAM exhaustion
       environment:
         - MONGO_INITDB_ROOT_USERNAME
         - MONGO_INITDB_ROOT_PASSWORD
@@ -48,6 +48,20 @@ services:
       ports:
         - "27017:27017"
        
+    mongo_test:
+      profiles: [test]
+      image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
+      restart: "on-failure"
+      command: --wiredTigerCacheSizeGB 0.25 # trying to fight RAM exhaustion
+      environment:
+        - MONGO_INITDB_ROOT_USERNAME
+        - MONGO_INITDB_ROOT_PASSWORD
+      volumes:
+        - mongo-data:/data/db
+        - ./scripts/mongo-startup.js:/scripts/mongo-startup.js:ro
+      ports:
+        - "27017:27017"
+
     nginx:
       depends_on: [app]
       image: nginx:latest

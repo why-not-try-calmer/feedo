@@ -630,10 +630,6 @@ logToBson (LogDiscardedToRefreshRecipes to_refresh discarded recipes) =
   , "log_discarded" =: discarded
   , "log_recipes" =: recipes
   ]
-logToBson (LogNotifiers pre_notifier post_notifier) =
-  [ "pre_notifier_subchats" =: toBson pre_notifier
-  , "post_notifier_subchats" =: toBson post_notifier
-  ]
  where
   toBson notifier = map (chatToBson . snd) $ HMS.toList notifier
 
@@ -642,7 +638,6 @@ saveToLog logitem =
   let collection = case logitem of
         LogDiscardedToRefreshRecipes{} -> "logs_discarded"
         LogMissing{} -> "logs_missing"
-        LogNotifiers{} -> "logs_notifiers"
         LogFailed _ -> "logs_failed"
    in void $ withDb (insert collection $ writeDoc logitem)
 
