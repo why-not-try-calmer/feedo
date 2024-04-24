@@ -19,6 +19,7 @@ import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
@@ -625,26 +626,30 @@ logToBson (LogMissing missing total t) =
   , "log_at" =: t
   , "log_type" =: ("discarded_duplicates" :: T.Text)
   ]
-logToBson (LogDiscardedToRefreshRecipes to_refresh discarded recipes) =
+logToBson (LogDiscardedToRefreshRecipes to_refresh discarded recipes t) =
   [ "log_refresh" =: to_refresh
   , "log_discarded" =: discarded
+  , "log_at" =: t
   , "log_recipes" =: recipes
   ]
-logToBson (LogNotifiers pre_notifier post_notifier) =
-  [ "pre_notifier_subchats" =: toBson pre_notifier
-  , "post_notifier_subchats" =: toBson post_notifier
-  ]
- where
-  toBson notifier = map (chatToBson . snd) $ HMS.toList notifier
 
 saveToLog :: (HasMongo m, MonadIO m) => LogItem -> m ()
 saveToLog logitem =
   let collection = case logitem of
         LogDiscardedToRefreshRecipes{} -> "logs_discarded"
         LogMissing{} -> "logs_missing"
-        LogNotifiers{} -> "logs_notifiers"
         LogFailed _ -> "logs_failed"
-   in void $ withDb (insert collection $ writeDoc logitem)
+      getDelta = do
+        -- 30 days ago, in seconds
+        now <- getCurrentTime
+        pure $ posixSecondsToUTCTime $ utcTimeToPOSIXSeconds now - fromIntegral (30 * 86400 :: Integer)
+      pruneLogsOn x_days_ago =
+        let selector = ["log_at" =: ["$lte" =: x_days_ago]]
+            opts = []
+            collections = ["logs_discarded", "logs_missing", "logs_failed"]
+         in mapM_ (\coll -> deleteAll coll [(selector, opts)]) collections
+      thenInsert = insert collection $ writeDoc logitem
+   in liftIO getDelta >>= \delta -> void $ withDb $ pruneLogsOn delta >> thenInsert
 
 {- Tests -}
 

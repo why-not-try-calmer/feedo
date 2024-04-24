@@ -260,20 +260,15 @@ makeDigestsFromMem = do
                 . JobLog
               $ pure
               $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
-            -- log notifiers
-            writeChan (postjobs env) $
-              JobLog $
-                pure $
-                  LogNotifiers (HMS.map fst . batch_recipes $ pre) (HMS.map fst . batches $ post)
             -- Rust??
-            where_is_rust env pre post
+            where_is_rust env pre post now
           pure . Right $ CacheDigests $ batches post
  where
   get_last_batch rebuilt =
     evalDb (GetSomeFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
       Right (DbFeeds fs) -> pure $ map i_link $ foldMap f_items fs
       _ -> pure mempty
-  where_is_rust env Pre{..} Post{..} =
+  where_is_rust env Pre{..} Post{..} now =
     let rust_in = filter (T.isInfixOf "rust")
         to_refresh = rust_in feeds_to_refresh
         discarded = rust_in discarded_items_links
@@ -293,5 +288,6 @@ makeDigestsFromMem = do
               to_refresh
               discarded
               recipes
+              now
      in unless (all null [to_refresh, discarded, recipes]) report
-  where_is_rust _ _ _ = undefined
+  where_is_rust _ _ _ _ = undefined

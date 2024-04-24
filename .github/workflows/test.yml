@@ -59,8 +59,8 @@ jobs:
           echo "TELEGRAM_TOKEN=$telegram_token" >> .env
           echo "WEBHOOK_URL=$webhook_url" >> .env
 
-          docker compose pull test  
-          docker compose up mongo -d
+          docker compose pull app_test
+          docker compose up mongo_test -d
           sleep 5
-          docker compose exec -e TEST=1 mongo mongosh --file /scripts/mongo-startup.js
-          docker compose run test
+          docker compose exec -e TEST=1 mongo_test mongosh --file /scripts/mongo-startup.js
+          docker compose run app_test

@@ -514,10 +514,7 @@ data LogItem
       { discarded :: [T.Text]
       , to_refresh :: [T.Text]
       , recipes :: [T.Text]
-      }
-  | LogNotifiers
-      { pre_notifier_subchats :: HMS.HashMap ChatId SubChat
-      , post_notifier_subchats :: HMS.HashMap ChatId SubChat
+      , discarded_at :: UTCTime
       }
   deriving (Eq, Show)
 
