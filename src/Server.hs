@@ -105,12 +105,12 @@ makeConfig :: [(String, String)] -> IO AppConfig
 makeConfig env =
   let alert_chat_id = read . fromJust $ lookup "ALERT_CHATID" env
       base = T.pack . fromJust $ lookup "BASE_URL" env
-      dbName = case lookup "TEST" env of
-        Just "1" -> "feedfarer-test"
-        _ -> "feedfarer"
+      (dbName, dbServiceName) = case lookup "TEST" env of
+        Just "1" -> ("feedfarer-test", "mongo_test")
+        _ -> ("feedfarer", "mongo")
       creds =
         let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
-         in MongoCredsServer "mongo" dbName user pwd
+         in MongoCredsServer dbServiceName dbName user pwd
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
       webhook =
         let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
