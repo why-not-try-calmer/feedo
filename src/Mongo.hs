@@ -646,8 +646,7 @@ saveToLog logitem =
       pruneLogsOn x_days_ago =
         let selector = ["log_at" =: ["$lt" =: (x_days_ago :: UTCTime)]]
             opts = []
-            collections = ["logs_discarded", "logs_missing", "logs_failed"]
-         in mapM_ (\coll -> deleteAll coll [(selector, opts)]) collections
+         in deleteAll collection [(selector, opts)]
       thenInsert = insert collection $ writeDoc logitem
    in liftIO getDelta >>= \delta -> void $ withDb $ pruneLogsOn delta >> thenInsert
 
