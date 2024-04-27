@@ -1,4 +1,4 @@
-FROM haskell:9.0.2
+FROM haskell:9.2.5
 # Version from build arg
 ARG app_version
 ENV APP_VERSION=$app_version
@@ -6,7 +6,7 @@ ENV APP_VERSION=$app_version
 # Dependencies for caching
 WORKDIR /opt/app
 COPY feedfarer.cabal stack.yaml .
-RUN stack --resolver lts-19.33 test \
+RUN stack --resolver lts-20.9 test \
   --install-ghc \
   --no-library-profiling \
   --fast \
@@ -17,4 +17,4 @@ COPY . .
 COPY /static /var/www/feedfarer-webui
 
 # Build and run tests
-CMD ["stack", "--resolver", "lts-19.33", "test", "--fast"]
+CMD ["stack", "--resolver", "lts-20.9", "test", "--fast"]
