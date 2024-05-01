@@ -186,8 +186,8 @@ loadChatsIntoMem = do
         )
         chats
 
-rebuildAllFeedsFromMem :: (MonadIO m) => App m [Feed]
-rebuildAllFeedsFromMem = do
+rebuildAllFeeds :: (MonadIO m) => App m [Feed]
+rebuildAllFeeds = do
   env <- ask
   chats <- liftIO . readMVar $ subs_state env
   let urls = S.toList $ HMS.foldl' (\acc c -> sub_feeds_links c `S.union` acc) S.empty chats
@@ -198,14 +198,14 @@ rebuildAllFeedsFromMem = do
     case res of
       Nothing -> pure []
       Just (failed, feeds) -> do
-        unless (null failed) (report $ "rebuildAllFeedsFromMem: Unable to rebuild these feeds: " `T.append` T.intercalate ", " (map r_url failed))
+        unless (null failed) (report $ "rebuildAllFeeds: Unable to rebuild these feeds: " `T.append` T.intercalate ", " (map r_url failed))
         pure . map sortItems $ feeds
 
-rebuildSomeFeedsFromMem ::
+rebuildSomeFeeds ::
   (MonadReader AppConfig m, MonadIO m) =>
   [FeedLink] ->
   m (Either T.Text (HMS.HashMap T.Text Feed))
-rebuildSomeFeedsFromMem flinks =
+rebuildSomeFeeds flinks =
   ask >>= \env -> liftIO $ do
     (failed, succeeded) <- fetch_feeds
     -- if any failed, 'punish' offenders
@@ -219,8 +219,8 @@ rebuildSomeFeedsFromMem flinks =
     writeChan (postjobs env) (JobLog $ map LogFailed failed)
     writeChan (postjobs env) (JobTgAlertAdmin $ "Failed to fetch " `T.append` T.pack (show $ length failed) `T.append` " feeds")
 
-makeDigestsFromMem :: (MonadIO m) => App m (Either T.Text FromCache)
-makeDigestsFromMem = do
+makeDigests :: (MonadIO m) => App m (Either T.Text FromCache)
+makeDigests = do
   env <- ask
   (chats, now, last_run) <- liftIO $ do
     chats <- readMVar $ subs_state env
@@ -233,7 +233,7 @@ makeDigestsFromMem = do
   if null $ feeds_to_refresh pre
     then pure $ Right CacheOk
     else
-      rebuildSomeFeedsFromMem (feeds_to_refresh pre) >>= \case
+      rebuildSomeFeeds (feeds_to_refresh pre) >>= \case
         Left err -> pure $ Left err
         Right rebuilt -> do
           -- sometimes a digest would contain items with the same timestamps, but

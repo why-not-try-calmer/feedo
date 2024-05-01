@@ -152,8 +152,8 @@ instance (MonadIO m) => HasMongo (App m) where
                       conns' = (conn, new_pipe)
                   print replacing_msg >> alertAdmin (postjobs env) replacing_msg
                   pure (conns', Left msg)
-            -- otherwise simply return the exception's message
-            else pure (conns, Left msg)
+            else -- otherwise simply return the exception's message
+              pure (conns, Left msg)
         Right ok -> pure (conns, Right ok)
 
   evalDb :: (MonadIO m) => DbAction -> App m DbRes

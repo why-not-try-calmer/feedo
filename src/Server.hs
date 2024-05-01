@@ -151,7 +151,7 @@ initStart env = runApp env $ do
   liftIO $ putStrLn "jobs queue started"
   loadChatsIntoMem
   liftIO $ putStrLn "chats loaded"
-  feeds <- rebuildAllFeedsFromMem
+  feeds <- rebuildAllFeeds
   liftIO $ putStrLn "feeds built"
   void $ evalDb $ UpsertFeeds feeds
   liftIO $ putStrLn "feeds saved"
