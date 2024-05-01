@@ -4,7 +4,7 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (modifyMVar_, readMVar)
+import Control.Concurrent.MVar (readMVar, modifyMVarMasked_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -152,7 +152,7 @@ instance (MonadIO m) => HasMongo (App m) where
                 let replacing_msg = "Pipe created. Replacing old."
                 print replacing_msg
                 alertAdmin (postjobs env) replacing_msg  
-                modifyMVar_ (connectors env) $ \(conn, _) -> pure (conn, new_pipe)
+                modifyMVarMasked_ (connectors env) $ \(conn, _) -> pure (conn, new_pipe)
           pure $ Left msg
         Right ok -> pure $ Right ok
 
@@ -397,7 +397,7 @@ markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
 markNotified notified_chats now = do
   env <- ask
   liftIO $
-    modifyMVar_ (subs_state env) $
+    modifyMVarMasked_ (subs_state env) $
       \subs ->
         let updated_chats = updated_notified_chats notified_chats subs
          in runApp env $
