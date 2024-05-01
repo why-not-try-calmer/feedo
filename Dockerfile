@@ -1,11 +1,11 @@
-FROM utdemir/ghc-musl:v25-ghc925 as builder
+FROM utdemir/ghc-musl:v25-ghc944 as builder
 
 RUN ghcup install stack
 WORKDIR /opt/app/
 COPY feedfarer.cabal stack.yaml .
 
 # Dependencies for caching
-RUN stack --resolver lts-20.9 build \
+RUN stack --resolver nightly-2023-01-01 build \
   --no-install-ghc \
   --system-ghc \
   --no-library-profiling \
@@ -14,7 +14,7 @@ RUN stack --resolver lts-20.9 build \
 # Build main
 COPY . .
 
-RUN stack --resolver lts-20.9 install \
+RUN stack --resolver nightly-2023-01-01 install \
   --no-install-ghc \
   --system-ghc \
   --local-bin-path . \
