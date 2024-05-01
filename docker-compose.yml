@@ -38,7 +38,7 @@ services:
     mongo:
       image: mongo:5.0 # `auth` doesn't work with 6.0 and beyond!
       restart: "on-failure"
-      command: --maxConns 150 --wiredTigerCacheSizeGB 0.25 # trying to fight RAM exhaustion
+      command: --wiredTigerCacheSizeGB 0.25 # trying to fight RAM exhaustion
       environment:
         - MONGO_INITDB_ROOT_USERNAME
         - MONGO_INITDB_ROOT_PASSWORD
