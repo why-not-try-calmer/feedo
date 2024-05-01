@@ -4,7 +4,7 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (modifyMVar_)
+import Control.Concurrent.MVar (modifyMVar_, readMVar)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -24,7 +24,6 @@ import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
-import GHC.IORef (atomicModifyIORef', readIORef)
 import Notifications (alertAdmin, findNextTime)
 import Replies (render)
 import Text.Read (readMaybe)
@@ -131,19 +130,29 @@ instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
   withDb action =
     ask >>= \env -> liftIO $ do
-      pipe <- readIORef (snd . connectors $ env)
-      let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
+      conns <- readMVar (connectors env)
+      let pipe = snd conns 
+          tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
       tryOnce >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
               msg = "DB choked on: " `T.append` err'
+          print msg
+          alertAdmin (postjobs env) msg
           when (T.toCaseFold "pipe" `T.isInfixOf` err' || T.toCaseFold "connection" `T.isInfixOf` err') $ do
             closed <- isClosed pipe
-            unless closed $ close pipe
+            unless closed $ do
+              let pipe_open_msg = "Pipe found open. Closing..."
+              alertAdmin (postjobs env) pipe_open_msg 
+              print pipe_open_msg
+              close pipe
             setupDb (mongo_creds env) >>= \case
-              Left _ -> let choked = "Unable to recreate pipe." in alertAdmin (postjobs env) choked
-              Right (new_pipe, _) -> atomicModifyIORef' (snd $ connectors env) $ const (new_pipe, ())
-          print msg >> alertAdmin (postjobs env) msg
+              Left _ -> let choked = "Unable to recreate pipe." in print choked >> alertAdmin (postjobs env) choked
+              Right (new_pipe, _) -> do
+                let replacing_msg = "Pipe created. Replacing old."
+                print replacing_msg
+                alertAdmin (postjobs env) replacing_msg  
+                modifyMVar_ (connectors env) $ \(conn, _) -> pure (conn, new_pipe)
           pure $ Left msg
         Right ok -> pure $ Right ok
 

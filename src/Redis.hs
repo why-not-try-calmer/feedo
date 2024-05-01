@@ -5,7 +5,7 @@
 
 module Redis where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, readMVar)
 import Control.Exception
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class
@@ -29,7 +29,10 @@ class (Monad m) => HasRedis m where
 
 instance (MonadIO m) => HasRedis (App m) where
   evalKeyStore :: (MonadIO m) => Redis a -> App m a
-  evalKeyStore action = ask >>= \env -> liftIO $ runRedis (fst . connectors $ env) action
+  evalKeyStore action = do
+    env <- ask
+    (conn, _) <- liftIO $ readMVar $ connectors env
+    liftIO $ runRedis conn action
 
   withKeyStore :: (MonadIO m) => CacheAction -> App m (Either T.Text FromCache)
   withKeyStore (CacheGetPage cid mid n) = do

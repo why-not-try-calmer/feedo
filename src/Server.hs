@@ -130,7 +130,7 @@ makeConfig env =
               >>= \case
                 Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
                 Right p -> putStrLn "Mongo...OK" >> pure p
-        pipe_ioref <- newIORef pipe
+        conns <- newMVar (conn, pipe)
         last_run_ioref <- newIORef Nothing
         pure
           AppConfig
@@ -142,7 +142,7 @@ makeConfig env =
             , subs_state = mvar
             , postjobs = chan
             , worker_interval = interval
-            , connectors = (conn, pipe_ioref)
+            , connectors = conns
             }
 
 initStart :: AppConfig -> IO ()

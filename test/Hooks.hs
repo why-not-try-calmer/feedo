@@ -1,5 +1,6 @@
 module Hooks where
 
+import Control.Concurrent (readMVar)
 import Data.Foldable (sequenceA_)
 import Data.IORef (readIORef)
 import Database.MongoDB (close)
@@ -14,9 +15,10 @@ beforeTest = getEnvironment >>= makeConfig
 
 afterTest :: AppConfig -> IO ()
 afterTest config = do
-  let (redis_conn, mongo_conn) = connectors config
+  let connectors_mvar = connectors config
+  (redis_conn, mongo_conn) <- readMVar connectors_mvar
   runRedis redis_conn quit
-  readIORef mongo_conn >>= close
+  close mongo_conn
 
 withHooks tests = do
   conf <- runIO beforeTest
