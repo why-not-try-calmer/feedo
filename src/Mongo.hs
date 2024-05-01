@@ -4,7 +4,7 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (readMVar, modifyMVarMasked_)
+import Control.Concurrent.MVar (modifyMVarMasked, modifyMVarMasked_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -128,33 +128,33 @@ setupDb credentials = do
 
 instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
-  withDb action =
-    ask >>= \env -> liftIO $ do
-      conns <- readMVar (connectors env)
-      let pipe = snd conns 
-          tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
-      tryOnce >>= \case
+  withDb action = do
+    env <- ask
+    liftIO $ modifyMVarMasked (connectors env) $ \conns@(conn, cur_pipe) -> do
+      try (runMongo (database_name . mongo_creds $ env) cur_pipe action) >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
               msg = "DB choked on: " `T.append` err'
-          print msg
-          alertAdmin (postjobs env) msg
-          when (T.toCaseFold "pipe" `T.isInfixOf` err' || T.toCaseFold "connection" `T.isInfixOf` err') $ do
-            closed <- isClosed pipe
-            unless closed $ do
-              let pipe_open_msg = "Pipe found open. Closing..."
-              alertAdmin (postjobs env) pipe_open_msg 
-              print pipe_open_msg
-              close pipe
-            setupDb (mongo_creds env) >>= \case
-              Left _ -> let choked = "Unable to recreate pipe." in print choked >> alertAdmin (postjobs env) choked
-              Right (new_pipe, _) -> do
-                let replacing_msg = "Pipe created. Replacing old."
-                print replacing_msg
-                alertAdmin (postjobs env) replacing_msg  
-                modifyMVarMasked_ (connectors env) $ \(conn, _) -> pure (conn, new_pipe)
-          pure $ Left msg
-        Right ok -> pure $ Right ok
+          print msg >> alertAdmin (postjobs env) msg
+          -- recreate pipe if current pipe is broken
+          if T.toCaseFold "pipe" `T.isInfixOf` err' || T.toCaseFold "connection" `T.isInfixOf` err'
+            then do
+              closed <- isClosed cur_pipe
+              unless closed $
+                let closing_msg = "Pipe found open. Closing..."
+                 in print closing_msg >> alertAdmin (postjobs env) closing_msg >> close cur_pipe
+              setupDb (mongo_creds env) >>= \case
+                Left _ ->
+                  let choked = "Unable to recreate pipe."
+                   in print choked >> alertAdmin (postjobs env) choked >> pure (conns, Left choked)
+                Right (new_pipe, _) -> do
+                  let replacing_msg = "Pipe created. Replacing old."
+                      conns' = (conn, new_pipe)
+                  print replacing_msg >> alertAdmin (postjobs env) replacing_msg
+                  pure (conns', Left msg)
+            -- otherwise simply return the exception's message
+            else pure (conns, Left msg)
+        Right ok -> pure (conns, Right ok)
 
   evalDb :: (MonadIO m) => DbAction -> App m DbRes
   evalDb (DbAskForLogin uid cid) = do

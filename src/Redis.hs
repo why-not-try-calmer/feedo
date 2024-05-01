@@ -5,7 +5,7 @@
 
 module Redis where
 
-import Control.Concurrent (threadDelay, readMVar)
+import Control.Concurrent (readMVar, threadDelay)
 import Control.Exception
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class
