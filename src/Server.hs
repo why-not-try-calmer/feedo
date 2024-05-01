@@ -149,7 +149,7 @@ initStart :: AppConfig -> IO ()
 initStart env = runApp env $ do
   startJobs -- must be first started in any it's sent any job in the steps below
   liftIO $ putStrLn "jobs queue started"
-  loadChatsIntoMem
+  loadChatsToMem
   liftIO $ putStrLn "chats loaded"
   feeds <- rebuildAllFeeds
   liftIO $ putStrLn "feeds built"

@@ -156,8 +156,8 @@ withChatsFromMem action maybe_userid cid = do
                   _ -> pure (updated_cs, Right ChatOk)
       _ -> pure (hmap, Right ChatOk)
 
-loadChatsIntoMem :: (MonadIO m) => App m ()
-loadChatsIntoMem = do
+loadChatsToMem :: (MonadIO m) => App m ()
+loadChatsToMem = do
   env <- ask
   liftIO $
     modifyMVarMasked_ (subs_state env) $
