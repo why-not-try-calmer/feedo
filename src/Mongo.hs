@@ -4,7 +4,7 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (modifyMVarMasked, modifyMVarMasked_)
+import Control.Concurrent.MVar (modifyMVar, modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -130,7 +130,7 @@ instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
   withDb action = do
     env <- ask
-    liftIO $ modifyMVarMasked (connectors env) $ \conns@(conn, cur_pipe) -> do
+    liftIO $ modifyMVar (connectors env) $ \conns@(conn, cur_pipe) -> do
       try (runMongo (database_name . mongo_creds $ env) cur_pipe action) >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
@@ -397,20 +397,19 @@ markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
 markNotified notified_chats now = do
   env <- ask
   liftIO $
-    modifyMVarMasked_ (subs_state env) $
+    modifyMVar_ (subs_state env) $
       \subs ->
         let updated_chats = updated_notified_chats notified_chats subs
          in runApp env $
-              evalDb (UpsertChats updated_chats)
-                >>= \case
-                  Left err -> do
-                    alertAdmin (postjobs env) $
-                      "notifier: failed to \
-                      \ save updated chats to db because of this error"
-                        `T.append` render err
-                    pure subs
-                  Right DbDone -> pure updated_chats
-                  _ -> pure subs
+              evalDb (UpsertChats updated_chats) >>= \case
+                Left err -> do
+                  alertAdmin (postjobs env) $
+                    "notifier: failed to \
+                    \ save updated chats to db because of this error"
+                      `T.append` render err
+                  pure subs
+                Right DbDone -> pure updated_chats
+                _ -> pure subs
  where
   updated_notified_chats notified =
     HMS.mapWithKey
