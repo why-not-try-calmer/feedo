@@ -16,7 +16,7 @@ import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
-import Mem (makeDigestsFromMem, withChatsFromMem)
+import Mem (makeDigests, withChatsFromMem)
 import Mongo (evalDb, markNotified, saveToLog)
 import Notifications (alertAdmin)
 import Redis
@@ -79,33 +79,35 @@ startNotifs =
                     pure (cid, map f_link ds)
         notify = do
           -- rebuilding feeds and collecting notifications
-          from_cache_payload <- runApp env makeDigestsFromMem
-          case from_cache_payload of
+          digests <- makeDigests
+          case digests of
             Right (CacheDigests notif_hmap) -> do
               -- skipping sending on a firt run
-              my_last_run <- readIORef $ last_worker_run env
-              now <- getCurrentTime
-              case my_last_run of
+              (last_run, now) <- liftIO $ do
+                lr <- readIORef $ last_worker_run env
+                now <- getCurrentTime
+                pure (lr, now)
+              case last_run of
                 Nothing -> do
                   -- mark chats as notified on first run
                   -- but do not send digests to avoid double-sending
                   let notified_chats = HMS.keys notif_hmap
-                  runApp env $ markNotified notified_chats now
-                  modifyIORef' (last_worker_run env) $ \_ -> Just now
+                  markNotified notified_chats now
+                  liftIO $ modifyIORef' (last_worker_run env) $ \_ -> Just now
                 Just _ -> do
                   -- this time sending digests, follows & search notifications
-                  notified_chats <- map fst <$> send_tg_notif notif_hmap now
-                  runApp env $ markNotified notified_chats now
-                  modifyIORef' (last_worker_run env) $ \_ -> Just now
+                  notified_chats <- liftIO $ map fst <$> send_tg_notif notif_hmap now
+                  markNotified notified_chats now
+                  liftIO $ modifyIORef' (last_worker_run env) $ \_ -> Just now
             Left err -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` err)
             -- to avoid an incomplete pattern
             _ -> pure ()
         wait_action = do
           threadDelay interval
           putStrLn "startNotifs: Woke up"
-          notify
+          runApp env notify
           putStrLn "startNotifs: Notified. Going back to sleep"
-        handler e = onError e >> notify
+        handler e = onError e >> runApp env notify
      in liftIO $ runForever_ wait_action handler >> putStrLn "startNotifs: started"
 
 startJobs :: (MonadIO m) => App m ()
