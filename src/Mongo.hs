@@ -18,7 +18,7 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime (UTCTime), diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
@@ -135,10 +135,16 @@ instance (MonadIO m) => HasMongo (App m) where
       let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
       tryOnce >>= \case
         Left (SomeException err) -> do
-          let msg = "DB choked on: " `T.append` T.pack (show err)
-          print msg
-          alertAdmin (postjobs env) msg
-          pure . Left $ msg
+          let err' = T.pack $ show err
+              msg = "DB choked on: " `T.append` err'
+          when (T.toCaseFold "pipe" `T.isInfixOf` err' || T.toCaseFold "connection" `T.isInfixOf` err') $ do
+            closed <- isClosed pipe
+            unless closed $ close pipe
+            setupDb (mongo_creds env) >>= \case
+              Left _ -> let choked = "Unable to recreate pipe." in alertAdmin (postjobs env) choked
+              Right (new_pipe, _) -> atomicModifyIORef' (snd $ connectors env) $ const (new_pipe, ())
+          print msg >> alertAdmin (postjobs env) msg
+          pure $ Left msg
         Right ok -> pure $ Right ok
 
   evalDb :: (MonadIO m) => DbAction -> App m DbRes
