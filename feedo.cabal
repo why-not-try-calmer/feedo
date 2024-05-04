@@ -4,11 +4,11 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           feedfarer
+name:           feedo
 version:        1.2
-description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
-homepage:       https://github.com/githubuser/feedfarer#readme
-bug-reports:    https://github.com/githubuser/feedfarer/issues
+description:    Please see the README on GitHub at <https://github.com/githubuser/feedo#readme>
+homepage:       https://github.com/githubuser/feedo#readme
+bug-reports:    https://github.com/githubuser/feedo/issues
 author:         Adrien Glauser
 maintainer:     mrnycticorax@gmail.com
 copyright:      2021 Adrien Glauser
@@ -20,7 +20,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/feedfarer
+  location: https://github.com/githubuser/feedo
 
 flag static
   description: Enable static linking
@@ -46,7 +46,7 @@ library
       Utils
       Web
   other-modules:
-      Paths_feedfarer
+      Paths_feedo
   hs-source-dirs:
       src
   default-extensions:
@@ -84,12 +84,12 @@ library
     , xml-conduit
   default-language: Haskell2010
 
-executable feedfarer-exe
+executable feedo-digests-exe
   main-is: Main.hs
   other-modules:
-      Paths_feedfarer
+      Paths_feedo
   hs-source-dirs:
-      app
+      digests
   default-extensions:
       LambdaCase
       OverloadedStrings
@@ -106,7 +106,7 @@ executable feedfarer-exe
     , containers
     , cryptonite
     , directory
-    , feedfarer
+    , feedo
     , hedis
     , hspec
     , http-client
@@ -130,7 +130,53 @@ executable feedfarer-exe
     cc-options: -static
     ld-options: -static -pthread
 
-test-suite feedfarer-test
+executable feedo-server-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_feedo
+  hs-source-dirs:
+      server
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
+      StrictData
+      BangPatterns
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
+  build-depends:
+      aeson
+    , async
+    , base >=4.7 && <5
+    , blaze-html
+    , blaze-markup
+    , bytestring
+    , containers
+    , cryptonite
+    , directory
+    , feedo
+    , hedis
+    , hspec
+    , http-client
+    , mongoDB
+    , mtl
+    , req
+    , retry
+    , servant-blaze
+    , servant-server
+    , text
+    , time
+    , unordered-containers
+    , uri-encode
+    , wai
+    , warp
+    , warp-tls
+    , xml-conduit
+  default-language: Haskell2010
+  if flag(static)
+    ghc-options: -static
+    cc-options: -static
+    ld-options: -static -pthread
+
+test-suite feedo-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -146,7 +192,7 @@ test-suite feedfarer-test
       TgActionsSpec
       UtilsSpec
       WebBrowserSpec
-      Paths_feedfarer
+      Paths_feedo
   hs-source-dirs:
       test
   default-extensions:
@@ -165,7 +211,7 @@ test-suite feedfarer-test
     , containers
     , cryptonite
     , directory
-    , feedfarer
+    , feedo
     , hedis
     , hspec
     , http-client

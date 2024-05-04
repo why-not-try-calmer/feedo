@@ -1,6 +1,6 @@
-name:                feedfarer
+name:                feedo
 version:             1.2
-github:              "githubuser/feedfarer"
+github:              "githubuser/feedo"
 license:             BSD3
 author:              "Adrien Glauser"
 maintainer:          "mrnycticorax@gmail.com"
@@ -9,7 +9,7 @@ copyright:           "2021 Adrien Glauser"
 extra-source-files:
 - README.md
 
-description:         Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
+description:         Please see the README on GitHub at <https://github.com/githubuser/feedo#readme>
 
 default-extensions:
 - LambdaCase
@@ -51,9 +51,9 @@ library:
   - -Wall
 
 executables:
-  feedfarer-exe:
+  feedo-server-exe:
     main:                Main.hs
-    source-dirs:         app
+    source-dirs:         server
     ghc-options:
     - -threaded
     - -rtsopts
@@ -69,10 +69,30 @@ executables:
       cc-options:
       - -static
     dependencies:
-    - feedfarer
+    - feedo
+  
+  feedo-digests-exe:
+    main:                Main.hs
+    source-dirs:         digests
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    when:
+    - condition: flag(static)
+      ghc-options:
+      - -static 
+      ld-options:
+      - -static
+      - -pthread
+      cc-options:
+      - -static
+    dependencies:
+    - feedo
 
 tests:
-  feedfarer-test:
+  feedo-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -80,7 +100,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - feedfarer
+    - feedo
 
 flags:
   static:
