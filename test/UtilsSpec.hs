@@ -42,6 +42,7 @@ mockFeedsChats now =
             { settings_word_matches = word_b
             }
           HMS.empty
+          mempty
       chats = HMS.fromList [(0, c)] :: HMS.HashMap ChatId SubChat
    in (fl, feeds, chats)
 

@@ -43,6 +43,7 @@ withChatsFromMem action maybe_userid cid = do
               , sub_feeds_links = S.fromList flinks
               , sub_settings = defaultChatSettings
               , sub_active_admins = HMS.empty
+              , sub_title = mempty
               }
           inserted c = HMS.insert cid c hmap
           saveToDb c = evalDb $ UpsertChat c

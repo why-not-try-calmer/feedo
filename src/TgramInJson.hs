@@ -50,10 +50,11 @@ instance FromJSON ChatType where
 data Chat = Chat
   { chat_id :: ChatId
   , chat_type :: ChatType
+  , title :: Maybe Text
   }
   deriving (Show)
 
-$(deriveJSON defaultOptions{fieldLabelModifier = drop 5} ''Chat)
+$(deriveJSON defaultOptions{fieldLabelModifier = drop 5, omitNothingFields = True} ''Chat)
 
 data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: Chat} deriving (Show)
 

@@ -27,9 +27,13 @@ import qualified Database.MongoDB.Transport.Tls as Tls
 import Notifications (alertAdmin, findNextTime)
 import Replies (render)
 import Text.Read (readMaybe)
-import TgramOutJson (ChatId, UserId)
+import TgramOutJson (ChatId, UserId, Outbound (GetChat), TgRequestMethod (..))
 import Types
-import Utils (defaultChatSettings, freshLastXDays)
+import Utils (defaultChatSettings, freshLastXDays, partitionEither)
+import Requests (runSend)
+import Control.Concurrent.Async (mapConcurrently)
+import TgramInJson (Chat (chat_id, title))
+import Network.HTTP.Req (JsonResponse, responseBody)
 
 {- Interface -}
 
@@ -400,7 +404,12 @@ markNotified notified_chats now = do
     modifyMVar_ (subs_state env) $
       \subs ->
         let updated_chats = updated_notified_chats notified_chats subs
-         in runApp env $
+         in do
+            (_, responses) <- partitionEither <$> mapConcurrently (runSend (bot_token . tg_config $ env) TgGetChat . GetChat) (HMS.keys subs)
+            let resp = responses :: [JsonResponse Chat]
+                chatid_title = map (\r -> let c = responseBody r :: Chat in (chat_id c, fromMaybe mempty $ title c)) resp
+                updated_chats' = HMS.updateW
+            runApp env $
               evalDb (UpsertChats updated_chats) >>= \case
                 Left err -> do
                   alertAdmin (postjobs env) $
@@ -535,10 +544,11 @@ bsonToChat doc =
         , sub_linked_to = linked_to_chats
         , sub_settings = feeds_settings_docs
         , sub_active_admins = maybe mempty HMS.fromList active_admins
+        , sub_title = fromMaybe mempty $ M.lookup "sub_title" doc
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings active_admins) =
+chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings active_admins title) =
   let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
       searchset = S.toList . match_searchset . settings_word_matches $ settings
       only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
@@ -577,6 +587,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings ac
       , "sub_linked_to_chats" =: linked_to
       , "sub_settings" =: settings' ++ with_secs ++ with_at
       , "sub_active_admins" =: active_admins'
+      , "sub_title" =: title
       ]
 
 {- Digests -}
@@ -664,7 +675,7 @@ checkDbMapper = do
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
       settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False True True False False word_matches mempty
-      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty
+      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty mempty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]
       equalities =

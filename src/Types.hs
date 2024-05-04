@@ -233,6 +233,7 @@ data SubChat = SubChat
   , sub_linked_to :: Maybe ChatId
   , sub_settings :: Settings
   , sub_active_admins :: HMS.HashMap UserId UTCTime
+  , sub_title :: T.Text
   }
   deriving (Show, Eq)
 
