@@ -4,7 +4,7 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (readMVar, modifyMVarMasked_)
+import Control.Concurrent.MVar (modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -131,9 +131,8 @@ instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
   withDb action =
     ask >>= \env -> liftIO $ do
-      conns <- readMVar (connectors env)
-      let pipe = snd conns 
-          tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
+      pipe <- readIORef (snd . connectors $ env)
+      let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
       tryOnce >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
@@ -153,7 +152,7 @@ instance (MonadIO m) => HasMongo (App m) where
                 let replacing_msg = "Pipe created. Replacing old."
                 print replacing_msg
                 alertAdmin (postjobs env) replacing_msg  
-                modifyMVarMasked_ (connectors env) $ \(conn, _) -> pure (conn, new_pipe)
+                atomicModifyIORef' (snd $ connectors env) $ const (new_pipe, ())
           pure $ Left msg
         Right ok -> pure $ Right ok
 
