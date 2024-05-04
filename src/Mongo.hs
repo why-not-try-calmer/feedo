@@ -143,7 +143,7 @@ instance (MonadIO m) => HasMongo (App m) where
             closed <- isClosed pipe
             unless closed $ do
               let pipe_open_msg = "Pipe found open. Closing..."
-              alertAdmin (postjobs env) pipe_open_msg 
+              alertAdmin (postjobs env) pipe_open_msg
               print pipe_open_msg
               close pipe
             setupDb (mongo_creds env) >>= \case
@@ -151,7 +151,7 @@ instance (MonadIO m) => HasMongo (App m) where
               Right (new_pipe, _) -> do
                 let replacing_msg = "Pipe created. Replacing old."
                 print replacing_msg
-                alertAdmin (postjobs env) replacing_msg  
+                alertAdmin (postjobs env) replacing_msg
                 atomicModifyIORef' (snd $ connectors env) $ const (new_pipe, ())
           pure $ Left msg
         Right ok -> pure $ Right ok

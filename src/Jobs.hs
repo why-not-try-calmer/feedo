@@ -11,13 +11,16 @@ import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
+import Data.Foldable (foldl', for_)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
+import Data.Traversable (for)
+import Database.MongoDB (Select (select), find, rest, (=:))
 import Mem (makeDigests, withChatsFromMem)
-import Mongo (evalDb, markNotified, saveToLog)
+import Mongo (HasMongo (withDb), MongoDoc (readDoc), bsonToAdmin, evalDb, markNotified, saveToLog)
 import Notifications (alertAdmin)
 import Redis
 import Replies (
@@ -28,7 +31,7 @@ import Replies (
 import Requests (reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
-import TgramOutJson (Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgDeleteMessage, TgPinChatMessage))
+import TgramOutJson (ChatId, Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgDeleteMessage, TgPinChatMessage))
 import Types
 
 {- Background tasks -}
@@ -42,6 +45,28 @@ checkDelay delay
   | delay < 10 = ("10 secs", 10000000)
   | delay > 30 = ("30 secs", 30000000)
   | otherwise = (show delay, delay)
+
+getPrebatch :: (HasMongo m, MonadIO m) => m Prebatch
+getPrebatch = do
+  let getChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats")
+  now <- liftIO getCurrentTime
+  docs <- withDb (getChats now >>= rest)
+  case docs of
+    Left err -> undefined
+    Right bson_chats ->
+      let (chats, flinks) =
+            foldl'
+              ( \(cs, fs) doc ->
+                  let c = readDoc doc :: SubChat
+                   in (c : cs, fs `S.union` sub_feeds_links c)
+              )
+              ([], S.empty)
+              bson_chats
+       in pure $ foldl' (\acc l -> let subs = filter (\c -> l `S.member` sub_feeds_links c) chats in HMS.insert l subs acc) HMS.empty flinks
+
+-- prepareDigest :: (HasMongo m, MonadIO m) => HMS.HashMap ChatId SubChat -> m (HMS.HashMap FeedLink [(ChatId, SubChat)])
+-- prepareDigest = do
+--   let getFeedLinks
 
 startNotifs :: (MonadIO m) => App m ()
 {- Forks a thread and tasks it with checking every minute

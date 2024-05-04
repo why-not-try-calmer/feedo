@@ -383,6 +383,8 @@ data Batch
   | Digests [Feed]
   deriving (Show, Eq)
 
+type Prebatch = HMS.HashMap FeedLink [SubChat]
+
 {- Database actions, errors -}
 
 data MongoCreds
