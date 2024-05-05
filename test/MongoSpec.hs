@@ -5,6 +5,7 @@ import Control.Exception
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class
 import Data.Foldable (sequenceA_)
+import Data.IORef (readIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -17,7 +18,6 @@ import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import Types
-import Data.IORef (readIORef)
 
 spec :: Spec
 spec = withHooks [go, go1, go2, go3, go4]

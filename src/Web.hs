@@ -2,9 +2,8 @@
 
 module Web where
 
-import Chats (withChats, getChats)
-import Control.Concurrent (readMVar)
-import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
+import Chats (getChats, withChats)
+import Control.Monad.Reader (MonadIO (liftIO), forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
@@ -166,7 +165,6 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
 
 readSettings :: (MonadIO m) => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
-  env <- ask
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ failedWith (render err)
     Right (DbLoggedIn cid) ->
@@ -181,7 +179,6 @@ readSettings (ReadReq hash) = do
 
 writeSettings :: (MonadIO m) => WriteReq -> App m WriteResp
 writeSettings (WriteReq hash new_settings Nothing) = do
-  env <- ask
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure (WriteResp 504 (Just . render $ err) Nothing)
     Right (DbLoggedIn cid) -> do

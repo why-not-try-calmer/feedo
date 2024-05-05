@@ -5,7 +5,7 @@
 
 module Types where
 
-import Control.Concurrent (Chan, MVar)
+import Control.Concurrent (Chan)
 import Control.Monad.List (foldM)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
 import Data.Aeson

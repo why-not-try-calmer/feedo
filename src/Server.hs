@@ -4,22 +4,20 @@
 
 module Server (startApp, makeConfig) where
 
-import Control.Concurrent (newChan, newMVar, writeChan)
+import Control.Concurrent (newChan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import Data.Foldable (for_)
-import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
-import Chats
-import Mongo (HasMongo (evalDb), setupDb)
+import Mongo (setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Redis (setUpKeyStore)
 import Replies (render)
-import Requests (reply, alertAdmin)
+import Requests (alertAdmin, reply)
 import Servant
 import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
@@ -117,7 +115,6 @@ makeConfig env =
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
       version = T.pack . fromMaybe "(unspecified)" $ lookup "APP_VERSION" env
    in do
-        mvar <- newMVar HMS.empty
         chan <- newChan
         conn <-
           setUpKeyStore >>= \case

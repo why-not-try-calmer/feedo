@@ -1,27 +1,17 @@
 module Feeds where
 
-import qualified Data.Text as T
-import Control.Concurrent (Chan, readMVar, writeChan)
-import Control.Exception (SomeException (SomeException), try)
+import Control.Exception (SomeException (SomeException))
 import Control.Monad.Reader
-import Control.Retry (constantDelay, limitRetries)
-import Data.Aeson.Types
-import qualified Data.ByteString.Lazy as LB
-import Data.Foldable (Foldable (..), for_)
-import qualified Data.HashMap.Strict as HMS
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Foldable (Foldable (..))
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import Data.Time (UTCTime, getCurrentTime)
-import qualified Network.HTTP.Client as HTTP
-import Requests
+import Data.Time (getCurrentTime)
 import Network.HTTP.Req
-import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), TgRequestMethod (TgEditMessage, TgSendMessage), UserId)
-import Types
-import Utils (averageInterval, mbTime, sliceIfAboveTelegramMax)
+import Requests
 import Text.XML
 import Text.XML.Cursor
+import Types
+import Utils (averageInterval, mbTime)
 
 buildFeed :: (MonadIO m) => FeedType -> Url scheme -> m (Either TgEvalError (Feed, Maybe T.Text))
 -- tries parsing bytes into a Feed
@@ -105,4 +95,3 @@ buildFeed ty url = do
      in if null missing_required
           then Right (f, render_optional)
           else Left . ParseError $ render_required
-

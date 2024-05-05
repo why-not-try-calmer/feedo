@@ -17,10 +17,10 @@ import TgramOutJson (ChatId, UserId)
 import Types
 import Utils (defaultChatSettings, findNextTime, removeByUserIdx, updateSettings)
 
-getChats :: MonadIO m => App m SubChats
+getChats :: (MonadIO m) => App m SubChats
 getChats = do
   env <- ask
-  let  warn msg = alertAdmin (postjobs env) ("getChats: failed! Error: " `T.append` T.pack msg)
+  let warn msg = alertAdmin (postjobs env) ("getChats: failed! Error: " `T.append` T.pack msg)
   response <- evalDb GetAllChats
   case response of
     Left err -> do
@@ -31,10 +31,10 @@ getChats = do
       warn $ show something_else
       pure mempty
 
-withChats :: MonadIO m => UserAction -> Maybe UserId -> ChatId -> App m (Either TgEvalError ChatRes)
+withChats :: (MonadIO m) => UserAction -> Maybe UserId -> ChatId -> App m (Either TgEvalError ChatRes)
 withChats action maybe_userid cid = do
   env <- ask
-  chats <- getChats 
+  chats <- getChats
   res <- liftIO $ chats `withHmap` env
   case res of
     Left err -> pure $ Left err

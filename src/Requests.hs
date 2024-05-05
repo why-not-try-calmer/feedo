@@ -6,27 +6,24 @@
 
 module Requests (alertAdmin, fetchFeed, mkPagination, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
-import Control.Concurrent (Chan, readMVar, writeChan)
+import Control.Concurrent (Chan, writeChan)
 import Control.Exception (SomeException (SomeException), try)
 import Control.Monad.Reader
 import Control.Retry (constantDelay, limitRetries)
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
-import Data.Foldable (Foldable (..), for_)
-import qualified Data.HashMap.Strict as HMS
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Foldable (for_)
+import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time (getCurrentTime)
 import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import Replies (render)
-import Text.XML
-import Text.XML.Cursor
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), TgRequestMethod (TgEditMessage, TgSendMessage), UserId)
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), TgRequestMethod (TgEditMessage, TgSendMessage))
 import Types
-import Utils (averageInterval, mbTime, sliceIfAboveTelegramMax)
+import Utils (sliceIfAboveTelegramMax)
 
 {- Interface -}
 
@@ -204,7 +201,7 @@ reply cid rep = do
         runSend_ tok TgEditMessage (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
-      send msg@(ServiceReply contents) = do
+      send msg@(ServiceReply _) = do
         runSend_ tok TgSendMessage (fromReply msg) >>= \case
           Left err -> report err
           Right _ -> pure ()
@@ -224,18 +221,6 @@ reply cid rep = do
         | otherwise = send rep
   processReply
 
-getActiveChatAdminsIfForwarding :: SubChats -> ChatId -> Maybe UTCTime -> [UserId]
-getActiveChatAdminsIfForwarding subchats cid after =
-  case HMS.lookup cid subchats of
-    Nothing -> mempty
-    Just c ->
-      if settings_forward_to_admins . sub_settings $ c
-        then HMS.keys $ HMS.filter pr $ sub_active_admins c
-        else mempty
- where
-  pr x = case after of
-    Nothing -> True
-    Just t -> t <= x
 
 fetchFeed :: (MonadIO m) => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =

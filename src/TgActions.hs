@@ -3,8 +3,8 @@
 
 module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct, subFeed) where
 
-import Chats (withChats, getChats)
-import Control.Concurrent (Chan, readMVar, writeChan)
+import Chats (getChats, withChats)
+import Control.Concurrent (Chan, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -360,10 +360,9 @@ evalTgAct ::
 evalTgAct _ About _ =
   ask >>= \env ->
     pure . Right . mkReply . FromAbout . app_version $ env
-evalTgAct _ (FeedInfo ref) cid =
-  ask >>= \env -> do
-    chats_hmap <- getChats
-    case HMS.lookup cid chats_hmap of
+evalTgAct _ (FeedInfo ref) cid = do
+  chats_hmap <- getChats
+  case HMS.lookup cid chats_hmap of
       Nothing -> pure . Left $ NotFoundChat
       Just c ->
         let subs = case sub_linked_to c of
@@ -399,12 +398,12 @@ evalTgAct uid (Announce txt) admin_chat =
                 "Telegram didn't told us the type of these chats: "
                   `T.append` (T.pack . show $ failed)
             if null non_channels
-                then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
-                else
-                  let rep = mkReply $ FromAnnounce txt
-                   in do
-                        liftIO (mapConcurrently_ (\cid' -> runApp env $ reply cid' rep) non_channels)
-                        pure . Right $ ServiceReply $ "Tried to broadcast an announce to " `T.append` (T.pack . show . length $ non_channels) `T.append` " chats."
+              then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
+              else
+                let rep = mkReply $ FromAnnounce txt
+                 in do
+                      liftIO (mapConcurrently_ (\cid' -> runApp env $ reply cid' rep) non_channels)
+                      pure . Right $ ServiceReply $ "Tried to broadcast an announce to " `T.append` (T.pack . show . length $ non_channels) `T.append` " chats."
  where
   are_non_channels :: [JsonResponse TgGetChatResponse] -> [ChatId]
   are_non_channels =
@@ -444,7 +443,6 @@ evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (FeedInfo ref) cha
 evalTgAct _ Changelog _ = pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
 evalTgAct _ (GetItems ref) cid = do
-  env <- ask
   chats_hmap <- getChats
   feeds_hmap <-
     evalDb GetAllFeeds >>= \case
@@ -468,7 +466,6 @@ evalTgAct _ (GetItems ref) cid = do
         else pure . Right . ServiceReply $ "It appears that you are not subscribed to this feed. Use /sub or talk to your chat administrator about it."
   hasSubToFeed flink chats_hmap = maybe False (\c -> flink `elem` sub_feeds_links c) (HMS.lookup cid chats_hmap)
 evalTgAct _ (GetLastXDaysItems n) cid = do
-  env <- ask
   chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of
     Nothing -> pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
@@ -491,7 +488,6 @@ evalTgAct _ GetSubchatSettings cid =
       Nothing -> pure . Left $ NotFoundChat
       Just ch -> pure . Right . ServiceReply . render $ ch
 evalTgAct _ ListSubs cid = do
-  env <- ask
   chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of
     Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
@@ -601,7 +597,6 @@ evalTgAct uid Purge cid = do
             Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
 evalTgAct _ Start cid =
-  ask >>= \env ->
     let existing_chat = getChats <&> HMS.lookup cid
      in existing_chat >>= \case Just c -> start_with_reload c; _ -> fresh_start
  where
@@ -646,7 +641,7 @@ evalTgAct uid Reset cid = do
             Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
 evalTgAct _ (Search keywords) cid =
-  ask >>= \env -> getChats >>= \hmap -> case HMS.lookup cid hmap of
+  getChats >>= \hmap -> case HMS.lookup cid hmap of
     Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
     Just c ->
       let scope = case sub_linked_to c of
