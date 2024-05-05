@@ -3,7 +3,7 @@ FROM utdemir/ghc-musl:v25-ghc902 as builder
 
 RUN ghcup install stack
 WORKDIR /opt/app/
-COPY feedfarer.cabal stack.yaml .
+COPY feedo.cabal stack.yaml .
 
 # Dependencies for caching
 RUN stack --resolver lts-19.33 build \
@@ -19,7 +19,7 @@ RUN stack --resolver lts-19.33 install \
   --no-install-ghc \
   --system-ghc \
   --local-bin-path . \
-  --flag feedfarer:static
+  --flag feedo:static
 
 FROM alpine:latest as runner
 
@@ -28,6 +28,6 @@ ARG app_version
 ENV APP_VERSION=$app_version
 
 WORKDIR /opt/app/
-COPY --from=builder /opt/app/feedfarer-exe .
+COPY --from=builder /opt/app/feedo-exe .
 
-CMD ["./feedfarer-exe"]
+CMD ["./feedo-exe"]
