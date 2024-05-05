@@ -25,7 +25,7 @@ import Utils (defaultChatSettings, mbTime, sortTimePairs)
 {- Feeds, Items -}
 
 eitherUrlScheme :: T.Text -> Either TgEvalError (Url 'Https)
-{-# INLINABLE eitherUrlScheme #-}
+{-# INLINEABLE eitherUrlScheme #-}
 -- tries to make a valid Url Scheme from the given string
 eitherUrlScheme s
   | T.null s = Left . BadFeedUrl $ s

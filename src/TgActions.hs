@@ -3,6 +3,7 @@
 
 module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct, subFeed) where
 
+import ChatsFeeds (withChatsFromMem)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
@@ -15,13 +16,12 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
-import ChatsFeeds (withChatsFromMem)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
 import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Redis
 import Replies (Replies (FromAbout), mkReply, render)
-import Requests (TgReqM (runSend), answer, mkKeyboard, reply, runSend, alertAdmin)
+import Requests (TgReqM (runSend), alertAdmin, answer, mkKeyboard, reply, runSend)
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson

@@ -17,8 +17,8 @@ import Parsing (rebuildFeed)
 import Replies (render)
 import Requests (alertAdmin)
 import TgramOutJson
+import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), SubChat (..))
 import Utils (partitionEither)
-import Types (FeedLink, SubChat (..), FeedError, FromCache (..), App, Feed (..), DbAction (..), AppConfig (..))
 
 getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
 getPrebatch = do

@@ -14,9 +14,9 @@ import TgramOutJson (ChatId)
 import Types (DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
 import Utils (
   defaultChatSettings,
+  findNextTime,
   fromEither,
   maybeUserIdx,
-  findNextTime,
   mbTime,
   partitionEither,
   scanTimeSlices,
