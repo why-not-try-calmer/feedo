@@ -2,7 +2,7 @@
 
 module Web where
 
-import Chats (getChats, withChats)
+import Chats (getChats, withChat)
 import Control.Monad.Reader (MonadIO (liftIO), forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
@@ -213,7 +213,7 @@ writeSettings (WriteReq hash settings (Just True)) =
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ noLogin err
     Right (DbLoggedIn cid) ->
-      withChats (SetChatSettings $ Immediate settings) Nothing cid >>= \case
+      withChat (SetChatSettings $ Immediate settings) Nothing cid >>= \case
         Left err -> pure . noUpdate . render $ err
         Right _ -> pure ok
     _ -> undefined
