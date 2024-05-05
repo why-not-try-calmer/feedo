@@ -11,7 +11,6 @@ import Data.Foldable (for_)
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
-import Jobs
 import Mongo (setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -139,13 +138,7 @@ makeConfig env =
             }
 
 initStart :: AppConfig -> IO ()
-initStart env = runApp env $ do
-  startJobs
-  liftIO $ putStrLn "jobs queue started"
-  startNotifs
-  liftIO $ do
-    putStrLn "digests / follows queue started"
-    writeChan (postjobs env) $ JobTgAlertAdmin "Feedo just started."
+initStart _ = putStrLn "Redis should be the communication bus here!"
 
 startApp :: IO ()
 startApp = do

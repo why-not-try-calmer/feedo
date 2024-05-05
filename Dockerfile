@@ -21,13 +21,16 @@ RUN stack --resolver lts-19.33 install \
   --local-bin-path . \
   --flag feedfarer:static
 
-FROM alpine:latest as runner
-
-# Version from build arg
+# Server service
+FROM alpine:latest as server
 ARG app_version
 ENV APP_VERSION=$app_version
-
 WORKDIR /opt/app/
 COPY --from=builder /opt/app/feedfarer-exe .
 
-CMD ["./feedfarer-exe"]
+# Worker service
+FROM alpine:latest as worker
+ARG app_version
+ENV APP_VERSION=$app_version
+WORKDIR /opt/app/
+COPY --from=builder /opt/app/feedfarer-worker-exe .

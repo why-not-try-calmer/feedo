@@ -132,3 +132,4 @@ readDigest digest_id =
         q1 <- get key
         q2 <- del [key]
         return $ (,) <$> q1 <*> q2
+
