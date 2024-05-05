@@ -17,6 +17,7 @@ import Server (makeConfig)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import Types
+import Data.IORef (readIORef)
 
 spec :: Spec
 spec = withHooks [go, go1, go2, go3, go4]
@@ -54,7 +55,7 @@ spec = withHooks [go, go1, go2, go3, go4]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           res <- runApp env $ evalDb (ArchiveItems [feed])
           res `shouldSatisfy` (\(Right _) -> True)
-          (_, pipe) <- readMVar $ connectors env
+          pipe <- readIORef (snd $ connectors env)
           res <- try $ runMongo (database_name . mongo_creds $ env) pipe (ensureIndex itemsIndex)
           res `shouldSatisfy` (\case Right _ -> True; Left (SomeException _) -> False)
      in desc $ as target

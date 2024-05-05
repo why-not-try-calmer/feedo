@@ -4,7 +4,6 @@
 
 module Server (startApp, makeConfig) where
 
-import ChatsFeeds
 import Control.Concurrent (newChan, newMVar, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
@@ -14,12 +13,13 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
+import ChatsFeeds
 import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Redis (setUpKeyStore)
 import Replies (render)
-import Requests (alertAdmin, reply)
+import Requests (reply, alertAdmin)
 import Servant
 import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
@@ -139,7 +139,7 @@ makeConfig env =
             , subs_state = mvar
             , postjobs = chan
             , worker_interval = interval
-            , connectors = conns
+            , connectors = (conn, pipe_ioref)
             }
 
 initStart :: AppConfig -> IO ()

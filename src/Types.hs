@@ -572,7 +572,7 @@ $(deriveJSON defaultOptions{omitNothingFields = True} ''WriteResp)
 
 {- Application, settings -}
 
-type Connectors = MVar (Connection, Pipe)
+type Connectors = (Connection, IORef Pipe)
 
 type BotToken = T.Text
 

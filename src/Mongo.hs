@@ -4,7 +4,6 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (modifyMVar, modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -129,10 +128,11 @@ setupDb credentials = do
 
 instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
-  withDb action = do
-    env <- ask
-    liftIO $ modifyMVar (connectors env) $ \conns@(conn, cur_pipe) -> do
-      try (runMongo (database_name . mongo_creds $ env) cur_pipe action) >>= \case
+  withDb action =
+    ask >>= \env -> liftIO $ do
+      pipe <- readIORef (snd . connectors $ env)
+      let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
+      tryOnce >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
               msg = "DB choked on: " `T.append` err'
@@ -204,23 +204,17 @@ instance (MonadIO m) => HasMongo (App m) where
   evalDb (BumpNotified cids now) =
     let failure = FailedToUpdate (T.pack . show $ cids) "BumpNotified failed"
         action = withDb $ do
-          docs <- find (select ["sub_chatid" =: ["$in" =: cids]] "chats") >>= rest
-          let chats =
-                map
-                  ( \doc ->
-                      let
-                        chat = readDoc doc :: SubChat
-                        set_interval = settings_digest_interval . sub_settings $ chat
-                        next_time = findNextTime now set_interval
-                       in
-                        chat{sub_last_digest = Just now, sub_next_digest = Just next_time}
-                  )
-                  docs
+          docs <- find (select ["sub_chatid" =: ["$in" =: cids ]] "chats") >>= rest
+          let chats = map (\doc -> let 
+                chat = readDoc doc :: SubChat 
+                set_interval = settings_digest_interval . sub_settings $ chat
+                next_time = findNextTime now set_interval
+                in chat { sub_last_digest = Just now, sub_next_digest = Just next_time}) docs
               selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
           updateAll "chats" selector
-     in action >>= \case
-          Left _ -> pure $ Left failure
-          Right _ -> pure $ Right DbDone
+    in action >>= \case
+        Left _ -> pure $ Left failure
+        Right _ -> pure $ Right DbDone
   evalDb (DbSearch keywords scope mb_last_time) =
     let action = aggregate "items" $ buildSearchQuery keywords
      in withDb action >>= \case
