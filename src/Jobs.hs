@@ -11,12 +11,11 @@ import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
-import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
 import Digests (makeDigests)
-import Mongo (evalDb, markNotified, saveToLog)
+import Mongo (evalDb, saveToLog)
 import Redis
 import Replies (
   mkDigestUrl,
@@ -71,12 +70,16 @@ startNotifs =
         notify = do
           digests <- makeDigests
           case digests of
-            Right (CacheDigests batches) -> do
-              now <- liftIO getCurrentTime
-              notified_chats <- liftIO $ map fst <$> send_tg_notif batches now
-              markNotified notified_chats now
             Left err -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` err)
-            -- to avoid an incomplete pattern
+            Right (CacheDigests batches) -> do
+              (n, notified) <- liftIO $ do
+                  now <- getCurrentTime
+                  notified_chats <- map fst <$> send_tg_notif batches now
+                  pure (now, notified_chats)
+              res <- evalDb $ BumpNotified notified n
+              case res of
+                Left bump_error -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` render bump_error)
+                Right _ -> pure ()
             _ -> pure ()
         wait_action = do
           threadDelay interval

@@ -202,9 +202,9 @@ instance (MonadIO m) => HasMongo (App m) where
             if failed res
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
-  evalDb (BumpNotified cids) =
+  evalDb (BumpNotified cids now) =
     let failure = FailedToUpdate (T.pack . show $ cids) "BumpNotified failed"
-        action now = withDb $ do
+        action = withDb $ do
           docs <- find (select ["sub_chatid" =: ["$in" =: cids ]] "chats") >>= rest
           let chats = map (\doc -> let 
                 chat = readDoc doc :: SubChat 
@@ -213,9 +213,7 @@ instance (MonadIO m) => HasMongo (App m) where
                 in chat { sub_last_digest = Just now, sub_next_digest = Just next_time}) docs
               selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
           updateAll "chats" selector
-    in do
-      now <- liftIO getCurrentTime
-      action now >>= \case
+    in action >>= \case
         Left _ -> pure $ Left failure
         Right _ -> pure $ Right DbDone
   evalDb (DbSearch keywords scope mb_last_time) =
@@ -405,45 +403,6 @@ itemsIndex :: Index
 itemsIndex =
   let fields = ["i_desc" =: ("text" :: T.Text)]
    in Index "items" fields "items__i_desc__idx" True False Nothing
-
-{- Actions -}
-
-markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
--- marking input chats as notified
-markNotified notified_chats now = do
-  env <- ask
-  liftIO $
-    modifyMVar_ (subs_state env) $
-      \subs ->
-        let updated_chats = updated_notified_chats notified_chats subs
-         in runApp env $
-              evalDb (UpsertChats updated_chats) >>= \case
-                Left err -> do
-                  alertAdmin (postjobs env) $
-                    "notifier: failed to \
-                    \ save updated chats to db because of this error"
-                      `T.append` render err
-                  pure subs
-                Right DbDone -> pure updated_chats
-                _ -> pure subs
- where
-  updated_notified_chats notified =
-    HMS.mapWithKey
-      ( \cid c ->
-          if cid `elem` notified
-            then
-              let next_digest = Just . findNextTime now . settings_digest_interval . sub_settings $ c
-               in -- updating last, next_digest, and consuming 'settings_digest_start'
-                  case settings_digest_start . sub_settings $ c of
-                    Nothing -> c{sub_last_digest = Just now, sub_next_digest = next_digest}
-                    Just _ ->
-                      c
-                        { sub_last_digest = Just now
-                        , sub_next_digest = next_digest
-                        , sub_settings = (sub_settings c){settings_digest_start = Nothing}
-                        }
-            else c
-      )
 
 {- Items -}
 

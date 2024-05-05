@@ -403,7 +403,7 @@ type AdminToken = T.Text
 
 data DbAction
   = ArchiveItems [Feed]
-  | BumpNotified [ChatId]
+  | BumpNotified [ChatId] UTCTime
   | CheckLogin AdminToken
   | DeleteChat ChatId
   | DbAskForLogin UserId ChatId
