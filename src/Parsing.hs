@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import Data.Time
 import Network.HTTP.Req
 import Replies (mkdDoubles, render)
-import Requests (buildFeed)
+import Feeds (buildFeed)
 import Text.Read (readMaybe)
 import Types (
   Feed (..),

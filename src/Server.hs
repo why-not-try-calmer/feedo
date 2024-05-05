@@ -13,7 +13,7 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
-import ChatsFeeds
+import Chats
 import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -136,7 +136,6 @@ makeConfig env =
             , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
             , base_url = base
             , mongo_creds = connected_creds
-            , subs_state = mvar
             , postjobs = chan
             , worker_interval = interval
             , connectors = (conn, pipe_ioref)
@@ -144,14 +143,8 @@ makeConfig env =
 
 initStart :: AppConfig -> IO ()
 initStart env = runApp env $ do
-  startJobs -- must be first started in any it's sent any job in the steps below
+  startJobs
   liftIO $ putStrLn "jobs queue started"
-  loadChatsToMem
-  liftIO $ putStrLn "chats loaded"
-  feeds <- rebuildAllFeeds
-  liftIO $ putStrLn "feeds built"
-  void $ evalDb $ UpsertFeeds feeds
-  liftIO $ putStrLn "feeds saved"
   startNotifs
   liftIO $ do
     putStrLn "digests / follows queue started"

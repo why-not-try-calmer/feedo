@@ -3,7 +3,7 @@
 
 module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct, subFeed) where
 
-import ChatsFeeds (withChatsFromMem)
+import Chats (withChats, getChats)
 import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
@@ -27,7 +27,7 @@ import TgramInJson
 import TgramOutJson
 import Types (
   App,
-  AppConfig (app_version, base_url, postjobs, subs_state, tg_config),
+  AppConfig (app_version, base_url, postjobs, tg_config),
   BotToken,
   CacheAction (..),
   ChatRes (ChatUpdated),
@@ -317,7 +317,7 @@ subFeed cid = startWithValidateUrls
       Right (DbFeeds old_feeds) -> do
         let new_valid_urls = getLinks old_feeds
             old_schemes = getScheme old_feeds
-        unless (null new_valid_urls) (void $ withChatsFromMem (Sub $ getLinks old_feeds) Nothing cid)
+        unless (null new_valid_urls) (void $ withChats (Sub $ getLinks old_feeds) Nothing cid)
         fetchMore old_schemes new_valid_urls
       _ -> prepareResponseWith "Unknown error when trying to subscribe."
    where
@@ -338,7 +338,7 @@ subFeed cid = startWithValidateUrls
       _ -> updateChatInMem feeds warnings all_links failed
   updateChatInMem feeds warnings all_links failed =
     let to_sub_to = map f_link feeds
-     in withChatsFromMem (Sub to_sub_to) Nothing cid >>= \case
+     in withChats (Sub to_sub_to) Nothing cid >>= \case
           Left err -> prepareResponseWith $ render err
           Right _ -> prepareResponse warnings all_links failed
   prepareResponse warnings all_links failed =
@@ -362,7 +362,7 @@ evalTgAct _ About _ =
     pure . Right . mkReply . FromAbout . app_version $ env
 evalTgAct _ (FeedInfo ref) cid =
   ask >>= \env -> do
-    chats_hmap <- liftIO . readMVar $ subs_state env
+    chats_hmap <- getChats
     case HMS.lookup cid chats_hmap of
       Nothing -> pure . Left $ NotFoundChat
       Just c ->
@@ -387,19 +387,18 @@ evalTgAct uid (Announce txt) admin_chat =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
         admin_id = alert_chat . tg_config $ env
-        look cid' = runSend tok TgGetChat $ GetChat cid'
-        fetch_chat_types = liftIO $ readMVar (subs_state env) >>= mapConcurrently look . HMS.keys
+        look cid = runSend tok TgGetChat $ GetChat cid
      in if admin_id /= admin_chat
           then exitNotAuth uid
-          else
-            fetch_chat_types >>= \resp -> do
-              let (failed, succeeded) = partitionEither resp
-                  non_channels = are_non_channels succeeded
-              unless (null failed) $
-                alertAdmin (postjobs env) $
-                  "Telegram didn't told us the type of these chats: "
-                    `T.append` (T.pack . show $ failed)
-              if null non_channels
+          else do
+            chats <- getChats
+            (failed, succeeded) <- liftIO $ partitionEither <$> mapConcurrently look (HMS.keys chats)
+            let non_channels = are_non_channels succeeded
+            unless (null failed) $
+              alertAdmin (postjobs env) $
+                "Telegram didn't told us the type of these chats: "
+                  `T.append` (T.pack . show $ failed)
+            if null non_channels
                 then pure . Right . ServiceReply $ "No non-channel chats identified. Aborting."
                 else
                   let rep = mkReply $ FromAnnounce txt
@@ -446,8 +445,7 @@ evalTgAct _ Changelog _ = pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
 evalTgAct _ (GetItems ref) cid = do
   env <- ask
-  let chats_mvar = subs_state env
-  chats_hmap <- liftIO $ readMVar chats_mvar
+  chats_hmap <- getChats
   feeds_hmap <-
     evalDb GetAllFeeds >>= \case
       Right (DbFeeds fs) -> pure $ HMS.fromList $ map (\f -> (f_link f, f)) fs
@@ -471,7 +469,7 @@ evalTgAct _ (GetItems ref) cid = do
   hasSubToFeed flink chats_hmap = maybe False (\c -> flink `elem` sub_feeds_links c) (HMS.lookup cid chats_hmap)
 evalTgAct _ (GetLastXDaysItems n) cid = do
   env <- ask
-  chats_hmap <- liftIO . readMVar $ subs_state env
+  chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of
     Nothing -> pure . Right . ServiceReply $ "Apparently this chat is not subscribed to any feed yet. Use /sub or talk to an admin!"
     Just c ->
@@ -488,13 +486,13 @@ evalTgAct _ (GetLastXDaysItems n) cid = do
                 _ -> pure . Right . ServiceReply $ "Unable to find any feed for this chat."
 evalTgAct uid (GetSubchannelSettings channel_id) _ = evalTgAct uid GetSubchatSettings channel_id
 evalTgAct _ GetSubchatSettings cid =
-  ask >>= liftIO . readMVar . subs_state >>= \hmap ->
+  getChats >>= \hmap ->
     case HMS.lookup cid hmap of
       Nothing -> pure . Left $ NotFoundChat
       Just ch -> pure . Right . ServiceReply . render $ ch
 evalTgAct _ ListSubs cid = do
   env <- ask
-  chats_hmap <- liftIO . readMVar $ subs_state env
+  chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of
     Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
     Just c ->
@@ -532,7 +530,7 @@ evalTgAct uid (Link target_id) cid = do
       if not authorized
         then exitNotAuth uid
         else
-          withChatsFromMem (Link target_id) Nothing cid >>= \case
+          withChats (Link target_id) Nothing cid >>= \case
             Left err -> pure . Right . ServiceReply . render $ err
             Right _ -> pure . Right . ServiceReply $ succeeded
  where
@@ -559,8 +557,8 @@ evalTgAct uid (Migrate to) cid = do
             Left err -> restore >> onErr err
             Right _ -> onOk
  where
-  migrate = sequence <$> sequence [withChatsFromMem (Migrate to) Nothing cid, withChatsFromMem Purge Nothing cid]
-  restore = withChatsFromMem (Migrate cid) Nothing to >> withChatsFromMem Purge Nothing to
+  migrate = sequence <$> sequence [withChats (Migrate to) Nothing cid, withChats Purge Nothing cid]
+  restore = withChats (Migrate cid) Nothing to >> withChats Purge Nothing to
   onOk =
     pure
       . Right
@@ -580,7 +578,7 @@ evalTgAct uid (Pause pause_or_resume) cid =
             if not verdict
               then exitNotAuth uid
               else
-                withChatsFromMem (Pause pause_or_resume) Nothing cid >>= \case
+                withChats (Pause pause_or_resume) Nothing cid >>= \case
                   Left err -> pure . Right . ServiceReply . render $ err
                   Right _ -> pure . Right . ServiceReply $ succeeded
  where
@@ -598,13 +596,13 @@ evalTgAct uid Purge cid = do
       if not verdict
         then exitNotAuth uid
         else
-          withChatsFromMem Purge Nothing cid >>= \case
+          withChats Purge Nothing cid >>= \case
             Left err -> pure . Right . ServiceReply $ "Unable to purge this chat" `T.append` render err
             Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
 evalTgAct _ Start cid =
   ask >>= \env ->
-    let existing_chat = liftIO $ readMVar (subs_state env) <&> HMS.lookup cid
+    let existing_chat = getChats <&> HMS.lookup cid
      in existing_chat >>= \case Just c -> start_with_reload c; _ -> fresh_start
  where
   fresh_start = pure . Right . mkReply $ FromStart
@@ -619,7 +617,7 @@ evalTgAct _ Start cid =
         )
 evalTgAct uid (Sub feeds_urls) cid = do
   env <- ask
-  chats <- liftIO . readMVar $ subs_state env
+  chats <- getChats
   let tok = bot_token . tg_config $ env
   -- fails if 50 feeds subscribed to already
   if tooManySubs 50 chats cid
@@ -643,27 +641,25 @@ evalTgAct uid Reset cid = do
       if not verdict
         then exitNotAuth uid
         else
-          withChatsFromMem Reset Nothing cid >>= \case
+          withChats Reset Nothing cid >>= \case
             Left err -> pure . Right . ServiceReply $ render err
             Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
 evalTgAct _ (Search keywords) cid =
-  ask >>= \env ->
-    let get_chats = liftIO . readMVar $ subs_state env
-     in get_chats >>= \hmap -> case HMS.lookup cid hmap of
-          Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
-          Just c ->
-            let scope = case sub_linked_to c of
-                  Nothing -> S.toList . sub_feeds_links $ c
-                  Just cid' -> case HMS.lookup cid' hmap of
-                    Nothing -> []
-                    Just c' -> S.toList . sub_feeds_links $ c'
-             in if null scope
-                  then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
-                  else
-                    evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
-                      Right (DbSearchRes keys _ res) -> pure . Right $ mkReply (FromSearchRes keys res)
-                      _ -> pure . Left . DbQueryError . BadQuery $ "The database was not able to run your query."
+  ask >>= \env -> getChats >>= \hmap -> case HMS.lookup cid hmap of
+    Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
+    Just c ->
+      let scope = case sub_linked_to c of
+            Nothing -> S.toList . sub_feeds_links $ c
+            Just cid' -> case HMS.lookup cid' hmap of
+              Nothing -> []
+              Just c' -> S.toList . sub_feeds_links $ c'
+        in if null scope
+            then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
+            else
+              evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
+                Right (DbSearchRes keys _ res) -> pure . Right $ mkReply (FromSearchRes keys res)
+                _ -> pure . Left . DbQueryError . BadQuery $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid =
   ask >>= \env ->
@@ -674,7 +670,7 @@ evalTgAct uid (SetChatSettings settings) cid =
             if not verdict
               then exitNotAuth uid
               else
-                withChatsFromMem (SetChatSettings settings) Nothing cid >>= \case
+                withChats (SetChatSettings settings) Nothing cid >>= \case
                   Left err -> pure . Right . ServiceReply $ "Unable to udpate this chat settings" `T.append` render err
                   Right (ChatUpdated c) -> pure . Right $ mkReply (FromChat c "Ok. New settings below.\n---\n")
                   _ -> pure . Left . DbQueryError . BadQuery $ "Unable to update the settings for this chat. Please try again later."
@@ -699,7 +695,7 @@ evalTgAct uid TestDigest cid =
         if not is_admin
           then exitNotAuth uid
           else
-            liftIO (readMVar $ subs_state env) >>= \chats -> case HMS.lookup cid chats of
+            getChats >>= \chats -> case HMS.lookup cid chats of
               Nothing -> pure . Left $ NotFoundChat
               Just c -> do
                 let feeds = sub_feeds_links c
@@ -730,7 +726,7 @@ evalTgAct uid (UnSub feeds) cid =
         if not is_admin
           then exitNotAuth uid
           else
-            withChatsFromMem (UnSub feeds) Nothing cid >>= \case
+            withChats (UnSub feeds) Nothing cid >>= \case
               Left err -> pure . Left $ err
               Right _ -> pure . Right . ServiceReply $ "Successfully unsubscribed from " `T.append` T.intercalate " " (unFeedRefs feeds)
 evalTgAct uid (UnSubChannel chan_id feeds) _ = evalTgAct uid (UnSub feeds) chan_id

@@ -598,7 +598,6 @@ data AppConfig = AppConfig
   , connectors :: Connectors
   , mongo_creds :: MongoCreds
   , postjobs :: Chan Job
-  , subs_state :: MVar SubChats
   , tg_config :: ServerConfig
   , worker_interval :: Int
   }

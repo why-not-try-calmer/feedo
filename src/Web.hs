@@ -2,7 +2,7 @@
 
 module Web where
 
-import ChatsFeeds (withChatsFromMem)
+import Chats (withChats, getChats)
 import Control.Concurrent (readMVar)
 import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
 import Data.Foldable (Foldable (foldl'))
@@ -170,7 +170,7 @@ readSettings (ReadReq hash) = do
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ failedWith (render err)
     Right (DbLoggedIn cid) ->
-      liftIO (readMVar $ subs_state env)
+      getChats
         >>= \chats -> case HMS.lookup cid chats of
           Nothing -> pure $ failedWith "Chat does not exist."
           Just c -> pure $ ok cid c
@@ -185,7 +185,7 @@ writeSettings (WriteReq hash new_settings Nothing) = do
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure (WriteResp 504 (Just . render $ err) Nothing)
     Right (DbLoggedIn cid) -> do
-      chats <- liftIO . readMVar $ subs_state env
+      chats <- getChats
       case HMS.lookup cid chats of
         Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
         Just c ->
@@ -216,7 +216,7 @@ writeSettings (WriteReq hash settings (Just True)) =
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ noLogin err
     Right (DbLoggedIn cid) ->
-      withChatsFromMem (SetChatSettings $ Immediate settings) Nothing cid >>= \case
+      withChats (SetChatSettings $ Immediate settings) Nothing cid >>= \case
         Left err -> pure . noUpdate . render $ err
         Right _ -> pure ok
     _ -> undefined

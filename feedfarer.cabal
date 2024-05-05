@@ -29,8 +29,9 @@ flag static
 
 library
   exposed-modules:
-      ChatsFeeds
+      Chats
       Digests
+      Feeds
       Jobs
       Markdown
       Mongo

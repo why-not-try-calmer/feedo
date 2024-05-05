@@ -1,6 +1,6 @@
 module Jobs (startNotifs, startJobs) where
 
-import ChatsFeeds (withChatsFromMem)
+import Chats (withChats)
 import Control.Concurrent (
   readChan,
   threadDelay,
@@ -132,7 +132,7 @@ forkExecute env job =
         let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
          in go (JobTgAlertAdmin msg)
       _ -> pure ()
-  go (JobPurge cid) = void $ withChatsFromMem Purge Nothing cid
+  go (JobPurge cid) = void $ withChats Purge Nothing cid
   go (JobRemoveMsg cid mid delay) = do
     let (msg, checked_delay) = checkDelay delay
     liftIO $ putStrLn ("Removing message in " ++ msg)
