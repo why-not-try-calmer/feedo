@@ -202,6 +202,22 @@ instance (MonadIO m) => HasMongo (App m) where
             if failed res
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
+  evalDb (BumpNotified cids) =
+    let failure = FailedToUpdate (T.pack . show $ cids) "BumpNotified failed"
+        action now = withDb $ do
+          docs <- find (select ["sub_chatid" =: ["$in" =: cids ]] "chats") >>= rest
+          let chats = map (\doc -> let 
+                chat = readDoc doc :: SubChat 
+                set_interval = settings_digest_interval . sub_settings $ chat
+                next_time = findNextTime now set_interval
+                in chat { sub_last_digest = Just now, sub_next_digest = Just next_time}) docs
+              selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
+          updateAll "chats" selector
+    in do
+      now <- liftIO getCurrentTime
+      action now >>= \case
+        Left _ -> pure $ Left failure
+        Right _ -> pure $ Right DbDone
   evalDb (DbSearch keywords scope mb_last_time) =
     let action = aggregate "items" $ buildSearchQuery keywords
      in withDb action >>= \case

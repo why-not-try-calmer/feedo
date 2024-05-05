@@ -402,10 +402,11 @@ data MongoCreds
 type AdminToken = T.Text
 
 data DbAction
-  = DbAskForLogin UserId ChatId
+  = ArchiveItems [Feed]
+  | BumpNotified [ChatId]
   | CheckLogin AdminToken
-  | ArchiveItems [Feed]
   | DeleteChat ChatId
+  | DbAskForLogin UserId ChatId
   | GetAllFeeds
   | GetSomeFeeds [FeedLink]
   | GetAllChats
@@ -595,7 +596,6 @@ data AppConfig = AppConfig
   { app_version :: T.Text
   , base_url :: T.Text
   , connectors :: Connectors
-  , last_worker_run :: IORef (Maybe UTCTime)
   , mongo_creds :: MongoCreds
   , postjobs :: Chan Job
   , subs_state :: MVar SubChats
