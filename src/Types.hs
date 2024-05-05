@@ -384,6 +384,7 @@ data Batch
   deriving (Show, Eq)
 
 type Prebatch = HMS.HashMap FeedLink [SubChat]
+type Postbatch = HMS.HashMap ChatId (SubChat, [Feed])
 
 {- Database actions, errors -}
 
