@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Chats where
+module Chats (withChat, getChats) where
 
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS

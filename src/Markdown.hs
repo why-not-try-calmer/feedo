@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
 
-module Markdown where
+module Markdown (parse, render, parsing) where
 
 import Data.Foldable
 import Data.Maybe (fromMaybe)

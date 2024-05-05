@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 
-module Feeds where
+module Feeds (buildFeed, eitherUrlScheme, getFeedFromUrlScheme, rebuildFeed) where
 
 import Control.Exception (SomeException (SomeException))
 import Control.Monad.Reader

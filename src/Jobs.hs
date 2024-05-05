@@ -5,7 +5,7 @@ import Control.Concurrent (
   readChan,
   threadDelay,
  )
-import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, wait, withAsync)
+import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -113,7 +113,7 @@ interpolateCidInTxt before cid after = before `T.append` (T.pack . show $ cid) `
 forkExecute :: (MonadIO m) => AppConfig -> Job -> m ()
 forkExecute env job =
   let todo = runApp env $ go job
-   in liftIO $ withAsync todo wait
+   in liftIO . void . async $ todo
  where
   go (JobArchive feeds now) = do
     -- archiving items

@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Digests where
+module Digests (getPrebatch, fillBatch, makeDigests) where
 
 import Control.Concurrent.Async
 import Control.Monad
