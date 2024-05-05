@@ -4,7 +4,7 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (modifyMVar_)
+import Control.Concurrent.MVar (modifyMVar, modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -24,7 +24,6 @@ import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
-import GHC.IORef (atomicModifyIORef', readIORef)
 import Notifications (alertAdmin, findNextTime)
 import Replies (render)
 import Text.Read (readMaybe)
@@ -129,11 +128,10 @@ setupDb credentials = do
 
 instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
-  withDb action =
-    ask >>= \env -> liftIO $ do
-      pipe <- readIORef (snd . connectors $ env)
-      let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
-      tryOnce >>= \case
+  withDb action = do
+    env <- ask
+    liftIO $ modifyMVar (connectors env) $ \conns@(conn, cur_pipe) -> do
+      try (runMongo (database_name . mongo_creds $ env) cur_pipe action) >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
               msg = "DB choked on: " `T.append` err'
