@@ -139,7 +139,7 @@ makeConfig env =
             , subs_state = mvar
             , postjobs = chan
             , worker_interval = interval
-            , connectors = (conn, pipe_ioref)
+            , connectors = conns
             }
 
 initStart :: AppConfig -> IO ()

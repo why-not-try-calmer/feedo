@@ -24,7 +24,7 @@ import Utils (defaultChatSettings, feedsFromList, findNextTime, partitionEither,
 withChatsFromMem :: (MonadIO m) => UserAction -> Maybe UserId -> ChatId -> App m (Either TgEvalError ChatRes)
 withChatsFromMem action maybe_userid cid = do
   env <- ask
-  res <- liftIO $ modifyMVar (subs_state env) (`withHmap` env)
+  res <- liftIO $ modifyMVarMasked (subs_state env) (`withHmap` env)
   case res of
     Left err -> pure $ Left err
     Right ChatOk -> pure $ Right ChatOk
@@ -158,7 +158,7 @@ loadChatsToMem :: (MonadIO m) => App m ()
 loadChatsToMem = do
   env <- ask
   liftIO $
-    modifyMVar_ (subs_state env) $
+    modifyMVarMasked_ (subs_state env) $
       \chats_hmap -> do
         now <- getCurrentTime
         putStrLn "Trying to loading chats now"
