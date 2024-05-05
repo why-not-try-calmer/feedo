@@ -5,6 +5,7 @@ import Control.Exception
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class
 import Data.Foldable (sequenceA_)
+import Data.IORef (readIORef)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -54,7 +55,7 @@ spec = withHooks [go, go1, go2, go3, go4]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           res <- runApp env $ evalDb (ArchiveItems [feed])
           res `shouldSatisfy` (\(Right _) -> True)
-          (_, pipe) <- readMVar $ connectors env
+          pipe <- readIORef (snd $ connectors env)
           res <- try $ runMongo (database_name . mongo_creds $ env) pipe (ensureIndex itemsIndex)
           res `shouldSatisfy` (\case Right _ -> True; Left (SomeException _) -> False)
      in desc $ as target

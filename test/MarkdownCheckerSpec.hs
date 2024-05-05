@@ -5,7 +5,7 @@ module MarkdownCheckerSpec where
 import Control.Monad.Reader (MonadIO (liftIO), ask)
 import qualified Data.Text as T
 import Hooks (withHooks)
-import MarkdownChecker (parse, render)
+import Markdown (parse, render)
 import Network.HTTP.Req (JsonResponse, responseBody)
 import Requests (TgReqM (runSend), reply)
 import Server (makeConfig)
@@ -23,14 +23,14 @@ spec = withHooks [go, go1]
  where
   tester = "Hello _bea||utif||ully *nested* and_ my [.my.humble.world](https://beautiful.ugly.world)"
   go _ =
-    let desc = describe "MarkdownChecker"
+    let desc = describe "Markdown"
         as = it "check MarkdownV2 validity"
         target = case parse tester of
           Left err -> print err >> undefined
           Right (parsed, _) -> parsed `shouldSatisfy` not . T.null . render
      in desc $ as target
   go1 env =
-    let desc = describe "tries to send a message validated with MarkdownChecker as a Telegram Message"
+    let desc = describe "tries to send a message validated with Markdown as a Telegram Message"
         as = it "ensures Telegram agrees with the validation for this message"
         target = do
           case parse tester of

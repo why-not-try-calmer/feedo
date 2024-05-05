@@ -4,23 +4,20 @@
 
 module Server (startApp, makeConfig) where
 
-import Control.Concurrent (newChan, newMVar, writeChan)
+import Control.Concurrent (newChan, writeChan)
 import Control.Exception (SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import Data.Foldable (for_)
-import qualified Data.HashMap.Internal.Strict as HMS
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
-import Mem
-import Mongo (HasMongo (evalDb), setupDb)
+import Mongo (setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Notifications (alertAdmin)
 import Redis (setUpKeyStore)
 import Replies (render)
-import Requests (reply)
+import Requests (alertAdmin, reply)
 import Servant
 import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
@@ -118,7 +115,6 @@ makeConfig env =
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
       version = T.pack . fromMaybe "(unspecified)" $ lookup "APP_VERSION" env
    in do
-        mvar <- newMVar HMS.empty
         chan <- newChan
         conn <-
           setUpKeyStore >>= \case
@@ -130,31 +126,22 @@ makeConfig env =
               >>= \case
                 Left _ -> throwIO . userError $ "Failed to produce a valid Mongo pipe."
                 Right p -> putStrLn "Mongo...OK" >> pure p
-        conns <- newMVar (conn, pipe)
-        last_run_ioref <- newIORef Nothing
+        pipe_ioref <- newIORef pipe
         pure
           AppConfig
             { app_version = version
             , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
             , base_url = base
             , mongo_creds = connected_creds
-            , last_worker_run = last_run_ioref
-            , subs_state = mvar
             , postjobs = chan
             , worker_interval = interval
-            , connectors = conns
+            , connectors = (conn, pipe_ioref)
             }
 
 initStart :: AppConfig -> IO ()
 initStart env = runApp env $ do
-  startJobs -- must be first started in any it's sent any job in the steps below
+  startJobs
   liftIO $ putStrLn "jobs queue started"
-  loadChatsToMem
-  liftIO $ putStrLn "chats loaded"
-  feeds <- rebuildAllFeeds
-  liftIO $ putStrLn "feeds built"
-  void $ evalDb $ UpsertFeeds feeds
-  liftIO $ putStrLn "feeds saved"
   startNotifs
   liftIO $ do
     putStrLn "digests / follows queue started"

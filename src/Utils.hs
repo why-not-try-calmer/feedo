@@ -6,7 +6,8 @@ import Data.List (foldl', sort, sortOn)
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time (NominalDiffTime, UTCTime, defaultTimeLocale, diffUTCTime, formatTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
+import Data.Time (NominalDiffTime, UTCTime (..), defaultTimeLocale, diffUTCTime, formatTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
+import Data.Time.Clock (addUTCTime)
 import Data.Time.Clock.POSIX (
   posixSecondsToUTCTime,
   utcTimeToPOSIXSeconds,
@@ -19,7 +20,7 @@ import Types
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
-{-# INLINE partitionEither #-}
+{-# INLINEABLE partitionEither #-}
 partitionEither = foldl' step ([], [])
  where
   step (!ls, !rs) val = case val of
@@ -27,16 +28,16 @@ partitionEither = foldl' step ([], [])
     Right r -> (ls, r : rs)
 
 reduceMaybeWith :: (a -> Maybe b) -> [a] -> [b]
-{-# INLINE reduceMaybeWith #-}
+{-# INLINEABLE reduceMaybeWith #-}
 reduceMaybeWith f = foldl' (\acc val -> case f val of Just x -> x : acc; _ -> acc) []
 
 fromEither :: b -> Either a b -> b
-{-# INLINE fromEither #-}
+{-# INLINEABLE fromEither #-}
 fromEither def (Left _) = def
 fromEither _ (Right v) = v
 
 maybeUserIdx :: [a] -> Int -> Maybe a
-{-# INLINE maybeUserIdx #-}
+{-# INLINEABLE maybeUserIdx #-}
 maybeUserIdx [] _ = Nothing
 maybeUserIdx ls i
   | i < 1 = Nothing
@@ -46,7 +47,7 @@ maybeUserIdx ls i
   | otherwise = Just $ ls !! (i - 1)
 
 removeByUserIdx :: [a] -> [Int] -> Maybe [a]
-{-# INLINE removeByUserIdx #-}
+{-# INLINEABLE removeByUserIdx #-}
 removeByUserIdx [] _ = Nothing
 removeByUserIdx _ [] = Nothing
 removeByUserIdx ls is =
@@ -76,14 +77,6 @@ tooManySubs upper_bound chats cid = case HMS.lookup cid chats of
 feedsFromList :: [Feed] -> HMS.HashMap FeedLink Feed
 feedsFromList = HMS.fromList . map (\f -> (f_link f, f))
 
-readBatchRecipe :: BatchRecipe -> [FeedLink]
-readBatchRecipe (FollowFeedLinks ls) = ls
-readBatchRecipe (DigestFeedLinks ls) = ls
-
-mkBatch :: BatchRecipe -> [Feed] -> Batch
-mkBatch (FollowFeedLinks _) ls = Follows ls
-mkBatch (DigestFeedLinks _) ls = Digests ls
-
 unFeedRef :: FeedRef -> T.Text
 unFeedRef (ByUrl s) = s
 unFeedRef (ById s) = T.pack $ show s
@@ -92,7 +85,7 @@ unFeedRefs :: [FeedRef] -> [T.Text]
 unFeedRefs = map unFeedRef
 
 toFeedRef :: [T.Text] -> Either InterpreterErr [FeedRef]
-{-# INLINE toFeedRef #-}
+{-# INLINEABLE toFeedRef #-}
 toFeedRef ss
   | all_valid_urls = Right intoUrls
   | all_ints = Right intoIds
@@ -107,8 +100,54 @@ toFeedRef ss
 
 {- Time -}
 
+findNextTime :: UTCTime -> DigestInterval -> UTCTime
+{-# INLINEABLE findNextTime #-}
+--  No 'digest_at' or 'digest_every' set? In 1.5 hour
+--  No 'digest_at' but 'digest_every' is set? In the <number of seconds> to which
+--      'digest_every' is set.
+--  Both set? The closest instant in the future among the two instants determined
+--      from both, respectively.
+findNextTime now (DigestInterval Nothing Nothing) = addUTCTime 9000 now
+findNextTime now (DigestInterval (Just xs) Nothing) = addUTCTime xs now
+findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
+  Nothing ->
+    if null times
+      then next_day
+      else still_today
+  Just xs ->
+    if xs > 86400
+      then addUTCTime (xs - 86400) next_day
+      else
+        if null times
+          then min (addUTCTime xs now) next_day
+          else min (addUTCTime xs now) still_today
+ where
+  toNominalDifftime h m = realToFrac $ h * 3600 + m * 60
+  from_midnight = realToFrac $ utctDayTime now
+  times =
+    foldl'
+      ( \acc (!h, !m) ->
+          let t = toNominalDifftime h m
+           in if from_midnight < t then (t - from_midnight) : acc else acc
+      )
+      []
+      ts
+  (early_h, early_m) =
+    foldl'
+      ( \(!h, !m) (!h', !m') ->
+          if h' < h || h == h' && m' < m
+            then (h', m')
+            else (h, m)
+      )
+      (23, 59)
+      ts
+  to_midnight = realToFrac $ 86400 - utctDayTime now
+  until_midnight = addUTCTime to_midnight now
+  next_day = addUTCTime (toNominalDifftime early_h early_m) until_midnight
+  still_today = addUTCTime (minimum times) now
+
 mbTime :: String -> Maybe UTCTime
-{-# INLINE mbTime #-}
+{-# INLINEABLE mbTime #-}
 mbTime s = maybe second_pass pure $ iso8601ParseM s
  where
   second_pass = foldr step Nothing formats
@@ -153,7 +192,7 @@ utcToYmdHMS :: UTCTime -> T.Text
 utcToYmdHMS = T.pack . formatTime defaultTimeLocale "%Y-%m-%d %T"
 
 sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
-{-# INLINE sortTimePairs #-}
+{-# INLINEABLE sortTimePairs #-}
 sortTimePairs = go []
  where
   go sorter [] = sorter
@@ -185,7 +224,6 @@ defaultChatSettings =
     , settings_pagination = False
     , settings_pin = False
     , settings_share_link = True
-    , settings_follow = False
     , settings_forward_to_admins = False
     , settings_digest_collapse = Nothing
     , settings_digest_start = Nothing
@@ -193,7 +231,7 @@ defaultChatSettings =
     }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
-{-# INLINE updateSettings #-}
+{-# INLINEABLE updateSettings #-}
 updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
  where
@@ -227,14 +265,13 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
           wm' = wm{match_only_search_results = v}
        in o{settings_word_matches = wm'}
     PShareLink v -> o{settings_share_link = v}
-    PFollow v -> o{settings_follow = v}
     PPagination v -> o{settings_pagination = v}
     PNoCollapse v -> o{settings_digest_no_collapse = v}
 
 {- Items -}
 
 sortItems :: Feed -> Feed
-{-# INLINE sortItems #-}
+{-# INLINEABLE sortItems #-}
 sortItems f = f{f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f}
 
 {- Replies -}

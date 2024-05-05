@@ -1,31 +1,28 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Jobs (startNotifs, startJobs) where
 
+import Chats (withChat)
 import Control.Concurrent (
   readChan,
   threadDelay,
  )
-import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, wait, withAsync)
+import Control.Concurrent.Async (async, forConcurrently, forConcurrently_)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
 import qualified Data.HashMap.Strict as HMS
-import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
-import Mem (makeDigests, withChatsFromMem)
-import Mongo (evalDb, markNotified, saveToLog)
-import Notifications (alertAdmin)
+import Digests (makeDigests)
+import Mongo (evalDb, saveToLog)
 import Redis
 import Replies (
   mkDigestUrl,
   mkReply,
   render,
  )
-import Requests (reply, runSend_)
+import Requests (alertAdmin, reply, runSend_)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
 import TgramOutJson (Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgDeleteMessage, TgPinChatMessage))
@@ -52,56 +49,38 @@ startNotifs =
         onError (SomeException err) = do
           let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
           alertAdmin (postjobs env) report
-        -- sending digests + follows
-        send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $
-          \(cid, (c, batch)) ->
-            let sets = sub_settings c
-             in case batch of
-                  Follows fs -> do
-                    runApp env $ reply cid (mkReply (FromFollow fs sets))
-                    pure (cid, map f_link fs)
-                  Digests ds -> do
-                    let (ftitles, flinks, fitems) =
-                          foldr
-                            ( \f (one, two, three) ->
-                                (f_title f : one, f_link f : two, three ++ f_items f)
-                            )
-                            ([], [], [])
-                            ds
-                        ftitles' = S.toList . S.fromList $ ftitles
-                        flinks' = S.toList . S.fromList $ flinks
-                        digest = Digest Nothing now fitems flinks' ftitles'
-                    res <- runApp env $ evalDb $ WriteDigest digest
-                    let mb_digest_link r = case r of
-                          Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
-                          _ -> Nothing
-                    runApp env $ reply cid (mkReply (FromDigest ds (mb_digest_link res) sets))
-                    pure (cid, map f_link ds)
+        send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $ \(cid, (c, batch)) -> do
+          let sets = sub_settings c
+              (ftitles, flinks, fitems) =
+                foldr
+                  ( \f (one, two, three) ->
+                      (f_title f : one, f_link f : two, three ++ f_items f)
+                  )
+                  ([], [], [])
+                  batch
+              ftitles' = S.toList . S.fromList $ ftitles
+              flinks' = S.toList . S.fromList $ flinks
+              digest = Digest Nothing now fitems flinks' ftitles'
+          res <- runApp env $ evalDb $ WriteDigest digest
+          let mb_digest_link r = case r of
+                Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
+                _ -> Nothing
+          runApp env $ reply cid (mkReply (FromDigest batch (mb_digest_link res) sets))
+          pure (cid, map f_link batch)
         notify = do
-          -- rebuilding feeds and collecting notifications
           digests <- makeDigests
           case digests of
-            Right (CacheDigests notif_hmap) -> do
-              -- skipping sending on a firt run
-              (last_run, now) <- liftIO $ do
-                lr <- readIORef $ last_worker_run env
-                now <- getCurrentTime
-                pure (lr, now)
-              case last_run of
-                Nothing -> do
-                  -- mark chats as notified on first run
-                  -- but do not send digests to avoid double-sending
-                  let notified_chats = HMS.keys notif_hmap
-                  markNotified notified_chats now
-                  liftIO $ modifyIORef' (last_worker_run env) $ \_ -> Just now
-                Just _ -> do
-                  -- this time sending digests, follows & search notifications
-                  notified_chats <- liftIO $ map fst <$> send_tg_notif notif_hmap now
-                  markNotified notified_chats now
-                  liftIO $ modifyIORef' (last_worker_run env) $ \_ -> Just now
             Left err -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` err)
-            -- to avoid an incomplete pattern
-            _ -> pure ()
+            Right (CacheDigests batches) -> do
+              (n, notified) <- liftIO $ do
+                now <- getCurrentTime
+                notified_chats <- map fst <$> send_tg_notif batches now
+                pure (now, notified_chats)
+              res <- evalDb $ BumpNotified notified n
+              case res of
+                Left bump_error -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` render bump_error)
+                Right _ -> pure ()
+            something_else -> liftIO . print $ show something_else
         wait_action = do
           threadDelay interval
           putStrLn "startNotifs: Woke up"
@@ -134,7 +113,7 @@ interpolateCidInTxt before cid after = before `T.append` (T.pack . show $ cid) `
 forkExecute :: (MonadIO m) => AppConfig -> Job -> m ()
 forkExecute env job =
   let todo = runApp env $ go job
-   in liftIO $ withAsync todo wait
+   in liftIO . void . async $ todo
  where
   go (JobArchive feeds now) = do
     -- archiving items
@@ -153,7 +132,7 @@ forkExecute env job =
         let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
          in go (JobTgAlertAdmin msg)
       _ -> pure ()
-  go (JobPurge cid) = void $ withChatsFromMem Purge Nothing cid
+  go (JobPurge cid) = void $ withChat Purge Nothing cid
   go (JobRemoveMsg cid mid delay) = do
     let (msg, checked_delay) = checkDelay delay
     liftIO $ putStrLn ("Removing message in " ++ msg)

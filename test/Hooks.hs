@@ -15,10 +15,9 @@ beforeTest = getEnvironment >>= makeConfig
 
 afterTest :: AppConfig -> IO ()
 afterTest config = do
-  let connectors_mvar = connectors config
-  (redis_conn, mongo_conn) <- readMVar connectors_mvar
+  let (redis_conn, mongo_conn) = connectors config
   runRedis redis_conn quit
-  close mongo_conn
+  readIORef mongo_conn >>= close
 
 withHooks tests = do
   conf <- runIO beforeTest

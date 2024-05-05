@@ -5,7 +5,7 @@
 
 module Types where
 
-import Control.Concurrent (Chan, MVar)
+import Control.Concurrent (Chan)
 import Control.Monad.List (foldM)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
 import Data.Aeson
@@ -134,7 +134,6 @@ data Settings = Settings
   , settings_digest_start :: Maybe UTCTime
   , settings_digest_title :: T.Text
   , settings_disable_web_view :: Bool
-  , settings_follow :: Bool
   , settings_forward_to_admins :: Bool
   , settings_pagination :: Bool
   , settings_paused :: Bool
@@ -187,9 +186,6 @@ instance FromJSON Settings where
             .!= mempty
           <*> o
             .:? "settings_disable_web_view"
-            .!= False
-          <*> o
-            .:? "settings_follow"
             .!= False
           <*> o
             .:? "settings_forward_to_admins"
@@ -274,7 +270,6 @@ data ParsingSettings
   | PSearchKws (S.Set T.Text)
   | PSearchLinks (S.Set T.Text)
   | PShareLink Bool
-  | PFollow Bool
   | PNoCollapse (S.Set T.Text)
   deriving (Show, Eq)
 
@@ -368,20 +363,11 @@ data Replies
   | FromFeedItems Feed
   | FromFeedLinkItems [(FeedLink, [Item])]
   | FromDigest [Feed] (Maybe T.Text) Settings
-  | FromFollow [Feed] Settings
   | FromSearchRes Keywords [SearchResult]
   | FromStart
   deriving (Eq, Show)
 
-data BatchRecipe
-  = FollowFeedLinks [FeedLink]
-  | DigestFeedLinks [FeedLink]
-  deriving (Show, Eq)
-
-data Batch
-  = Follows [Feed]
-  | Digests [Feed]
-  deriving (Show, Eq)
+type Batch = [Feed]
 
 {- Database actions, errors -}
 
@@ -416,14 +402,16 @@ data MongoCreds
 type AdminToken = T.Text
 
 data DbAction
-  = DbAskForLogin UserId ChatId
+  = ArchiveItems [Feed]
+  | BumpNotified [ChatId] UTCTime
   | CheckLogin AdminToken
-  | ArchiveItems [Feed]
   | DeleteChat ChatId
+  | DbAskForLogin UserId ChatId
   | GetAllFeeds
-  | GetSomeFeeds [FeedLink]
+  | GetChat ChatId
   | GetAllChats
   | GetPages ChatId Int
+  | GetSomeFeeds [FeedLink]
   | GetXDays [FeedLink] Int
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
   | DbSearch Keywords Scope (Maybe UTCTime)
@@ -438,6 +426,7 @@ data DbAction
 
 data DbResults
   = DbFeeds [Feed]
+  | DbChat SubChat
   | DbChats [SubChat]
   | DbNoChat
   | DbBadOID
@@ -490,16 +479,11 @@ data CacheAction
 data FromCache
   = CacheOk
   | CacheNothing
-  | CacheDigests (HMS.HashMap ChatId (SubChat, Batch))
+  | CacheDigests (HMS.HashMap ChatId (SubChat, [Feed]))
   | CachePage T.Text Int (Maybe T.Text)
   deriving (Show, Eq)
 
 type FeedItems = [(Feed, [Item])]
-
-data Notifier
-  = Pre {feeds_to_refresh :: [FeedLink], batch_recipes :: HMS.HashMap ChatId (SubChat, BatchRecipe), n_last_run :: Maybe UTCTime}
-  | Post {discarded_items_links :: [T.Text], batches :: HMS.HashMap ChatId (SubChat, Batch)}
-  deriving (Show, Eq)
 
 {- Logs -}
 
@@ -590,7 +574,7 @@ $(deriveJSON defaultOptions{omitNothingFields = True} ''WriteResp)
 
 {- Application, settings -}
 
-type Connectors = MVar (Connection, Pipe)
+type Connectors = (Connection, IORef Pipe)
 
 type BotToken = T.Text
 
@@ -614,10 +598,8 @@ data AppConfig = AppConfig
   { app_version :: T.Text
   , base_url :: T.Text
   , connectors :: Connectors
-  , last_worker_run :: IORef (Maybe UTCTime)
   , mongo_creds :: MongoCreds
   , postjobs :: Chan Job
-  , subs_state :: MVar SubChats
   , tg_config :: ServerConfig
   , worker_interval :: Int
   }

@@ -1,5 +1,6 @@
 module TgActionsSpec where
 
+import Chats
 import Control.Concurrent (readMVar)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (mapM_)
@@ -24,7 +25,7 @@ spec = withHooks [go, go1, go2]
     let desc = describe "interpretCmd"
         as = it "interpret commands issued from Telegram"
         t1 = interpretCmd "/items 1" `shouldBe` Right (GetItems $ ById 1)
-        t2 = interpretCmd "/set\ndigest_size: 1\nfollow: true" `shouldBe` (Right . SetChatSettings . Parsed $ [PFollow True, PDigestSize 1])
+        t2 = interpretCmd "/set\ndigest_size: 1\ndigest_every: 2d" `shouldBe` (Right . SetChatSettings . Parsed $ [PDigestEvery 172800, PDigestSize 1])
         t3 = interpretCmd "/unsub 1234 oh_shoot" `shouldSatisfy` (\case Left (InterpreterErr _) -> True; _ -> False)
      in mapM_ (desc . as) [t1, t2, t3]
   go1 env =
@@ -45,7 +46,7 @@ spec = withHooks [go, go1, go2]
               db_action = withDb $ findOne (select ["sub_chatid" =: cid] "chats")
           mem_res <- runApp env mem_action
           mem_res `shouldSatisfy` (\(ServiceReply reply) -> "subscribed to" `T.isInfixOf` reply)
-          all_subs <- readMVar (subs_state env)
+          all_subs <- runApp env getChats
           let mem_lookup = HMS.lookup cid all_subs
           mem_lookup `shouldSatisfy` (\case Just chat -> url `S.member` sub_feeds_links chat; Nothing -> False)
           db_res <- runApp env db_action

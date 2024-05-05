@@ -2,8 +2,8 @@
 
 module Web where
 
-import Control.Concurrent (readMVar)
-import Control.Monad.Reader (MonadIO (liftIO), ask, forM_)
+import Chats (getChats, withChat)
+import Control.Monad.Reader (MonadIO (liftIO), forM_)
 import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
@@ -14,11 +14,10 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
-import Mem (withChatsFromMem)
+import Feeds (eitherUrlScheme)
 import Mongo (HasMongo (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
-import Parsing (eitherUrlScheme)
 import Replies (render)
 import Text.Blaze (Markup, textValue, (!))
 import Text.Blaze.Html (toHtml)
@@ -166,11 +165,10 @@ viewSearchRes (Just flinks_txt) (Just fr) m_to = do
 
 readSettings :: (MonadIO m) => ReadReq -> App m ReadResp
 readSettings (ReadReq hash) = do
-  env <- ask
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ failedWith (render err)
     Right (DbLoggedIn cid) ->
-      liftIO (readMVar $ subs_state env)
+      getChats
         >>= \chats -> case HMS.lookup cid chats of
           Nothing -> pure $ failedWith "Chat does not exist."
           Just c -> pure $ ok cid c
@@ -181,11 +179,10 @@ readSettings (ReadReq hash) = do
 
 writeSettings :: (MonadIO m) => WriteReq -> App m WriteResp
 writeSettings (WriteReq hash new_settings Nothing) = do
-  env <- ask
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure (WriteResp 504 (Just . render $ err) Nothing)
     Right (DbLoggedIn cid) -> do
-      chats <- liftIO . readMVar $ subs_state env
+      chats <- getChats
       case HMS.lookup cid chats of
         Nothing -> pure (WriteResp 504 (Just "Unable to find the target chat") Nothing)
         Just c ->
@@ -209,7 +206,6 @@ writeSettings (WriteReq hash new_settings Nothing) = do
       , diff (settings_pin s, settings_pin s')
       , diff (settings_word_matches s, settings_word_matches s')
       , diff (settings_share_link s, settings_share_link s')
-      , diff (settings_follow s, settings_follow s')
       , diff (settings_pagination s, settings_pagination s')
       ]
 writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing
@@ -217,7 +213,7 @@ writeSettings (WriteReq hash settings (Just True)) =
   evalDb (CheckLogin hash) >>= \case
     Left err -> pure $ noLogin err
     Right (DbLoggedIn cid) ->
-      withChatsFromMem (SetChatSettings $ Immediate settings) Nothing cid >>= \case
+      withChat (SetChatSettings $ Immediate settings) Nothing cid >>= \case
         Left err -> pure . noUpdate . render $ err
         Right _ -> pure ok
     _ -> undefined

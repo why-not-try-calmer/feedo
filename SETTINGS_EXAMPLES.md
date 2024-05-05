@@ -9,22 +9,20 @@ For the exhaustive list of commands, see this [document](https://github.com/why-
 digest_at: 12:00 
 ```
 
-1 digest every day at noon (UTC) with frequent updates as soon as new updates are found, presented as a condensed list of feed titles, showing only the last 3 items and a link to view the full digest:
+1 digest every day at noon (UTC) presented as a condensed list of feed titles, showing only the last 3 items and a link to view the full digest:
 
 ```
 /set
 digest_at: 12:00
-follow: true
 digest_collapse: 3
 ```
 
-1 digest every other day at noon (UTC) with frequent updates as soon as new items are found across all feeds, with a shareable link for non-Telegram users:
+1 digest every other day at noon (UTC) with a shareable link for non-Telegram users:
 
 ```
 /set
 digest_at: 12:00
 digest_every: 2d
-follow: true 
 share_link: true
 ```
 
@@ -57,9 +55,6 @@ digest_start: undefined
 disable_web_view: false
     # do not prevent Telegram from rendering the first item using the
     # InstantView feature
-follow: false
-    # do not try to post every new item between digest
-    # as as soon as they are found
 only_search: undefined
     # list of feeds whose items should be ignored from notifications unless they match search
     # keywords

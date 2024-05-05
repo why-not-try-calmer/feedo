@@ -1,83 +1,18 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Parsing (eitherUrlScheme, rebuildFeed, getFeedFromUrlScheme, parseSettings) where
+module Settings (parseSettings) where
 
-import Control.Monad.IO.Class
 import Data.Foldable (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
-import Network.HTTP.Req
-import Replies (mkdDoubles, render)
-import Requests (buildFeed)
+import Replies (mkdDoubles)
 import Text.Read (readMaybe)
 import Types (
-  Feed (..),
-  FeedError (..),
-  FeedType (..),
   ParsingSettings (..),
   Settings (settings_digest_title),
-  TgEvalError (BadFeed, BadFeedUrl),
  )
 import Utils (defaultChatSettings, mbTime, sortTimePairs)
-
-{- Feeds, Items -}
-
-eitherUrlScheme :: T.Text -> Either TgEvalError (Url 'Https)
--- tries to make a valid Url Scheme from the given string
-eitherUrlScheme s
-  | T.null s = Left . BadFeedUrl $ s
-  | head split /= "https:" = Left . BadFeedUrl $ s
-  | length body >= 2 = Right toScheme
-  | otherwise = Left . BadFeedUrl $ "Unable to parse this input." `T.append` s
- where
-  s' = if T.last s == T.last "/" then T.dropEnd 1 s else s
-  split = T.splitOn "/" s'
-  body = drop 2 split
-  (host : rest) = body
-  toScheme = foldl' (/:) (https host) rest
-
-getFeedFromUrlScheme :: (MonadIO m) => Url scheme -> m (Either T.Text (Feed, Maybe T.Text))
-getFeedFromUrlScheme scheme =
-  buildFeed Rss scheme >>= \case
-    Left err@(BadFeed _) ->
-      pure . Left $ "Exception when trying to fetch feed: " `T.append` render err
-    Left _ ->
-      buildFeed Atom scheme >>= \case
-        Left err -> pure . Left . render $ err
-        Right (feed, warning) -> finish_successfully (feed, warning)
-    Right (feed, warning) -> finish_successfully (feed, warning)
- where
-  finish_successfully = pure . Right
-
-rebuildFeed :: (MonadIO m) => T.Text -> m (Either FeedError Feed)
--- updates a single feed
-rebuildFeed key = case eitherUrlScheme key of
-  Left err -> liftIO getCurrentTime >>= \now -> pure . Left $ FeedError key Nothing mempty (render err) now
-  Right url -> liftIO $ build url
- where
-  build url = do
-    now <- getCurrentTime
-    buildFeed Rss url >>= \case
-      Left err@(BadFeed _) ->
-        pure
-          . Left
-          $ FeedError
-            { r_url = renderUrl url
-            , r_error_message = "Exception when trying to fetch feed: " `T.append` render err
-            , r_status_code = Nothing
-            , r_user_message = mempty
-            , r_last_attempt = now
-            }
-      Left _ ->
-        buildFeed Atom url >>= \case
-          Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (render build_error) now
-          Right (feed, _) -> done feed
-      Right (feed, _) -> done feed
-  done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed{f_last_refresh = Just now}
-
-{- Settings -}
 
 parseSettings :: [T.Text] -> Either T.Text [ParsingSettings]
 parseSettings [] = Left "Unable to parse from an empty list of strings."
@@ -199,8 +134,6 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPin True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False : parsed) else ("'pin' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "share_link" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PShareLink True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False : parsed) else ("'share_link' takes only 'true' or 'false' as values." : not_parsed, parsed)
-    | k == "follow" =
-        if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False : parsed) else ("'follow' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "pagination" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPagination True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPagination False : parsed) else ("'pagination' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "no_collapse" =

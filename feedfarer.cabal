@@ -29,16 +29,17 @@ flag static
 
 library
   exposed-modules:
+      Chats
+      Digests
+      Feeds
       Jobs
-      MarkdownChecker
-      Mem
+      Markdown
       Mongo
-      Notifications
-      Parsing
       Redis
       Replies
       Requests
       Server
+      Settings
       TgActions
       TgramInJson
       TgramOutJson
@@ -138,7 +139,6 @@ test-suite feedfarer-test
       Hooks
       MarkdownCheckerSpec
       MongoSpec
-      NotifierSpec
       ParsingSpec
       RedisSpec
       RepliesSpec

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
 
-module MarkdownChecker where
+module Markdown (parse, render, parsing) where
 
 import Data.Foldable
 import Data.Maybe (fromMaybe)
@@ -15,8 +15,10 @@ singles = ['_', '*', '~', '`', '|', '>', '#', '+', '-', '=', '.', '!']
 doubles :: [Char]
 doubles = ['[', '(', '{', '}', ')', ']']
 
+{-
 openingDouble :: [Char]
 openingDouble = take 3 doubles
+-}
 
 falsePositives :: [Char]
 falsePositives = drop 5 singles
@@ -95,13 +97,15 @@ detEntity (TBD ['`', '`']) '`' = Right $ Rep Open (['`', '`', '`'], []) []
 detEntity (TBD ['`', '`']) c = Left $ "'" `T.append` T.singleton c `T.append` "' should have been escaped"
 detEntity _ c = Left $ "Unable to determine anything from " `T.append` T.singleton c
 
+{-
 getChildren :: Entity -> [Entity]
 getChildren (Root cs) = cs
 getChildren (NonRep _ _ cs) = cs
 getChildren (Rep _ _ cs) = cs
 getChildren _ = mempty
+-}
 
-{- Parsing -}
+{- Settings -}
 
 newtype Parser = Parser {runParser :: T.Text -> Either T.Text (Entity, Int)}
 

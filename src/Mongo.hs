@@ -4,7 +4,6 @@
 
 module Mongo where
 
-import Control.Concurrent.MVar (modifyMVar, modifyMVar_)
 import Control.Exception
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -24,12 +23,12 @@ import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
-import Notifications (alertAdmin, findNextTime)
+import GHC.IORef (atomicModifyIORef', readIORef)
 import Replies (render)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId, UserId)
 import Types
-import Utils (defaultChatSettings, freshLastXDays)
+import Utils (defaultChatSettings, findNextTime, freshLastXDays)
 
 {- Interface -}
 
@@ -128,33 +127,32 @@ setupDb credentials = do
 
 instance (MonadIO m) => HasMongo (App m) where
   withDb :: (MonadIO m) => Action IO a -> App m (Either T.Text a)
-  withDb action = do
-    env <- ask
-    liftIO $ modifyMVar (connectors env) $ \conns@(conn, cur_pipe) -> do
-      try (runMongo (database_name . mongo_creds $ env) cur_pipe action) >>= \case
+  withDb action =
+    ask >>= \env -> liftIO $ do
+      pipe <- readIORef (snd . connectors $ env)
+      let tryOnce = try (runMongo (database_name . mongo_creds $ env) pipe action)
+      tryOnce >>= \case
         Left (SomeException err) -> do
           let err' = T.pack $ show err
               msg = "DB choked on: " `T.append` err'
-          print msg >> alertAdmin (postjobs env) msg
-          -- recreate pipe if current pipe is broken
-          if T.toCaseFold "pipe" `T.isInfixOf` err' || T.toCaseFold "connection" `T.isInfixOf` err'
-            then do
-              closed <- isClosed cur_pipe
-              unless closed $
-                let closing_msg = "Pipe found open. Closing..."
-                 in print closing_msg >> alertAdmin (postjobs env) closing_msg >> close cur_pipe
-              setupDb (mongo_creds env) >>= \case
-                Left _ ->
-                  let choked = "Unable to recreate pipe."
-                   in print choked >> alertAdmin (postjobs env) choked >> pure (conns, Left choked)
-                Right (new_pipe, _) -> do
-                  let replacing_msg = "Pipe created. Replacing old."
-                      conns' = (conn, new_pipe)
-                  print replacing_msg >> alertAdmin (postjobs env) replacing_msg
-                  pure (conns', Left msg)
-            else -- otherwise simply return the exception's message
-              pure (conns, Left msg)
-        Right ok -> pure (conns, Right ok)
+          print msg
+          -- alertAdmin (postjobs env) msg
+          when (T.toCaseFold "pipe" `T.isInfixOf` err' || T.toCaseFold "connection" `T.isInfixOf` err') $ do
+            closed <- isClosed pipe
+            unless closed $ do
+              let pipe_open_msg = "Pipe found open. Closing..."
+              -- alertAdmin (postjobs env) pipe_open_msg
+              putStrLn pipe_open_msg
+              close pipe
+            setupDb (mongo_creds env) >>= \case
+              Left _ -> let choked = "Unable to recreate pipe." in putStrLn choked -- >> alertAdmin (postjobs env) choked
+              Right (new_pipe, _) -> do
+                let replacing_msg = "Pipe created. Replacing old."
+                putStrLn replacing_msg
+                -- alertAdmin (postjobs env) replacing_msg
+                atomicModifyIORef' (snd $ connectors env) $ const (new_pipe, ())
+          pure $ Left msg
+        Right ok -> pure $ Right ok
 
   evalDb :: (MonadIO m) => DbAction -> App m DbRes
   evalDb (DbAskForLogin uid cid) = do
@@ -202,6 +200,26 @@ instance (MonadIO m) => HasMongo (App m) where
             if failed res
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
+  evalDb (BumpNotified cids now) =
+    let failure = FailedToUpdate (T.pack . show $ cids) "BumpNotified failed"
+        action = withDb $ do
+          docs <- find (select ["sub_chatid" =: ["$in" =: cids]] "chats") >>= rest
+          let chats =
+                map
+                  ( \doc ->
+                      let
+                        chat = readDoc doc :: SubChat
+                        set_interval = settings_digest_interval . sub_settings $ chat
+                        next_time = findNextTime now set_interval
+                       in
+                        chat{sub_last_digest = Just now, sub_next_digest = Just next_time}
+                  )
+                  docs
+              selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
+          updateAll "chats" selector
+     in action >>= \case
+          Left _ -> pure $ Left failure
+          Right _ -> pure $ Right DbDone
   evalDb (DbSearch keywords scope mb_last_time) =
     let action = aggregate "items" $ buildSearchQuery keywords
      in withDb action >>= \case
@@ -227,6 +245,13 @@ instance (MonadIO m) => HasMongo (App m) where
      in action >>= \case
           Left _ -> pure $ Left $ FailedToUpdate mempty "DeleteChat failed"
           Right _ -> pure $ Right DbDone
+  evalDb (GetChat cid) =
+    let action = findOne (select ["sub_chatid" =: cid] "chats")
+     in withDb action >>= \case
+          Left _ -> pure . Left $ NotFound $ T.pack . show $ cid
+          Right m_doc -> case m_doc of
+            Nothing -> pure . Right $ DbNoChat
+            Just doc -> pure . Right . DbChat . readDoc $ doc
   evalDb GetAllChats =
     let action = find (select [] "chats")
      in withDb (action >>= rest) >>= \case
@@ -390,45 +415,6 @@ itemsIndex =
   let fields = ["i_desc" =: ("text" :: T.Text)]
    in Index "items" fields "items__i_desc__idx" True False Nothing
 
-{- Actions -}
-
-markNotified :: (MonadIO m) => [ChatId] -> UTCTime -> App m ()
--- marking input chats as notified
-markNotified notified_chats now = do
-  env <- ask
-  liftIO $
-    modifyMVar_ (subs_state env) $
-      \subs ->
-        let updated_chats = updated_notified_chats notified_chats subs
-         in runApp env $
-              evalDb (UpsertChats updated_chats) >>= \case
-                Left err -> do
-                  alertAdmin (postjobs env) $
-                    "notifier: failed to \
-                    \ save updated chats to db because of this error"
-                      `T.append` render err
-                  pure subs
-                Right DbDone -> pure updated_chats
-                _ -> pure subs
- where
-  updated_notified_chats notified =
-    HMS.mapWithKey
-      ( \cid c ->
-          if cid `elem` notified
-            then
-              let next_digest = Just . findNextTime now . settings_digest_interval . sub_settings $ c
-               in -- updating last, next_digest, and consuming 'settings_digest_start'
-                  case settings_digest_start . sub_settings $ c of
-                    Nothing -> c{sub_last_digest = Just now, sub_next_digest = next_digest}
-                    Just _ ->
-                      c
-                        { sub_last_digest = Just now
-                        , sub_next_digest = next_digest
-                        , sub_settings = (sub_settings c){settings_digest_start = Nothing}
-                        }
-            else c
-      )
-
 {- Items -}
 
 itemToBson :: Item -> Document
@@ -522,7 +508,6 @@ bsonToChat doc =
           , settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ M.lookup "settings_disable_web_view" settings_doc
           , settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc
           , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc
-          , settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
           , settings_forward_to_admins = fromMaybe (settings_forward_to_admins defaultChatSettings) $ M.lookup "settings_forward_to_admins" settings_doc
           , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
           , settings_digest_no_collapse = maybe S.empty S.fromList $ M.lookup "settings_digest_no_collapse" settings_doc
@@ -550,7 +535,6 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings ac
         , "settings_digest_size" =: settings_digest_size settings
         , "settings_digest_title" =: settings_digest_title settings
         , "settings_digest_start" =: settings_digest_start settings
-        , "settings_follow" =: settings_follow settings
         , "settings_forward_to_admins" =: settings_forward_to_admins settings
         , "settings_only_search_results" =: only_search_results
         , "settings_paused" =: settings_paused settings
@@ -663,7 +647,7 @@ checkDbMapper = do
   let item = Item mempty mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False True True False False word_matches mempty
+      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
       chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]

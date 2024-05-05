@@ -2,7 +2,7 @@ module WebBrowserSpec where
 
 import Data.Aeson
 import qualified Data.Set as S
-import Parsing (parseSettings)
+import Settings (parseSettings)
 import Test.Hspec
 import Types (DigestInterval (DigestInterval), Settings (Settings), WordMatches (WordMatches))
 
