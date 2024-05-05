@@ -80,7 +80,7 @@ startNotifs =
               case res of
                 Left bump_error -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` render bump_error)
                 Right _ -> pure ()
-            _ -> pure ()
+            something_else -> liftIO . print $ show something_else
         wait_action = do
           threadDelay interval
           putStrLn "startNotifs: Woke up"

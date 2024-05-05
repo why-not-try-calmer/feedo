@@ -20,7 +20,7 @@ import Types
 {- Data -}
 
 partitionEither :: [Either a b] -> ([a], [b])
-{-# INLINE partitionEither #-}
+{-# INLINEABLE partitionEither #-}
 partitionEither = foldl' step ([], [])
  where
   step (!ls, !rs) val = case val of
@@ -28,16 +28,16 @@ partitionEither = foldl' step ([], [])
     Right r -> (ls, r : rs)
 
 reduceMaybeWith :: (a -> Maybe b) -> [a] -> [b]
-{-# INLINE reduceMaybeWith #-}
+{-# INLINEABLE reduceMaybeWith #-}
 reduceMaybeWith f = foldl' (\acc val -> case f val of Just x -> x : acc; _ -> acc) []
 
 fromEither :: b -> Either a b -> b
-{-# INLINE fromEither #-}
+{-# INLINEABLE fromEither #-}
 fromEither def (Left _) = def
 fromEither _ (Right v) = v
 
 maybeUserIdx :: [a] -> Int -> Maybe a
-{-# INLINE maybeUserIdx #-}
+{-# INLINEABLE maybeUserIdx #-}
 maybeUserIdx [] _ = Nothing
 maybeUserIdx ls i
   | i < 1 = Nothing
@@ -47,7 +47,7 @@ maybeUserIdx ls i
   | otherwise = Just $ ls !! (i - 1)
 
 removeByUserIdx :: [a] -> [Int] -> Maybe [a]
-{-# INLINE removeByUserIdx #-}
+{-# INLINEABLE removeByUserIdx #-}
 removeByUserIdx [] _ = Nothing
 removeByUserIdx _ [] = Nothing
 removeByUserIdx ls is =
@@ -85,7 +85,7 @@ unFeedRefs :: [FeedRef] -> [T.Text]
 unFeedRefs = map unFeedRef
 
 toFeedRef :: [T.Text] -> Either InterpreterErr [FeedRef]
-{-# INLINE toFeedRef #-}
+{-# INLINEABLE toFeedRef #-}
 toFeedRef ss
   | all_valid_urls = Right intoUrls
   | all_ints = Right intoIds
@@ -147,7 +147,7 @@ findNextTime now (DigestInterval mbxs (Just ts)) = case mbxs of
   still_today = addUTCTime (minimum times) now
 
 mbTime :: String -> Maybe UTCTime
-{-# INLINE mbTime #-}
+{-# INLINEABLE mbTime #-}
 mbTime s = maybe second_pass pure $ iso8601ParseM s
  where
   second_pass = foldr step Nothing formats
@@ -192,7 +192,7 @@ utcToYmdHMS :: UTCTime -> T.Text
 utcToYmdHMS = T.pack . formatTime defaultTimeLocale "%Y-%m-%d %T"
 
 sortTimePairs :: [(Int, Int)] -> [(Int, Int)]
-{-# INLINE sortTimePairs #-}
+{-# INLINEABLE sortTimePairs #-}
 sortTimePairs = go []
  where
   go sorter [] = sorter
@@ -231,7 +231,7 @@ defaultChatSettings =
     }
 
 updateSettings :: [ParsingSettings] -> Settings -> Settings
-{-# INLINE updateSettings #-}
+{-# INLINEABLE updateSettings #-}
 updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
  where
@@ -271,7 +271,7 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
 {- Items -}
 
 sortItems :: Feed -> Feed
-{-# INLINE sortItems #-}
+{-# INLINEABLE sortItems #-}
 sortItems f = f{f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f}
 
 {- Replies -}
