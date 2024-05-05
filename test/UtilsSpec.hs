@@ -8,14 +8,15 @@ import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
-import Notifications
+import Digests
 import Test.Hspec
 import TgramOutJson (ChatId)
-import Types (Batch (Digests, Follows), BatchRecipe (DigestFeedLinks), DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Notifier (Pre), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
+import Types (DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
 import Utils (
   defaultChatSettings,
   fromEither,
   maybeUserIdx,
+  findNextTime,
   mbTime,
   partitionEither,
   scanTimeSlices,
@@ -29,7 +30,6 @@ mockFeedsChats now =
       f1 = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" [i1] Nothing Nothing
       f2 = Feed Rss "Python.org Description" "Python.org Title" "https://python.org" [i2] Nothing Nothing
       feeds = HMS.fromList $ map (\f -> (f_link f, f)) [f1, f2]
-      dg = DigestFeedLinks fl
       word_b = WordMatches S.empty (S.fromList ["Target"]) (S.fromList ["https://hnrss.org/frontpage"])
       c =
         SubChat

@@ -29,11 +29,11 @@ flag static
 
 library
   exposed-modules:
+      ChatsFeeds
+      Digests
       Jobs
-      MarkdownChecker
-      Mem
+      Markdown
       Mongo
-      Notifications
       Parsing
       Redis
       Replies
@@ -138,7 +138,6 @@ test-suite feedfarer-test
       Hooks
       MarkdownCheckerSpec
       MongoSpec
-      NotifierSpec
       ParsingSpec
       RedisSpec
       RepliesSpec

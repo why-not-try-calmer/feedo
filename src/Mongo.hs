@@ -25,12 +25,12 @@ import Database.MongoDB
 import qualified Database.MongoDB as M
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
-import Notifications (alertAdmin, findNextTime)
 import Replies (render)
+import Requests (alertAdmin)
 import Text.Read (readMaybe)
 import TgramOutJson (ChatId, UserId)
 import Types
-import Utils (defaultChatSettings, freshLastXDays)
+import Utils (defaultChatSettings, findNextTime, freshLastXDays)
 
 {- Interface -}
 
@@ -522,7 +522,6 @@ bsonToChat doc =
           , settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ M.lookup "settings_disable_web_view" settings_doc
           , settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc
           , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc
-          , settings_follow = fromMaybe (settings_follow defaultChatSettings) $ M.lookup "settings_follow" settings_doc
           , settings_forward_to_admins = fromMaybe (settings_forward_to_admins defaultChatSettings) $ M.lookup "settings_forward_to_admins" settings_doc
           , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
           , settings_digest_no_collapse = maybe S.empty S.fromList $ M.lookup "settings_digest_no_collapse" settings_doc
@@ -550,7 +549,6 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings ac
         , "settings_digest_size" =: settings_digest_size settings
         , "settings_digest_title" =: settings_digest_title settings
         , "settings_digest_start" =: settings_digest_start settings
-        , "settings_follow" =: settings_follow settings
         , "settings_forward_to_admins" =: settings_forward_to_admins settings
         , "settings_only_search_results" =: only_search_results
         , "settings_paused" =: settings_paused settings
@@ -663,7 +661,7 @@ checkDbMapper = do
   let item = Item mempty mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False False True True False False word_matches mempty
+      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
       chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]

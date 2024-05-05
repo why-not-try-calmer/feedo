@@ -1,27 +1,25 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RecordWildCards #-}
 
-module Mem where
+module ChatsFeeds where
 
 import Control.Concurrent
 import Control.Concurrent.Async (mapConcurrently, wait, withAsync)
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.IORef (readIORef)
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
 import Mongo (HasMongo (evalDb), evalDb)
-import Notifications
 import Parsing (rebuildFeed)
 import Replies (render)
+import Requests (alertAdmin)
 import System.Timeout (timeout)
 import TgramOutJson (ChatId, UserId)
 import Types
-import Utils (defaultChatSettings, feedsFromList, partitionEither, removeByUserIdx, sortItems, updateSettings)
+import Utils (defaultChatSettings, feedsFromList, findNextTime, partitionEither, removeByUserIdx, sortItems, updateSettings)
 
 withChatsFromMem :: (MonadIO m) => UserAction -> Maybe UserId -> ChatId -> App m (Either TgEvalError ChatRes)
 withChatsFromMem action maybe_userid cid = do
@@ -218,76 +216,3 @@ rebuildSomeFeeds flinks =
   logAndAlert env failed = do
     writeChan (postjobs env) (JobLog $ map LogFailed failed)
     writeChan (postjobs env) (JobTgAlertAdmin $ "Failed to fetch " `T.append` T.pack (show $ length failed) `T.append` " feeds")
-
-makeDigests :: (MonadIO m) => App m (Either T.Text FromCache)
-makeDigests = do
-  env <- ask
-  (chats, now, last_run) <- liftIO $ do
-    chats <- readMVar $ subs_state env
-    now <- getCurrentTime
-    last_run <- readIORef $ last_worker_run env
-    pure (chats, now, last_run)
-  -- checking due chats
-  let pre = preNotifier now last_run chats
-  -- handling due chats
-  if null $ feeds_to_refresh pre
-    then pure $ Right CacheOk
-    else
-      rebuildSomeFeeds (feeds_to_refresh pre) >>= \case
-        Left err -> pure $ Left err
-        Right rebuilt -> do
-          -- sometimes a digest would contain items with the same timestamps, but
-          -- we can filter them out through a simple comparison
-          last_batch <- get_last_batch rebuilt
-          -- caching
-          res <- evalDb $ UpsertFeeds $ HMS.elems rebuilt
-          -- creating update notification payload, with 'last_run' used only for 'follow notifications'
-          let post = postNotifier rebuilt last_batch pre
-          liftIO $ do
-            -- ensuring caching worked
-            case res of
-              Left e -> alertAdmin (postjobs env) $ render e
-              _ -> pure ()
-            -- saving to mongo
-            runApp env $
-              evalDb (ArchiveItems $ HMS.elems rebuilt)
-                >>= \case
-                  Left err -> alertAdmin (postjobs env) $ "Unable to archive items for this reason: " `T.append` render err
-                  _ -> pure ()
-            -- logging possibly too aggressive union
-            unless (null $ discarded_items_links post)
-              $ writeChan (postjobs env)
-                . JobLog
-              $ pure
-              $ LogMissing (discarded_items_links post) (length $ discarded_items_links post) now
-            -- Rust??
-            where_is_rust env pre post now
-          pure . Right $ CacheDigests $ batches post
- where
-  get_last_batch rebuilt =
-    evalDb (GetSomeFeeds $ feedlinksWithMissingPubdates rebuilt) >>= \case
-      Right (DbFeeds fs) -> pure $ map i_link $ foldMap f_items fs
-      _ -> pure mempty
-  where_is_rust env Pre{..} Post{..} now =
-    let rust_in = filter (T.isInfixOf "rust")
-        to_refresh = rust_in feeds_to_refresh
-        discarded = rust_in discarded_items_links
-        recipes =
-          foldl'
-            ( \acc (_, v) -> case v of
-                FollowFeedLinks fs -> acc ++ rust_in fs
-                DigestFeedLinks ds -> acc ++ rust_in ds
-            )
-            []
-            batch_recipes
-        report =
-          writeChan (postjobs env)
-            . JobLog
-            $ pure
-            $ LogDiscardedToRefreshRecipes
-              to_refresh
-              discarded
-              recipes
-              now
-     in unless (all null [to_refresh, discarded, recipes]) report
-  where_is_rust _ _ _ _ = undefined

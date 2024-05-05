@@ -14,7 +14,7 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
-import Mem (withChatsFromMem)
+import ChatsFeeds (withChatsFromMem)
 import Mongo (HasMongo (evalDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
@@ -209,7 +209,6 @@ writeSettings (WriteReq hash new_settings Nothing) = do
       , diff (settings_pin s, settings_pin s')
       , diff (settings_word_matches s, settings_word_matches s')
       , diff (settings_share_link s, settings_share_link s')
-      , diff (settings_follow s, settings_follow s')
       , diff (settings_pagination s, settings_pagination s')
       ]
 writeSettings (WriteReq _ _ (Just False)) = pure $ WriteResp 200 (Just "Update aborted.") Nothing

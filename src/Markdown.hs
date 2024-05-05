@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
 
-module MarkdownChecker where
+module Markdown where
 
 import Data.Foldable
 import Data.Maybe (fromMaybe)

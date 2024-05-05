@@ -134,12 +134,6 @@ mkReply (FromFeedItems f) =
           . f_items
           $ f
    in defaultReply rendered_items
-mkReply (FromFollow fs s) =
-  let fitems = map (\f -> (f_title f, f_items f)) fs
-      payload =
-        "New 'follow update'.\n--\n"
-          `T.append` render (fitems, 0 :: Int, S.toList $ settings_digest_no_collapse s)
-   in ChatReply payload True True False True Nothing
 mkReply (FromDigest fs mb_link s) =
   let fitems = map (\f -> (f_title f, f_items f)) fs
       -- pagination preempting collapse when both are enabled and
@@ -248,7 +242,6 @@ instance Renderable SubChat where
                   , ("Digest title", settings_digest_title sub_settings)
                   , ("Last digest", maybe "none" utcToYmdHMS sub_last_digest)
                   , ("Next digest", maybe "none scheduled yet" utcToYmdHMS sub_next_digest)
-                  , ("Follow", if settings_follow sub_settings then "true" else "false")
                   ]
               search_part =
                 mapper

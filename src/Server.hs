@@ -13,14 +13,13 @@ import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
 import Jobs
-import Mem
+import ChatsFeeds
 import Mongo (HasMongo (evalDb), setupDb)
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Notifications (alertAdmin)
 import Redis (setUpKeyStore)
 import Replies (render)
-import Requests (reply)
+import Requests (reply, alertAdmin)
 import Servant
 import Servant.HTML.Blaze
 import System.Environment (getEnvironment)

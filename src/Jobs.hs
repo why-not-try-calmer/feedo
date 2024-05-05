@@ -1,41 +1,33 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Jobs (startNotifs, startJobs) where
 
 import Control.Concurrent (
   readChan,
   threadDelay,
  )
-import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, mapConcurrently, wait, withAsync)
+import Control.Concurrent.Async (async, forConcurrently, forConcurrently_, wait, withAsync)
 import Control.Exception (Exception, SomeException (SomeException), catch)
 import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ask)
-import Data.Foldable (foldl', for_)
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (modifyIORef', readIORef)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
-import Data.Traversable (for)
-import Database.MongoDB (Select (select), find, rest, (=:))
-import GHC.Arr (fill)
-import Mem (makeDigests, withChatsFromMem)
-import Mongo (HasMongo (withDb), MongoDoc (readDoc), bsonToAdmin, evalDb, markNotified, saveToLog)
-import Notifications (alertAdmin)
-import Parsing (rebuildFeed)
+import ChatsFeeds (withChatsFromMem)
+import Mongo (evalDb, markNotified, saveToLog)
 import Redis
 import Replies (
   mkDigestUrl,
   mkReply,
   render,
  )
-import Requests (reply, runSend_)
+import Requests (reply, runSend_, alertAdmin)
 import TgActions (isChatOfType)
 import TgramInJson (ChatType (Channel))
-import TgramOutJson (ChatId, Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgDeleteMessage, TgPinChatMessage))
+import TgramOutJson (Outbound (DeleteMessage, PinMessage), TgRequestMethod (TgDeleteMessage, TgPinChatMessage))
 import Types
-import Utils (partitionEither)
+import Digests (makeDigests)
 
 {- Background tasks -}
 
@@ -49,36 +41,6 @@ checkDelay delay
   | delay > 30 = ("30 secs", 30000000)
   | otherwise = (show delay, delay)
 
-getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
-getPrebatch = do
-  now <- liftIO getCurrentTime
-  docs <- withDb (getChats now >>= rest)
-  case docs of
-    Left err -> pure . Left $ T.pack . show $ err
-    Right bson_chats ->
-      let (chats, feedlinks) =
-            foldl'
-              ( \(cs, fs) doc ->
-                  let c = readDoc doc :: SubChat
-                   in (c : cs, fs `S.union` sub_feeds_links c)
-              )
-              ([], S.empty)
-              bson_chats
-       in pure $ Right (feedlinks, chats)
-  where
-    getChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats")
-
-fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m Postbatch
-fillBatch (links, chats) = do
-  (failed, feeds) <- liftIO $ partitionEither <$> mapConcurrently rebuildFeed (S.toList links)
-  let feeds_of c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
-      step acc c = HMS.insert (sub_chatid c) (c, feeds_of c) acc
-  pure $ foldl' step HMS.empty chats
-
--- prepareDigest :: (HasMongo m, MonadIO m) => HMS.HashMap ChatId SubChat -> m (HMS.HashMap FeedLink [(ChatId, SubChat)])
--- prepareDigest = do
---   let getFeedLinks
-
 startNotifs :: (MonadIO m) => App m ()
 {- Forks a thread and tasks it with checking every minute
 if any chat need a digest or follow -}
@@ -88,31 +50,24 @@ startNotifs =
         onError (SomeException err) = do
           let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
           alertAdmin (postjobs env) report
-        -- sending digests + follows
-        send_tg_notif hmap now = forConcurrently (HMS.toList hmap)
-          $ \(cid, (c, batch)) ->
-            let sets = sub_settings c
-             in case batch of
-                  Follows fs -> do
-                    runApp env $ reply cid (mkReply (FromFollow fs sets))
-                    pure (cid, map f_link fs)
-                  Digests ds -> do
-                    let (ftitles, flinks, fitems) =
-                          foldr
-                            ( \f (one, two, three) ->
-                                (f_title f : one, f_link f : two, three ++ f_items f)
-                            )
-                            ([], [], [])
-                            ds
-                        ftitles' = S.toList . S.fromList $ ftitles
-                        flinks' = S.toList . S.fromList $ flinks
-                        digest = Digest Nothing now fitems flinks' ftitles'
-                    res <- runApp env $ evalDb $ WriteDigest digest
-                    let mb_digest_link r = case r of
-                          Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
-                          _ -> Nothing
-                    runApp env $ reply cid (mkReply (FromDigest ds (mb_digest_link res) sets))
-                    pure (cid, map f_link ds)
+        send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $ \(cid, (c, batch)) -> do
+          let sets = sub_settings c
+              (ftitles, flinks, fitems) =
+                foldr
+                  ( \f (one, two, three) ->
+                      (f_title f : one, f_link f : two, three ++ f_items f)
+                  )
+                  ([], [], [])
+                  batch
+              ftitles' = S.toList . S.fromList $ ftitles
+              flinks' = S.toList . S.fromList $ flinks
+              digest = Digest Nothing now fitems flinks' ftitles'
+          res <- runApp env $ evalDb $ WriteDigest digest
+          let mb_digest_link r = case r of
+                Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
+                _ -> Nothing
+          runApp env $ reply cid (mkReply (FromDigest batch (mb_digest_link res) sets))
+          pure (cid, map f_link batch)
         notify = do
           -- rebuilding feeds and collecting notifications
           digests <- makeDigests

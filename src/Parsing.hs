@@ -25,6 +25,7 @@ import Utils (defaultChatSettings, mbTime, sortTimePairs)
 {- Feeds, Items -}
 
 eitherUrlScheme :: T.Text -> Either TgEvalError (Url 'Https)
+{-# INLINABLE eitherUrlScheme #-}
 -- tries to make a valid Url Scheme from the given string
 eitherUrlScheme s
   | T.null s = Left . BadFeedUrl $ s
@@ -199,8 +200,6 @@ parseSettings lns = case foldr mkPairs Nothing lns of
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPin True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPin False : parsed) else ("'pin' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "share_link" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PShareLink True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PShareLink False : parsed) else ("'share_link' takes only 'true' or 'false' as values." : not_parsed, parsed)
-    | k == "follow" =
-        if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PFollow True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PFollow False : parsed) else ("'follow' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "pagination" =
         if "true" `T.isInfixOf` T.toCaseFold txt then (not_parsed, PPagination True : parsed) else if "false" `T.isInfixOf` txt then (not_parsed, PPagination False : parsed) else ("'pagination' takes only 'true' or 'false' as values." : not_parsed, parsed)
     | k == "no_collapse" =

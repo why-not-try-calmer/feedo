@@ -4,9 +4,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Requests (buildFeed, mkPagination, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
+module Requests (buildFeed, mkPagination, fetchFeed, runSend, runSend_, answer, mkKeyboard, reply, TgReqM, alertAdmin) where
 
-import Control.Concurrent (readMVar, writeChan)
+import Control.Concurrent (Chan, readMVar, writeChan)
 import Control.Exception (SomeException (SomeException), try)
 import Control.Monad.Reader
 import Control.Retry (constantDelay, limitRetries)
@@ -20,7 +20,6 @@ import qualified Data.Text.Encoding as T
 import Data.Time (UTCTime, getCurrentTime)
 import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
-import Notifications (alertAdmin)
 import Replies (render)
 import Text.XML
 import Text.XML.Cursor
@@ -140,15 +139,6 @@ mkPagination orig_txt mb_url =
      in case T.compareLength pl 1290 of
           GT -> go (l : p : ps) ls
           _ -> go (pl : ps) ls
-
-{-
-mkDigestLinkButton :: T.Text -> Maybe InlineKeyboardButton
-mkDigestLinkButton link
-    | T.null link = Nothing
-    | otherwise = Just $ InlineKeyboardButton label (Just link) Nothing
-  where
-    label = "Permalink"
--}
 
 reply ::
   (TgReqM m, MonadReader AppConfig m) =>
@@ -357,3 +347,6 @@ buildFeed ty url = do
      in if null missing_required
           then Right (f, render_optional)
           else Left . ParseError $ render_required
+
+alertAdmin :: (MonadIO m) => Chan Job -> T.Text -> m ()
+alertAdmin chan = liftIO . writeChan chan . JobTgAlertAdmin
