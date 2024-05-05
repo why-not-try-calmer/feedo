@@ -408,9 +408,10 @@ data DbAction
   | DeleteChat ChatId
   | DbAskForLogin UserId ChatId
   | GetAllFeeds
-  | GetSomeFeeds [FeedLink]
+  | GetChat ChatId
   | GetAllChats
   | GetPages ChatId Int
+  | GetSomeFeeds [FeedLink]
   | GetXDays [FeedLink] Int
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
   | DbSearch Keywords Scope (Maybe UTCTime)
@@ -425,6 +426,7 @@ data DbAction
 
 data DbResults
   = DbFeeds [Feed]
+  | DbChat SubChat
   | DbChats [SubChat]
   | DbNoChat
   | DbBadOID

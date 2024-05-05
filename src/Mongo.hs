@@ -245,6 +245,13 @@ instance (MonadIO m) => HasMongo (App m) where
      in action >>= \case
           Left _ -> pure $ Left $ FailedToUpdate mempty "DeleteChat failed"
           Right _ -> pure $ Right DbDone
+  evalDb (GetChat cid) =
+    let action = findOne (select ["sub_chatid" =: cid] "chats")
+     in withDb action >>= \case
+          Left _ -> pure . Left $ NotFound $ T.pack . show $ cid
+          Right m_doc -> case m_doc of
+            Nothing -> pure . Right $ DbNoChat
+            Just doc -> pure . Right . DbChat . readDoc $ doc
   evalDb GetAllChats =
     let action = find (select [] "chats")
      in withDb (action >>= rest) >>= \case

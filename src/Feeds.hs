@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+
 module Feeds where
 
 import Control.Exception (SomeException (SomeException))
@@ -7,6 +9,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
 import Network.HTTP.Req
+import Replies
 import Requests
 import Text.XML
 import Text.XML.Cursor
@@ -95,3 +98,59 @@ buildFeed ty url = do
      in if null missing_required
           then Right (f, render_optional)
           else Left . ParseError $ render_required
+
+{- Feeds, Items -}
+
+eitherUrlScheme :: T.Text -> Either TgEvalError (Url 'Https)
+{-# INLINEABLE eitherUrlScheme #-}
+-- tries to make a valid Url Scheme from the given string
+eitherUrlScheme s
+  | T.null s = Left . BadFeedUrl $ s
+  | head split /= "https:" = Left . BadFeedUrl $ s
+  | length body >= 2 = Right toScheme
+  | otherwise = Left . BadFeedUrl $ "Unable to parse this input." `T.append` s
+ where
+  s' = if T.last s == T.last "/" then T.dropEnd 1 s else s
+  split = T.splitOn "/" s'
+  body = drop 2 split
+  (host : rest) = body
+  toScheme = foldl' (/:) (https host) rest
+
+getFeedFromUrlScheme :: (MonadIO m) => Url scheme -> m (Either T.Text (Feed, Maybe T.Text))
+getFeedFromUrlScheme scheme =
+  buildFeed Rss scheme >>= \case
+    Left err@(BadFeed _) ->
+      pure . Left $ "Exception when trying to fetch feed: " `T.append` render err
+    Left _ ->
+      buildFeed Atom scheme >>= \case
+        Left err -> pure . Left . render $ err
+        Right (feed, warning) -> finish_successfully (feed, warning)
+    Right (feed, warning) -> finish_successfully (feed, warning)
+ where
+  finish_successfully = pure . Right
+
+rebuildFeed :: (MonadIO m) => T.Text -> m (Either FeedError Feed)
+-- updates a single feed
+rebuildFeed key = case eitherUrlScheme key of
+  Left err -> liftIO getCurrentTime >>= \now -> pure . Left $ FeedError key Nothing mempty (render err) now
+  Right url -> liftIO $ build url
+ where
+  build url = do
+    now <- getCurrentTime
+    buildFeed Rss url >>= \case
+      Left err@(BadFeed _) ->
+        pure
+          . Left
+          $ FeedError
+            { r_url = renderUrl url
+            , r_error_message = "Exception when trying to fetch feed: " `T.append` render err
+            , r_status_code = Nothing
+            , r_user_message = mempty
+            , r_last_attempt = now
+            }
+      Left _ ->
+        buildFeed Atom url >>= \case
+          Left build_error -> pure . Left $ FeedError (renderUrl url) Nothing mempty (render build_error) now
+          Right (feed, _) -> done feed
+      Right (feed, _) -> done feed
+  done feed = liftIO getCurrentTime >>= \now -> pure . Right $ feed{f_last_refresh = Just now}

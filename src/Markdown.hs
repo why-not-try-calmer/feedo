@@ -101,7 +101,7 @@ getChildren (NonRep _ _ cs) = cs
 getChildren (Rep _ _ cs) = cs
 getChildren _ = mempty
 
-{- Parsing -}
+{- Settings -}
 
 newtype Parser = Parser {runParser :: T.Text -> Either T.Text (Entity, Int)}
 

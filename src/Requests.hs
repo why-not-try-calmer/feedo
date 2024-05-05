@@ -221,7 +221,6 @@ reply cid rep = do
         | otherwise = send rep
   processReply
 
-
 fetchFeed :: (MonadIO m) => Url scheme -> m (Either FeedError LB.ByteString)
 fetchFeed url =
   liftIO $ do

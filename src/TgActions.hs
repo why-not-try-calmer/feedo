@@ -16,12 +16,13 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
+import Feeds (eitherUrlScheme, getFeedFromUrlScheme, rebuildFeed)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
-import Parsing (eitherUrlScheme, getFeedFromUrlScheme, parseSettings, rebuildFeed)
 import Redis
 import Replies (Replies (FromAbout), mkReply, render)
 import Requests (TgReqM (runSend), alertAdmin, answer, mkKeyboard, reply, runSend)
+import Settings
 import Text.Read (readMaybe)
 import TgramInJson
 import TgramOutJson
@@ -92,7 +93,7 @@ isUserAdmin tok uid cid =
                   chat_members = resp_cm_result res_cms :: [ChatMember]
                in pure . Right $ if_admin chat_members
  where
-  getChatAdmins = runSend tok TgGetChatAdministrators $ GetChat cid
+  getChatAdmins = runSend tok TgGetChatAdministrators $ TgramOutJson.GetChat cid
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= (user_id . cm_user $ member) = acc
@@ -110,7 +111,7 @@ isChatOfType tok cid ty =
               c = resp_result chat_resp :: Chat
            in pure . Right $ chat_type c == ty
  where
-  getChatType = runSend tok TgGetChat $ GetChat cid
+  getChatType = runSend tok TgGetChat $ TgramOutJson.GetChat cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either TgEvalError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -363,30 +364,30 @@ evalTgAct _ About _ =
 evalTgAct _ (FeedInfo ref) cid = do
   chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of
-      Nothing -> pure . Left $ NotFoundChat
-      Just c ->
-        let subs = case sub_linked_to c of
-              Nothing -> sort . S.toList . sub_feeds_links $ c
-              Just cid' -> case HMS.lookup cid' chats_hmap of
-                Nothing -> []
-                Just c' -> sort . S.toList . sub_feeds_links $ c'
-         in if null subs
-              then pure . Left $ NotSubscribed
-              else
-                evalDb (GetSomeFeeds subs) >>= \case
-                  Right (DbFeeds fs) ->
-                    let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
-                     in case found of
+    Nothing -> pure . Left $ NotFoundChat
+    Just c ->
+      let subs = case sub_linked_to c of
+            Nothing -> sort . S.toList . sub_feeds_links $ c
+            Just cid' -> case HMS.lookup cid' chats_hmap of
+              Nothing -> []
+              Just c' -> sort . S.toList . sub_feeds_links $ c'
+       in if null subs
+            then pure . Left $ NotSubscribed
+            else
+              evalDb (GetSomeFeeds subs) >>= \case
+                Right (DbFeeds fs) ->
+                  let found = case ref of ById n -> maybeUserIdx subs n; ByUrl u -> Just u
+                   in case found of
+                        Nothing -> pure . Left $ NotFoundFeed mempty
+                        Just u -> case find (\f -> f_link f == u) fs of
                           Nothing -> pure . Left $ NotFoundFeed mempty
-                          Just u -> case find (\f -> f_link f == u) fs of
-                            Nothing -> pure . Left $ NotFoundFeed mempty
-                            Just f -> pure . Right . mkReply $ FromFeedDetails f
-                  _ -> pure . Left $ NotFoundFeed mempty
+                          Just f -> pure . Right . mkReply $ FromFeedDetails f
+                _ -> pure . Left $ NotFoundFeed mempty
 evalTgAct uid (Announce txt) admin_chat =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
         admin_id = alert_chat . tg_config $ env
-        look cid = runSend tok TgGetChat $ GetChat cid
+        look cid = runSend tok TgGetChat $ TgramOutJson.GetChat cid
      in if admin_id /= admin_chat
           then exitNotAuth uid
           else do
@@ -597,8 +598,8 @@ evalTgAct uid Purge cid = do
             Right _ -> pure . Right . ServiceReply $ "Successfully purged the chat from the database."
 evalTgAct uid (PurgeChannel chan_id) _ = evalTgAct uid Purge chan_id
 evalTgAct _ Start cid =
-    let existing_chat = getChats <&> HMS.lookup cid
-     in existing_chat >>= \case Just c -> start_with_reload c; _ -> fresh_start
+  let existing_chat = getChats <&> HMS.lookup cid
+   in existing_chat >>= \case Just c -> start_with_reload c; _ -> fresh_start
  where
   fresh_start = pure . Right . mkReply $ FromStart
   start_with_reload c =
@@ -649,7 +650,7 @@ evalTgAct _ (Search keywords) cid =
             Just cid' -> case HMS.lookup cid' hmap of
               Nothing -> []
               Just c' -> S.toList . sub_feeds_links $ c'
-        in if null scope
+       in if null scope
             then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
             else
               evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case

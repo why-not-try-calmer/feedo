@@ -35,11 +35,11 @@ library
       Jobs
       Markdown
       Mongo
-      Parsing
       Redis
       Replies
       Requests
       Server
+      Settings
       TgActions
       TgramInJson
       TgramOutJson

@@ -17,6 +17,20 @@ import TgramOutJson (ChatId, UserId)
 import Types
 import Utils (defaultChatSettings, findNextTime, removeByUserIdx, updateSettings)
 
+getChat :: (MonadIO m) => ChatId -> App m SubChats
+getChat cid = do
+  env <- ask
+  let warn msg = alertAdmin (postjobs env) ("getChat: failed! Error: " `T.append` T.pack msg)
+  response <- evalDb $ GetChat cid
+  case response of
+    Left err -> do
+      warn $ show err
+      pure mempty
+    Right (DbChats chats) -> pure $ HMS.fromList $ map (\c -> (sub_chatid c, c)) chats
+    something_else -> do
+      warn $ show something_else
+      pure mempty
+
 getChats :: (MonadIO m) => App m SubChats
 getChats = do
   env <- ask

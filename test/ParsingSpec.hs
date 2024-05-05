@@ -7,10 +7,11 @@ import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
+import Feeds
 import Hooks (withHooks)
 import Network.HTTP.Req (renderUrl)
-import Parsing (eitherUrlScheme, parseSettings, rebuildFeed)
 import Server (makeConfig)
+import Settings (parseSettings)
 import System.Environment (getEnvironment)
 import Test.Hspec
 import Types

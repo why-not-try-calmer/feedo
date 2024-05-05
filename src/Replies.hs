@@ -333,7 +333,7 @@ instance Renderable TgEvalError where
   render (BadFeedUrl t) = T.append "No feed could be found at this address: " t
   render (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
   render (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
-  render (ParseError input) = T.append "Parsing this input failed: " input
+  render (ParseError input) = T.append "Settings this input failed: " input
   render (DbQueryError err) = T.append "Unable to update, because of this error: " $ render err
   render (UpdateError err) = T.append "Unable to update, because of this error: " err
   render (NotFoundFeed feed) = T.append "The feed you were looking for does not exist: " feed

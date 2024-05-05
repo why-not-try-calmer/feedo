@@ -12,8 +12,8 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
 import Database.MongoDB (find, rest, select, (=:))
+import Feeds (rebuildFeed)
 import Mongo (HasMongo (evalDb), MongoDoc (readDoc), withDb)
-import Parsing (rebuildFeed)
 import Replies (render)
 import Requests (alertAdmin)
 import TgramOutJson
