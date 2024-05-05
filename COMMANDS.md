@@ -73,9 +73,6 @@ digest_start: undefined
 disable_web_view: false
     # do not prevent Telegram from rendering the first item using the
     # InstantView feature
-follow: false
-    # do not try to post every new item between digest
-    # as as soon as they are found
 only_search: undefined
     # list of feeds whose items should be ignored from notifications unless they match search
     # keywords
@@ -107,15 +104,13 @@ _Remarks_:
     ```
     for a morning digest every other day.
 - when set to less than 1 day, `digest_every` is ignored and only `digest_at` is used;
-- `follow` tracks all you feeds and send notifications of new updates every 20 minutes;
-- `search_notif` and `only_search` allow to completely ignore certain feeds from digest or follow messages, while still getting notifications on matches. For example:
+- `search_notif` and `only_search` allow to completely ignore certain feeds from digest while still getting notifications on matches. For example:
     ```
     digest_every: 1d
-    follow: true
     search_notif: kernel
     only_search: url1 url2
     ```
-    means that the feeds at url1 and url2 will be ignored from your daily digests and 20-minute follows, unless any one of them contains a match for the keyword "kernel".
+    means that the feeds at url1 and url2 will be ignored from your daily digests, unless any one of them contains a match for the keyword "kernel".
 
 ### List subscribed to web feeds
 
