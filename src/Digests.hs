@@ -17,7 +17,7 @@ import Mongo (HasMongo (evalDb), MongoDoc (readDoc), withDb)
 import Replies (render)
 import Requests (alertAdmin)
 import TgramOutJson
-import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), SubChat (..))
+import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_pubdate), SubChat (..))
 import Utils (partitionEither)
 
 getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
@@ -43,7 +43,10 @@ fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.H
 fillBatch (links, chats) = do
   (failed, feeds) <- liftIO $ partitionEither <$> mapConcurrently rebuildFeed (S.toList links)
   let feeds_of c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
-      step acc c = HMS.insert (sub_chatid c) (c, feeds_of c) acc
+      fresh_only c = case sub_last_digest c of
+        Nothing -> feeds_of c
+        Just last_time -> map (\f -> f{f_items = filter (\i -> i_pubdate i > last_time) $ f_items f}) $ feeds_of c
+      step acc c = HMS.insert (sub_chatid c) (c, fresh_only c) acc
       results = foldl' step HMS.empty chats
   pure (failed, results)
 
