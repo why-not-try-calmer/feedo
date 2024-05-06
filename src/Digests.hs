@@ -52,7 +52,9 @@ fillBatch (links, chats) = do
                     f' = f{f_items = items}
                  in if null items then fs else fs ++ [f']
            in foldl' step' [] $ feeds_of c
-      step acc c = HMS.insert (sub_chatid c) (c, fresh_only c) acc
+      step acc c =
+        let fresh = fresh_only c
+         in if null fresh then acc else HMS.insert (sub_chatid c) (c, fresh_only c) acc
       results = foldl' step HMS.empty chats
   pure (failed, results)
 
