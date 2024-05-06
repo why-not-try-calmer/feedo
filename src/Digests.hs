@@ -40,12 +40,18 @@ getPrebatch = do
   getChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats")
 
 fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.HashMap ChatId (SubChat, [Feed]))
+{- Return only feeds with more than 0 items, along with failure messages -}
 fillBatch (links, chats) = do
   (failed, feeds) <- liftIO $ partitionEither <$> mapConcurrently rebuildFeed (S.toList links)
   let feeds_of c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
       fresh_only c = case sub_last_digest c of
         Nothing -> feeds_of c
-        Just last_time -> map (\f -> f{f_items = filter (\i -> i_pubdate i > last_time) $ f_items f}) $ feeds_of c
+        Just last_time ->
+          let step' !fs !f =
+                let items = filter (\i -> i_pubdate i > last_time) $ f_items f
+                    f' = f{f_items = items}
+                 in if null items then fs else fs ++ [f']
+           in foldl' step' [] $ feeds_of c
       step acc c = HMS.insert (sub_chatid c) (c, fresh_only c) acc
       results = foldl' step HMS.empty chats
   pure (failed, results)
@@ -60,14 +66,14 @@ makeDigests = do
       if null links
         then pure $ Right CacheOk
         else do
-          (errors, batches) <- fillBatch (links, chats)
+          (fetch_errors, batches) <- fillBatch (links, chats)
           let feeds = foldMap snd $ HMS.elems batches
           feeds_updated <- evalDb $ UpsertFeeds feeds
           feeds_archived <- evalDb $ ArchiveItems feeds
-          let (failed, _) = partitionEither [feeds_archived, feeds_updated]
-              error_text_request = T.intercalate "," $ map (T.pack . show) errors
-              error_text_db = T.intercalate "," $ map render failed
+          let (archive_errors, _) = partitionEither [feeds_archived, feeds_updated]
+              error_text_request = T.intercalate "," $ map (T.pack . show) fetch_errors
+              error_text_db = T.intercalate "," $ map render archive_errors
           -- log failure to rebuild or log
-          unless (null failed) (liftIO $ print error_text_request >> alertAdmin (postjobs env) error_text_request)
-          unless (null errors) (liftIO $ print error_text_db >> alertAdmin (postjobs env) error_text_db)
+          unless (null archive_errors) (liftIO $ print error_text_request >> alertAdmin (postjobs env) error_text_request)
+          unless (null fetch_errors) (liftIO $ print error_text_db >> alertAdmin (postjobs env) error_text_db)
           pure . Right $ CacheDigests batches
