@@ -52,13 +52,13 @@ fillBatch (links, chats) = do
                     f' = f{f_items = fresh_relevant}
                  in if null fresh_relevant then fs else fs ++ [f']
            in foldl' step' [] $ filter_feeds_items c
-      step acc c =
+      step acc !c =
         let feeds' = without_blacklisted c (fresh_feeds c)
          in if null feeds' then acc else HMS.insert (sub_chatid c) (c, fresh_feeds c) acc
       results = foldl' step HMS.empty chats
   pure (failed, results)
  where
-  fresh_only last_time f = filter (\i -> i_pubdate i > last_time) $ f_items f        
+  fresh_only last_time f = filter (\i -> i_pubdate i > last_time) $ f_items f
   without_irrelevant c items flink =
     let search_set = match_searchset . settings_word_matches . sub_settings $ c
         only_search_results = match_only_search_results . settings_word_matches . sub_settings $ c
@@ -84,9 +84,15 @@ makeDigests = do
           feeds_updated <- evalDb $ UpsertFeeds feeds
           feeds_archived <- evalDb $ ArchiveItems feeds
           let (archive_errors, _) = partitionEither [feeds_archived, feeds_updated]
+              n_fs = length feeds
               error_text_request = T.intercalate "," $ map render fetch_errors
               error_text_db = T.intercalate "," $ map render archive_errors
-          -- log failure to rebuild or log
-          unless (null archive_errors) (liftIO $ print error_text_request >> alertAdmin (postjobs env) error_text_request)
-          unless (null fetch_errors) (liftIO $ print error_text_db >> alertAdmin (postjobs env) error_text_db)
+              make_msg start end = "Error while " `T.append` start `T.append` (T.pack . show $ n_fs) `T.append` " feeds: " `T.append` end
+          liftIO $ do
+            unless (null fetch_errors) $
+              let m = make_msg " fetching " error_text_db
+               in print m >> alertAdmin (postjobs env) error_text_request
+            unless (null archive_errors) $
+              let m = make_msg " archiving " error_text_db
+               in print m >> alertAdmin (postjobs env) m
           pure . Right $ CacheDigests batches

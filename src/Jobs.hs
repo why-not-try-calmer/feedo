@@ -50,22 +50,24 @@ startNotifs =
           let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
           alertAdmin (postjobs env) report
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $ \(cid, (c, batch)) -> do
-          let sets = sub_settings c
-              (ftitles, flinks, fitems) =
-                foldr
-                  ( \f (one, two, three) ->
-                      (f_title f : one, f_link f : two, three ++ f_items f)
-                  )
-                  ([], [], [])
-                  batch
-              ftitles' = S.toList . S.fromList $ ftitles
-              flinks' = S.toList . S.fromList $ flinks
-              digest = Digest Nothing now fitems flinks' ftitles'
-          res <- runApp env $ evalDb $ WriteDigest digest
-          let mb_digest_link r = case r of
-                Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
-                _ -> Nothing
-          runApp env $ reply cid (mkReply (FromDigest batch (mb_digest_link res) sets))
+          unless (null batch) $
+            let sets = sub_settings c
+                (ftitles, flinks, fitems) =
+                  foldr
+                    ( \f (one, two, three) ->
+                        (f_title f : one, f_link f : two, three ++ f_items f)
+                    )
+                    ([], [], [])
+                    batch
+                ftitles' = S.toList . S.fromList $ ftitles
+                flinks' = S.toList . S.fromList $ flinks
+                digest = Digest Nothing now fitems flinks' ftitles'
+                mb_digest_link r = case r of
+                  Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
+                  _ -> Nothing
+            in  runApp env $ do
+                  write_res <- evalDb $ WriteDigest digest
+                  reply cid $ mkReply $ FromDigest batch (mb_digest_link write_res) sets
           pure (cid, map f_link batch)
         notify = do
           digests <- makeDigests
