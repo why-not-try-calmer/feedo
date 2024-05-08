@@ -13,11 +13,11 @@ import qualified Data.Text as T
 import Data.Time (getCurrentTime)
 import Database.MongoDB (find, rest, select, (=:))
 import Feeds (rebuildFeed)
-import Mongo (HasMongo (evalDb), MongoDoc (readDoc), withDb)
+import Mongo (HasMongo (evalDb), MongoDoc (readDoc), saveToLog, withDb)
 import Replies (render)
 import Requests (alertAdmin)
 import TgramOutJson
-import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_desc, i_pubdate, i_title), Settings (settings_word_matches), SubChat (..), WordMatches (match_blacklist), match_only_search_results, match_searchset)
+import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_desc, i_pubdate, i_title), LogItem (LogFailed), Settings (settings_word_matches), SubChat (..), WordMatches (match_blacklist), match_only_search_results, match_searchset)
 import Utils (partitionEither)
 
 getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
@@ -85,14 +85,11 @@ makeDigests = do
           feeds_archived <- evalDb $ ArchiveItems feeds
           let (archive_errors, _) = partitionEither [feeds_archived, feeds_updated]
               n_fs = length feeds
-              error_text_request = T.intercalate "," $ map render fetch_errors
-              error_text_db = T.intercalate "," $ map render archive_errors
-              make_msg start end = "Error while " `T.append` start `T.append` (T.pack . show $ n_fs) `T.append` " feeds: " `T.append` end
-          liftIO $ do
-            unless (null fetch_errors) $
-              let m = make_msg " fetching " error_text_db
-               in print m >> alertAdmin (postjobs env) error_text_request
+          do
+            unless (null fetch_errors) $ (mapM_ $ saveToLog . LogFailed) fetch_errors
             unless (null archive_errors) $
-              let m = make_msg " archiving " error_text_db
-               in print m >> alertAdmin (postjobs env) m
+              let error_text_db = T.intercalate "," $ map render archive_errors
+                  make_msg start end = "Error while " `T.append` start `T.append` (T.pack . show $ n_fs) `T.append` " feeds: " `T.append` end
+                  m = make_msg " archiving " error_text_db
+               in alertAdmin (postjobs env) m
           pure . Right $ CacheDigests batches

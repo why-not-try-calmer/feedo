@@ -65,7 +65,7 @@ startNotifs =
                 mb_digest_link r = case r of
                   Right (DbDigestId _id) -> Just $ mkDigestUrl (base_url env) _id
                   _ -> Nothing
-            in  runApp env $ do
+             in runApp env $ do
                   write_res <- evalDb $ WriteDigest digest
                   reply cid $ mkReply $ FromDigest batch (mb_digest_link write_res) sets
           pure (cid, map f_link batch)
