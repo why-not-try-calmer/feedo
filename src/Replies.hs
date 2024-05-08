@@ -329,7 +329,7 @@ instance Renderable InterpreterErr where
 
 instance Renderable TgEvalError where
   render (BadRef contents) = T.append "References to web feeds must be either single digits or full-blown urls starting with 'https://', but you sent this: " contents
-  render (BadFeed feederror) = T.append "Unable to fetch this feed: " (T.pack . show $ feederror)
+  render (BadFeed feederror) = T.append "Unable to fetch this feed: " (render feederror)
   render (BadFeedUrl t) = T.append "No feed could be found at this address: " t
   render (NotAdmin _) = "Unable to perform this action, as it's reserved to admins in this chat."
   render (MaxFeedsAlready _) = "This chat has reached the limit of subscriptions (10)"
@@ -355,6 +355,19 @@ instance Renderable DbError where
   render FailedToProduceValidId = "Db was unable to return a valid identifier"
   render FailedToInsertPage = "Db was unable to insert these pages."
   render FailedToGetAllPages = "Db was unable to retrieve all pages."
+
+instance Renderable FeedError where
+  render (FeedError url status_code error_msg user_msg last_attempt) =
+    "Failed to build or fetch feed "
+      `T.append` url
+      `T.append` ". Status code: "
+      `T.append` (T.pack . show $ status_code)
+      `T.append` ". Error message: "
+      `T.append` error_msg
+      `T.append` ". User message: "
+      `T.append` user_msg
+      `T.append` ". Last attempt: "
+      `T.append` (T.pack . show $ last_attempt)
 
 renderCmds :: T.Text
 renderCmds =

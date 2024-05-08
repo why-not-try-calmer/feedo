@@ -17,7 +17,7 @@ import Mongo (HasMongo (evalDb), MongoDoc (readDoc), withDb)
 import Replies (render)
 import Requests (alertAdmin)
 import TgramOutJson
-import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_pubdate), SubChat (..))
+import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_desc, i_pubdate, i_title), Settings (settings_word_matches), SubChat (..), WordMatches (match_blacklist), match_only_search_results, match_searchset)
 import Utils (partitionEither)
 
 getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
@@ -43,20 +43,31 @@ fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.H
 {- Return only feeds with more than 0 items, along with failure messages -}
 fillBatch (links, chats) = do
   (failed, feeds) <- liftIO $ partitionEither <$> mapConcurrently rebuildFeed (S.toList links)
-  let feeds_of c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
-      fresh_only c = case sub_last_digest c of
-        Nothing -> feeds_of c
+  let filter_feeds_items c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
+      fresh_feeds c = case sub_last_digest c of
+        Nothing -> filter_feeds_items c
         Just last_time ->
           let step' !fs !f =
-                let items = filter (\i -> i_pubdate i > last_time) $ f_items f
-                    f' = f{f_items = items}
-                 in if null items then fs else fs ++ [f']
-           in foldl' step' [] $ feeds_of c
+                let fresh_relevant = without_irrelevant c (fresh_only last_time f) $ f_link f
+                    f' = f{f_items = fresh_relevant}
+                 in if null fresh_relevant then fs else fs ++ [f']
+           in foldl' step' [] $ filter_feeds_items c
       step acc c =
-        let fresh = fresh_only c
-         in if null fresh then acc else HMS.insert (sub_chatid c) (c, fresh_only c) acc
+        let feeds' = without_blacklisted c (fresh_feeds c)
+         in if null feeds' then acc else HMS.insert (sub_chatid c) (c, fresh_feeds c) acc
       results = foldl' step HMS.empty chats
   pure (failed, results)
+ where
+  fresh_only last_time f = filter (\i -> i_pubdate i > last_time) $ f_items f        
+  without_irrelevant c items flink =
+    let search_set = match_searchset . settings_word_matches . sub_settings $ c
+        only_search_results = match_only_search_results . settings_word_matches . sub_settings $ c
+     in if flink `S.notMember` only_search_results
+          then items
+          else filter (\i -> any (\w -> T.toCaseFold w `T.isInfixOf` T.intercalate " " [i_desc i, i_title i]) search_set) items
+  without_blacklisted c fs =
+    let bl = match_blacklist . settings_word_matches . sub_settings $ c
+     in filter (\f -> f_link f `S.notMember` bl) fs
 
 makeDigests :: (MonadIO m) => App m (Either T.Text FromCache)
 makeDigests = do
@@ -73,7 +84,7 @@ makeDigests = do
           feeds_updated <- evalDb $ UpsertFeeds feeds
           feeds_archived <- evalDb $ ArchiveItems feeds
           let (archive_errors, _) = partitionEither [feeds_archived, feeds_updated]
-              error_text_request = T.intercalate "," $ map (T.pack . show) fetch_errors
+              error_text_request = T.intercalate "," $ map render fetch_errors
               error_text_db = T.intercalate "," $ map render archive_errors
           -- log failure to rebuild or log
           unless (null archive_errors) (liftIO $ print error_text_request >> alertAdmin (postjobs env) error_text_request)
