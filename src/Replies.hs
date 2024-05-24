@@ -106,6 +106,7 @@ defaultReply payload =
     }
 
 mkReply :: Replies -> Reply
+{- Prepare a reply from digests or other commands -}
 mkReply (FromAbout version) =
   ServiceReply $
     "Version: "
@@ -141,7 +142,8 @@ mkReply (FromDigest fs mb_link s) =
       collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s
       header = "-- " `T.append` settings_digest_title s `T.append` " --"
       protected = S.toList $ settings_digest_no_collapse s
-      body = render (fitems, collapse, protected)
+      max_items = if settings_digest_size s > 0 then settings_digest_size s else 20
+      body = render (fitems, collapse, protected, max_items)
       payload = header `T.append` body
    in ChatReply
         { reply_contents = payload
@@ -274,8 +276,8 @@ instance Renderable SubChat where
 instance Renderable [Item] where
   render = intoTimeLine
 
-instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
-  render (!f_items, !collapse_size, !protected) =
+instance Renderable ([(T.Text, [Item])], Int, [FeedLink], Int) where
+  render (!f_items, !collapse_size, !protected, !max_items) =
     let protected' = map T.toCaseFold protected
         collapsing i
           | collapse_size < length i =
@@ -290,13 +292,13 @@ instance Renderable ([(T.Text, [Item])], Int, [FeedLink]) where
             `T.append` "\n*| "
             `T.append` t
             `T.append` "*\n"
-            `T.append` (render . take 30 . sortOn (Down . i_pubdate) $ i)
+            `T.append` (render . take max_items . sortOn (Down . i_pubdate) $ i)
         into_folder acc (!t, !i) =
           let sorted = sortOn (Down . i_pubdate)
               is_protected =
                 let link = T.toCaseFold . i_feed_link $ head i
                  in link `elem` protected'
-              items = if is_protected then sorted i else take collapse_size . sorted $ i
+              items = if is_protected then take max_items $ sorted i else take collapse_size . sorted $ i
               acc' =
                 if null items
                   then acc
