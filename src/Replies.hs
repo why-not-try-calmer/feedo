@@ -142,7 +142,7 @@ mkReply (FromDigest fs mb_link s) =
       collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s
       header = "-- " `T.append` settings_digest_title s `T.append` " --"
       protected = S.toList $ settings_digest_no_collapse s
-      max_items = if settings_digest_size s > 0 then settings_digest_size s else 30
+      max_items = if settings_digest_size s > 0 then settings_digest_size s else 20
       body = render (fitems, collapse, protected, max_items)
       payload = header `T.append` body
    in ChatReply
