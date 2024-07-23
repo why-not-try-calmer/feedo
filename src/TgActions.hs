@@ -4,7 +4,7 @@
 module TgActions (isUserAdmin, isChatOfType, interpretCmd, processCbq, evalTgAct, subFeed) where
 
 import Chats (getChats, withChat)
-import Control.Concurrent (Chan, writeChan)
+import Control.Concurrent (writeChan)
 import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -42,7 +42,7 @@ import Types (
   FromCache (CachePage),
   InterpreterErr (..),
   Item (i_pubdate),
-  Job (JobRemoveMsg, JobTgAlertAdmin),
+  Job (JobTgAlertAdmin),
   Replies (
     FromAdmin,
     FromAnnounce,
@@ -80,25 +80,24 @@ import Utils (maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
-  isChatOfType tok cid Private >>= \case
-    Left err -> pure $ Left err
-    Right ok ->
-      if ok
-        then pure . Right $ ok
-        else
-          getChatAdmins >>= \case
-            Left err -> pure . Left . TelegramErr $ err
-            Right res_chat_type ->
-              let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
-                  chat_members = resp_cm_result res_cms :: [ChatMember]
-               in pure . Right $ if_admin chat_members
+  if uid == cid
+    then pure . Right $ True
+    else
+      getChatAdmins >>= \case
+        Left err -> pure . Left . TelegramErr $ err
+        Right res_chat_type ->
+          let res_cms = responseBody res_chat_type :: TgGetChatMembersResponse
+              chat_members = resp_cm_result res_cms :: [ChatMember]
+           in pure . Right $ if_admin chat_members
  where
-  getChatAdmins = runSend tok TgGetChatAdministrators $ TgramOutJson.GetChat cid
+  getChatAdmins = runSend tok TgGetChatAdministrators $ GetChatMessage cid
   if_admin = foldr is_admin False
   is_admin member acc
-    | uid /= (user_id . cm_user $ member) = acc
-    | cm_status member `elem` [Administrator, Creator] = True
+    | uid /= uid' = acc
+    | status `elem` [Administrator, Creator] = True
     | otherwise = False
+   where
+    (uid', status) = getUserStatus member
 
 isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgEvalError Bool)
 isChatOfType tok cid ty =
@@ -108,10 +107,10 @@ isChatOfType tok cid ty =
         Left err -> pure . Left . TelegramErr $ err
         Right res_chat ->
           let chat_resp = responseBody res_chat :: TgGetChatResponse
-              c = resp_result chat_resp :: Chat
-           in pure . Right $ chat_type c == ty
+              chat_full_info = resp_result chat_resp :: ChatFullInfo
+           in pure . Right $ cfi_type chat_full_info == ty
  where
-  getChatType = runSend tok TgGetChat $ TgramOutJson.GetChat cid
+  getChatType = runSend tok TgGetChat $ GetChatMessage cid
 
 exitNotAuth :: (Applicative f, Show a) => a -> f (Either TgEvalError b)
 exitNotAuth = pure . Left . NotAdmin . T.pack . show
@@ -290,22 +289,6 @@ interpretCmd contents
         (h : _) = T.splitOn "@" h'
      in (h, t)
 
-testChannel :: (TgReqM m) => BotToken -> ChatId -> Chan Job -> m (Either TgEvalError ())
-testChannel tok chan_id jobs =
-  -- tries sending a message to the given channel
-  -- if the response rewards the test with a message_id, it's won.
-  runSend tok TgSendMessage (OutboundMessage chan_id "Channel linked successfully. This message will be removed in 10s." Nothing Nothing Nothing) >>= \case
-    Left _ -> pure . Left . NotAdmin $ "Unable to post to " `T.append` (T.pack . show $ chan_id) `T.append` ". Make sure the bot has administrative rights in that channel."
-    Right resp ->
-      let res = responseBody resp :: TgGetMessageResponse
-          mid = message_id . resp_msg_result $ res
-       in if not $ resp_msg_ok res
-            then pure . Left . TelegramErr $ "Telegram didn't respond with an `ok` field. Aborting."
-            else -- tries removing the test message
-            do
-              liftIO $ writeChan jobs . JobRemoveMsg chan_id mid $ 30
-              pure (Right ())
-
 subFeed :: (MonadIO m) => ChatId -> [FeedLink] -> App m Reply
 subFeed cid = startWithValidateUrls
  where
@@ -387,7 +370,7 @@ evalTgAct uid (Announce txt) admin_chat =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
         admin_id = alert_chat . tg_config $ env
-        look cid = runSend tok TgGetChat $ TgramOutJson.GetChat cid
+        look cid = runSend tok TgGetChat $ GetChatMessage cid
      in if admin_id /= admin_chat
           then exitNotAuth uid
           else do
@@ -411,10 +394,10 @@ evalTgAct uid (Announce txt) admin_chat =
     foldl'
       ( \acc r ->
           let res_c = responseBody r
-              c = resp_result res_c
+              chat_full_info = resp_result res_c
            in if not $ resp_ok res_c
                 then acc
-                else case chat_type c of Channel -> acc; _ -> chat_id c : acc
+                else case cfi_type chat_full_info of Channel -> acc; _ -> cfi_chat_id chat_full_info : acc
       )
       []
 evalTgAct uid (AskForLogin target_id) cid = do
@@ -673,16 +656,12 @@ evalTgAct uid (SetChatSettings settings) cid =
 evalTgAct uid (SubChannel chan_id urls) _ =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
-        jobs = postjobs env
      in isUserAdmin tok uid chan_id >>= \case
           Left err -> pure . Left $ err
           Right verdict ->
             if not verdict
               then pure . Left . NotAdmin $ "Only users with administrative rights in the target channel is allowed to link the bot to the channel."
-              else
-                testChannel tok chan_id jobs >>= \case
-                  Left err -> pure . Left $ err
-                  Right _ -> subFeed chan_id urls >>= \rep -> pure . Right $ rep
+              else subFeed chan_id urls >>= \rep -> pure . Right $ rep
 evalTgAct uid TestDigest cid =
   ask >>= \env ->
     isUserAdmin (bot_token . tg_config $ env) uid cid >>= \case

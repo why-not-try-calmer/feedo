@@ -5,7 +5,7 @@
 module TgramOutJson where
 
 import Data.Aeson
-import Data.Aeson.TH (deriveJSON)
+import Data.Aeson.TH (deriveToJSON)
 import Data.Int (Int64)
 import qualified Data.Text as T
 
@@ -31,17 +31,17 @@ data InlineKeyboardButton = InlineKeyboardButton
   }
   deriving (Eq, Show)
 
-$(deriveJSON defaultOptions{fieldLabelModifier = drop 7, omitNothingFields = True} ''InlineKeyboardButton)
+$(deriveToJSON defaultOptions{fieldLabelModifier = drop 7, omitNothingFields = True} ''InlineKeyboardButton)
 
 newtype InlineKeyboardMarkup = InlineKeyboardMarkup
   { inline_keyboard :: [[InlineKeyboardButton]]
   }
   deriving (Show, Eq)
 
-$(deriveJSON defaultOptions ''InlineKeyboardMarkup)
+$(deriveToJSON defaultOptions ''InlineKeyboardMarkup)
 
-data Outbound
-  = OutboundMessage
+data OutTgMsg
+  = NewMessage
       { out_chat_id :: ChatId
       , out_text :: T.Text
       , out_parse_mode :: Maybe T.Text
@@ -64,12 +64,12 @@ data Outbound
       { out_chat_id :: ChatId
       , out_message_id :: Int
       }
-  | GetChat
+  | GetChatMessage
       { out_chat_id :: ChatId
       }
   deriving (Eq, Show)
 
-$(deriveJSON defaultOptions{fieldLabelModifier = drop 4, omitNothingFields = True} ''Outbound)
+$(deriveToJSON defaultOptions{sumEncoding = UntaggedValue, fieldLabelModifier = drop 4, omitNothingFields = True} ''OutTgMsg)
 
 data AnswerCallbackQuery = AnswerCallbackQuery
   { answer_callback_query_id :: T.Text
@@ -80,4 +80,4 @@ data AnswerCallbackQuery = AnswerCallbackQuery
   }
   deriving (Show)
 
-$(deriveJSON defaultOptions{fieldLabelModifier = drop 7, omitNothingFields = True} ''AnswerCallbackQuery)
+$(deriveToJSON defaultOptions{fieldLabelModifier = drop 7, omitNothingFields = True} ''AnswerCallbackQuery)

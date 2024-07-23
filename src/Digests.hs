@@ -64,7 +64,9 @@ fillBatch (links, chats) = do
         only_search_results = match_only_search_results . settings_word_matches . sub_settings $ c
      in if flink `S.notMember` only_search_results
           then items
-          else filter (\i -> any (\w -> T.toCaseFold w `T.isInfixOf` T.intercalate " " [i_desc i, i_title i]) search_set) items
+          else
+            let heystack i = T.words (T.intercalate " " [i_desc i, i_title i])
+             in filter (\i -> any (\needle -> T.toCaseFold needle `elem` heystack i) search_set) items
   without_blacklisted c fs =
     let bl = match_blacklist . settings_word_matches . sub_settings $ c
      in filter (\f -> f_link f `S.notMember` bl) fs

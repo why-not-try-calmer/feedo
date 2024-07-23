@@ -13,7 +13,7 @@ import System.Environment (getEnvironment)
 import Test.Hspec
 import TgramInJson (TgGetMessageResponse (resp_msg_ok))
 import TgramOutJson (
-  Outbound (..),
+  OutTgMsg (..),
   TgRequestMethod (TgSendMessage),
  )
 import Types
@@ -49,7 +49,7 @@ spec = withHooks [go, go1]
    where
     action tok cid contents =
       runSend tok TgSendMessage $
-        OutboundMessage
+        NewMessage
           { out_chat_id = cid
           , out_text = contents
           , out_parse_mode = Just "MarkdownV2"

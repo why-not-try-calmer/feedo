@@ -7,9 +7,10 @@
 module Requests (alertAdmin, fetchFeed, mkPagination, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
 import Control.Concurrent (Chan, writeChan)
-import Control.Exception (SomeException (SomeException), try)
+import Control.Exception (SomeException (SomeException), evaluate, try)
 import Control.Monad.Reader
 import Control.Retry (constantDelay, limitRetries)
+import Data.Aeson (encode)
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (for_)
@@ -21,15 +22,15 @@ import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Req
 import Replies (render)
 import TgramInJson (Message (message_id), TgGetMessageResponse (resp_msg_result))
-import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), Outbound (EditMessage, OutboundMessage, out_chat_id, out_disable_web_page_preview, out_parse_mode, out_reply_markup, out_text), TgRequestMethod (TgEditMessage, TgSendMessage))
+import TgramOutJson (AnswerCallbackQuery, ChatId, InlineKeyboardButton (InlineKeyboardButton), InlineKeyboardMarkup (InlineKeyboardMarkup), OutTgMsg (..), TgRequestMethod (TgEditMessage, TgSendMessage))
 import Types
 import Utils (sliceIfAboveTelegramMax)
 
 {- Interface -}
 
 class (MonadIO m) => TgReqM m where
-  runSend :: (FromJSON a) => BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text (JsonResponse a))
-  runSend_ :: BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text ())
+  runSend :: (FromJSON a) => BotToken -> TgRequestMethod -> OutTgMsg -> m (Either T.Text (JsonResponse a))
+  runSend_ :: BotToken -> TgRequestMethod -> OutTgMsg -> m (Either T.Text ())
 
 instance (MonadIO m) => TgReqM (App m) where
   runSend = reqSend
@@ -39,11 +40,28 @@ instance TgReqM IO where
   runSend = reqSend
   runSend_ = reqSend_
 
-reqSend :: (TgReqM m, FromJSON a) => BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text (JsonResponse a))
-reqSend tok postMeth encodedMsg =
-  liftIO (try action) >>= \case
+-- sendReqBs :: BotToken -> T.Text -> ChatId -> IO ()
+-- sendReqBs tok meth chatid = do
+--   let payload = GetChatMessage chatid
+--       params = https "api.telegram.org" /: tok /: meth
+--       request = req Network.HTTP.Req.POST params (ReqBodyJson payload) bsResponse mempty
+--   print $ renderUrl params
+--   print $ encode payload
+--   response <- runReq defaultHttpConfig request
+--   B.putStrLn $ responseBody response
+--   pure ()
+
+reqSend :: (TgReqM m, FromJSON a) => BotToken -> TgRequestMethod -> OutTgMsg -> m (Either T.Text (JsonResponse a))
+reqSend tok postMeth encodedMsg = liftIO $ do
+  try action >>= \case
     Left (SomeException err) ->
-      let msg = "Tried to send a request, but failed for this reason: " `T.append` (T.pack . show $ err)
+      let msg =
+            "Tried to send a request, but failed for this reason: "
+              `T.append` (T.pack . show $ err)
+              `T.append` ". Method was "
+              `T.append` (T.pack . show $ postMeth)
+              `T.append` ". The following outbounds were to be sent: "
+              `T.append` T.intercalate "; " (map (T.pack . show) outbounds)
        in pure . Left $ msg
     Right resps -> pure . Right . head $ resps
  where
@@ -56,15 +74,15 @@ reqSend tok postMeth encodedMsg =
       )
       outbounds
   outbounds = case encodedMsg of
-    OutboundMessage{..} -> map (\part -> encodedMsg{out_text = part}) (sliceIfAboveTelegramMax out_text)
+    NewMessage{..} -> map (\part -> encodedMsg{out_text = part}) (sliceIfAboveTelegramMax out_text)
     EditMessage{..} -> map (\part -> encodedMsg{out_text = part}) (sliceIfAboveTelegramMax out_text)
     _ -> pure encodedMsg
-  -- request :: (TgReqM m, FromJSON a) => Outbound -> m (JsonResponse a)
+  -- request :: (TgReqM m, FromJSON a) => OutTgMsg -> m (JsonResponse a)
   request outbound =
     let reqUrl = https "api.telegram.org" /: tok /: render postMeth
      in req Network.HTTP.Req.POST reqUrl (ReqBodyJson outbound) jsonResponse mempty
 
-reqSend_ :: (TgReqM m) => BotToken -> TgRequestMethod -> Outbound -> m (Either T.Text ())
+reqSend_ :: (TgReqM m) => BotToken -> TgRequestMethod -> OutTgMsg -> m (Either T.Text ())
 reqSend_ a b c =
   reqSend a b c >>= \case
     Left txt -> pure $ Left txt
@@ -151,7 +169,7 @@ reply cid rep = do
          in message_id . resp_msg_result $ b
       fromReply ChatReply{..} =
         let base =
-              OutboundMessage
+              NewMessage
                 { out_chat_id = cid
                 , out_text = reply_contents
                 , out_parse_mode = if reply_markdown then Just "Markdown" else Nothing
@@ -163,8 +181,8 @@ reply cid rep = do
                 let (pages, keyboard) = fromJust $ mkPagination reply_contents reply_permalink
                  in base{out_text = last pages, out_reply_markup = Just keyboard}
               else base{out_reply_markup = mkPermLinkKeyboard <$> reply_permalink}
-      fromReply (ServiceReply contents) = OutboundMessage cid contents Nothing (Just True) Nothing
-      fromReply (ForwardServiceReply cid' txt) = OutboundMessage cid' txt Nothing (Just True) Nothing
+      fromReply (ServiceReply contents) = NewMessage cid contents Nothing (Just True) Nothing
+      fromReply (ForwardServiceReply cid' txt) = NewMessage cid' txt Nothing (Just True) Nothing
       fromReply (EditReply mid contents markdown keyboard) = EditMessage cid mid contents has_markdown no_webview keyboard
        where
         no_webview = pure True
