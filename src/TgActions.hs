@@ -97,7 +97,7 @@ isUserAdmin tok uid cid =
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= (user_id . cm_user $ member) = acc
-    | cm_status member `elem` [Admin, Creator] = True
+    | cm_status member `elem` [Administrator, Creator] = True
     | otherwise = False
 
 isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgEvalError Bool)

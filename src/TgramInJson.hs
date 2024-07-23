@@ -16,22 +16,28 @@ data ChatType
 
 data UserStatus
   = Creator
-  | Admin
+  | Administrator
   | Member
-  | Restricted
+  | UserRestricted
+  | UserLeft
+  | UserKicked
   deriving (Eq, Show)
 
 instance ToJSON UserStatus where
   toJSON Creator = "creator"
-  toJSON Admin = "admin"
+  toJSON Administrator = "administrator"
   toJSON Member = "member"
-  toJSON Restricted = "restricted"
+  toJSON UserRestricted = "restricted"
+  toJSON UserKicked = "kicked"
+  toJSON UserLeft = "left"
 
 instance FromJSON UserStatus where
   parseJSON "creator" = pure Creator
-  parseJSON "admin" = pure Admin
+  parseJSON "admin" = pure Administrator
   parseJSON "member" = pure Member
-  parseJSON "restricted" = pure Restricted
+  parseJSON "restricted" = pure UserRestricted
+  parseJSON "kicked" = pure UserKicked
+  parseJSON "left" = pure UserLeft
   parseJSON _ = fail "Failed to parse UserStatus"
 
 instance ToJSON ChatType where
