@@ -16,7 +16,6 @@ services:
         - MONGO_INITDB_ROOT_USERNAME
         - TELEGRAM_TOKEN
         - TEST=1
-        - WEBHOOK_URL
 
     app:
       image: ghcr.io/why-not-try-calmer/feedo:latest
@@ -31,7 +30,6 @@ services:
         - MONGO_INITDB_ROOT_PASSWORD 
         - MONGO_INITDB_ROOT_USERNAME
         - TELEGRAM_TOKEN
-        - WEBHOOK_URL
       volumes:
         - ./static:/var/www/feedfarer-webui
     
@@ -63,13 +61,16 @@ services:
         - "27017:27017"
 
     nginx:
+      environment:
+        - CERT_FULLCHAIN
+        - CERT_PRIV
       depends_on: [app]
       image: nginx:latest
       restart: "on-failure"
       volumes:
-        - "./nginx.conf:/etc/nginx/nginx.conf:ro"
-        - "/certs/etc/live/feedo.cloudns.ph/fullchain.pem:/etc/nginx/cert.pem:ro"
-        - "/certs/etc/live/feedo.cloudns.ph/privkey.pem:/etc/nginx/private.key:ro"
+        - ./nginx.conf:/etc/nginx/nginx.conf:ro
+        - ${CERT_FULLCHAIN:-/something}:/etc/nginx/cert.pem:ro
+        - ${CERT_PRIV:-/something}:/etc/nginx/private.key:ro
       ports:
         - "80:80"
         - "443:443"

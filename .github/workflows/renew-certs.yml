@@ -1,0 +1,21 @@
+name: Renew Certificates
+
+on:
+  schedule:
+    - cron: "1 0 * * *"
+
+jobs:
+  deploy:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Connect And Pull
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USERNAME }}
+          key: ${{ secrets.PROD_KEY }}
+          script: |
+            cd /opt/app
+            ./scripts/certs.sh

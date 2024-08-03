@@ -109,9 +109,6 @@ makeConfig env =
         let [user, pwd] = T.pack . fromJust . flip lookup env <$> ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"]
          in MongoCredsServer dbServiceName dbName user pwd
       token = T.append "bot" . T.pack . fromJust $ lookup "TELEGRAM_TOKEN" env
-      webhook =
-        let raw = T.pack . fromJust $ lookup "WEBHOOK_URL" env
-         in if T.last raw == T.last "/" then T.dropEnd 1 raw else raw
       interval = maybe 60000000 read $ lookup "WORKER_INTERVAL" env
       version = T.pack . fromMaybe "(unspecified)" $ lookup "APP_VERSION" env
    in do
@@ -130,7 +127,7 @@ makeConfig env =
         pure
           AppConfig
             { app_version = version
-            , tg_config = ServerConfig{bot_token = token, webhook_url = webhook, alert_chat = alert_chat_id}
+            , tg_config = ServerConfig{bot_token = token, alert_chat = alert_chat_id}
             , base_url = base
             , mongo_creds = connected_creds
             , postjobs = chan

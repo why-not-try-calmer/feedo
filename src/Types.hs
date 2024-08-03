@@ -580,7 +580,6 @@ type BotToken = T.Text
 
 data ServerConfig = ServerConfig
   { bot_token :: BotToken
-  , webhook_url :: T.Text
   , alert_chat :: ChatId
   }
   deriving (Show, Eq)
