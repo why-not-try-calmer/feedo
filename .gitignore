@@ -7,3 +7,4 @@ playgrounds/
 .direnv/
 cert.pem
 private.key
+*/**/node_modules

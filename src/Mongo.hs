@@ -162,11 +162,13 @@ instance (MonadIO m) => HasMongo (App m) where
         delete_doc = deleteOne $ select selector "admins"
     liftIO getCurrentTime >>= \now ->
       withDb get_doc >>= \case
-        Left _ -> pure . Left $ FaultyToken
+        Left err -> pure . Left . BadQuery $ err
         Right Nothing -> do
           h <- mkSafeHash
-          _ <- withDb (write_doc h now)
-          pure . Right . DbToken $ h
+          write_doc_res <- withDb $ write_doc h now
+          case write_doc_res of
+            Left err -> pure . Left . BadQuery $ err
+            Right _ -> pure . Right . DbToken $ h
         Right (Just doc) -> do
           when (diffUTCTime now (admin_created . readDoc $ doc) > 2592000) (void $ withDb delete_doc)
           pure . Right . DbToken . admin_token . readDoc $ doc
