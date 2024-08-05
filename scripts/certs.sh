@@ -14,7 +14,7 @@ docker run -it --rm --name certbot  \
 	-p 80:80 \
 	certbot/certbot renew > certs_refresh.log
 
-if [[ grep -q "No renewals were attempted." certs_refresh.log ]]; then
+if grep -q "No renewals were attempted." certs_refresh.log; then
 	echo "No need to renew certificate."
 else
 	./scripts/set_webhook.sh
