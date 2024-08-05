@@ -71,6 +71,7 @@ services:
         - ./nginx.conf:/etc/nginx/nginx.conf:ro
         - ${CERT_FULLCHAIN:-/something}:/etc/nginx/cert.pem:ro
         - ${CERT_PRIV:-/something}:/etc/nginx/private.key:ro
+        - ./certbot/www:/var/www/certbot/
       ports:
         - "80:80"
         - "443:443"
