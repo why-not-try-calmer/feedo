@@ -12,7 +12,7 @@ import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
 import Data.List (find, foldl', sort)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
@@ -119,11 +119,11 @@ interpretCmd :: T.Text -> Either InterpreterErr UserAction
 interpretCmd contents
   | cmd == "/about" = Right About
   | cmd == "/admin" =
-      if length args /= 1
-        then Left $ InterpreterErr "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
+      if null args
+        then Right $ AskForLogin Nothing
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
           Nothing -> Left . InterpreterErr $ "The value passed to /admin could not be parsed into a valid chat_id."
-          Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
+          Just chat_or_channel_id -> Right $ AskForLogin . Just $ chat_or_channel_id
   | cmd == "/announce" =
       if null args
         then Left . InterpreterErr $ "/announce takes exactly 1 argument, the text to broadcast to all users."
@@ -400,7 +400,7 @@ evalTgAct uid (Announce txt) admin_chat =
                 else case cfi_type chat_full_info of Channel -> acc; _ -> cfi_chat_id chat_full_info : acc
       )
       []
-evalTgAct uid (AskForLogin target_id) cid = do
+evalTgAct uid (AskForLogin maybe_target_id) cid = do
   env <- ask
   let tok = bot_token . tg_config $ env
   isChatOfType tok cid Private >>= \case
@@ -409,7 +409,8 @@ evalTgAct uid (AskForLogin target_id) cid = do
       if not private
         then pure . Left $ ChatNotPrivate
         else
-          isUserAdmin tok uid target_id >>= \case
+          let target_id = fromMaybe cid maybe_target_id
+          in  isUserAdmin tok uid target_id >>= \case
             Left err -> pure . Left $ err
             Right ok ->
               if not ok
