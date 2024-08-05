@@ -278,7 +278,7 @@ data SettingsUpdater = Parsed [ParsingSettings] | Immediate Settings deriving (E
 data UserAction
   = About
   | Announce T.Text
-  | AskForLogin ChatId
+  | AskForLogin (Maybe ChatId)
   | AboutChannel ChatId FeedRef
   | Changelog
   | FeedInfo FeedRef
