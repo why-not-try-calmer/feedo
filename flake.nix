@@ -7,15 +7,24 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        tools = [
+          pkgs.haskellPackages.fourmolu
+          pkgs.haskellPackages.hoogle
+          pkgs.haskellPackages.stack
+        ];
       in
       {
         devShell = pkgs.mkShell {
           buildInputs = [
             pkgs.haskellPackages.haskell-language-server
-            pkgs.haskellPackages.fourmolu
-            pkgs.haskellPackages.hoogle
-            pkgs.zlib
+            tools
           ];
+          NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+		    pkgs.stdenv.cc.cc
+    		pkgs.openssl
+    		pkgs.zlib
+		  ];
+          NIX_LD = pkgs.lib.fileContents "${pkgs.stdenv.cc}/nix-support/dynamic-linker";
         };
       }
     );
