@@ -14,7 +14,7 @@
 
 # curl -F "url=https://feedo.cloudns.ph/webhook/bot$TELEGRAM_TOKEN" https://api.telegram.org/bot$TELEGRAM_TOKEN/setWebhook -F "certificate=${CERT_FULLCHAIN}"
 
-docker run -it --rm --name certbot  \
+docker run --rm --name certbot  \
     -v "/certs/etc:/etc/letsencrypt" \
     -v "/certs/lib:/var/lib/letsencrypt" \
     -v "./certbot/www:/var/www/certbot/" \
