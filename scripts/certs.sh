@@ -18,6 +18,6 @@ docker run -t --rm --name certbot  \
     -v "/certs/etc:/etc/letsencrypt" \
     -v "/certs/lib:/var/lib/letsencrypt" \
     -v "./certbot/www:/var/www/certbot/" \
-    certbot/certbot renew
+    certbot/certbot renew -n
 
 docker compose exec nginx service nginx reload -s
