@@ -7,10 +7,9 @@
 module Requests (alertAdmin, fetchFeed, mkPagination, runSend, runSend_, answer, mkKeyboard, reply, TgReqM) where
 
 import Control.Concurrent (Chan, writeChan)
-import Control.Exception (SomeException (SomeException), evaluate, try)
+import Control.Exception (SomeException (SomeException), try)
 import Control.Monad.Reader
 import Control.Retry (constantDelay, limitRetries)
-import Data.Aeson (encode)
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LB
 import Data.Foldable (for_)

@@ -7,17 +7,21 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        tools = [
+        build_tools = [
+          pkgs.haskellPackages.stack
+          pkgs.haskell.compiler.ghc94
+        ];
+        other_tools = [
+          pkgs.haskellPackages.haskell-language-server
           pkgs.haskellPackages.fourmolu
           pkgs.haskellPackages.hoogle
-          pkgs.haskellPackages.stack
         ];
       in
       {
         devShell = pkgs.mkShell {
           buildInputs = [
-            pkgs.haskellPackages.haskell-language-server
-            tools
+            build_tools
+            other_tools
           ];
           NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
             pkgs.stdenv.cc.cc

@@ -125,7 +125,7 @@ data WordMatches = WordMatches
   }
   deriving (Show, Eq)
 
-$(deriveJSON defaultOptions{omitNothingFields = True} ''WordMatches)
+$(deriveJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 6} ''WordMatches)
 
 data Settings = Settings
   { settings_digest_collapse :: Maybe Int
@@ -144,7 +144,7 @@ data Settings = Settings
   }
   deriving (Show, Eq)
 
-$(deriveToJSON defaultOptions{omitNothingFields = True} ''Settings)
+$(deriveToJSON defaultOptions{omitNothingFields = True, fieldLabelModifier = drop 9} ''Settings)
 
 instance FromJSON Settings where
   parseJSON = withObject "Settings" $ \o ->

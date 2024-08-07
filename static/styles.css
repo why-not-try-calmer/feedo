@@ -10,8 +10,8 @@
     padding: 20px;
     background-color: #f44336;
     color: white;
-  }
-  
+}
+
 .closebtn {
     margin-left: 15px;
     color: white;
@@ -22,18 +22,23 @@
     cursor: pointer;
     transition: 0.3s;
 }
-  
+
 .closebtn:hover {
     color: rgb(0, 0, 0);
 }
 
-/* main, form */ 
+/* main, form */
 
-html, body {
+html,
+body {
     min-height: 100%;
 }
 
-body, div, form, input, p { 
+body,
+div,
+form,
+input,
+p {
     padding: 0;
     margin: 0;
     outline: none;
@@ -63,7 +68,7 @@ form {
     width: 100%;
     padding: 20px;
     background: #fff;
-    box-shadow: 0 2px 5px #ccc; 
+    box-shadow: 0 2px 5px #ccc;
 }
 
 input {
@@ -96,13 +101,13 @@ button {
     padding: 10px;
     border: none;
     outline: none;
-    -webkit-border-radius: 5px; 
-    -moz-border-radius: 5px; 
-    border-radius: 5px; 
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+    border-radius: 5px;
     background-color: #095484;
     font-size: 16px;
     color: #fff;
-cursor: pointer;
+    cursor: pointer;
 }
 
 button.field_resetter {
@@ -119,10 +124,11 @@ button:hover {
 .tooltip {
     position: relative;
     display: inline-block;
-    border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+    border-bottom: 1px dotted black;
+    /* If you want dots under the hoverable text */
 }
-  
-  /* Tooltip text */
+
+/* Tooltip text */
 .tooltip .tooltiptext {
     visibility: hidden;
     width: 370px;
@@ -135,7 +141,7 @@ button:hover {
     position: absolute;
     z-index: 1;
 }
-  
+
 /* Show the tooltip text when you mouse over the tooltip container */
 .tooltip:hover .tooltiptext {
     visibility: visible;
