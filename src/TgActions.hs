@@ -402,27 +402,23 @@ evalTgAct uid (Announce txt) admin_chat =
       []
 evalTgAct uid (AskForLogin maybe_cid) cid = do
   env <- ask
-  let tok = bot_token . tg_config $ env
-  isChatOfType tok cid Private >>= \case
-    Left err -> pure . Left $ err
-    Right private ->
-      if not private
-        then pure . Left $ ChatNotPrivate
-        else
-          isUserAdmin tok uid (fromMaybe cid maybe_cid) >>= \case
-            Left err -> pure . Left $ err
-            Right ok ->
-              if not ok
-                then pure . Left $ UserNotAdmin
-                else do
-                  evalDb (DbAskForLogin uid cid) >>= \case
-                    Right (DbToken h) -> pure . Right . mkReply . FromAdmin (base_url env) $ h
-                    _ ->
-                      pure
-                        . Right
-                        . mkReply
-                        . FromAdmin (base_url env)
-                        $ "Unable to log you in. Are you sure you are an admin of this chat?"
+  case maybe_cid of
+    Nothing -> check_further env
+    Just cid' ->
+      if cid' == cid
+        then continue env
+        else check_further env
+ where
+  deny env = pure . Right . mkReply . FromAdmin (base_url env) $ "Unable to log you in. Are you sure you are an admin of this chat?"
+  continue env =
+    evalDb (DbAskForLogin uid cid) >>= \case
+      Right (DbToken h) -> pure . Right . mkReply . FromAdmin (base_url env) $ h
+      _ -> deny env
+  check_further env =
+    let tok = bot_token . tg_config $ env
+     in isChatOfType tok cid Private >>= \case
+          Left err -> pure . Left $ err
+          Right private -> if private then continue env else deny env
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (FeedInfo ref) channel_id
 evalTgAct _ Changelog _ = pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
