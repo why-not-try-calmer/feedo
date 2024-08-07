@@ -20,10 +20,10 @@
             tools
           ];
           NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
-		    pkgs.stdenv.cc.cc
-    		pkgs.openssl
-    		pkgs.zlib
-		  ];
+            pkgs.stdenv.cc.cc
+            pkgs.openssl
+            pkgs.zlib
+          ];
           NIX_LD = pkgs.lib.fileContents "${pkgs.stdenv.cc}/nix-support/dynamic-linker";
         };
       }
