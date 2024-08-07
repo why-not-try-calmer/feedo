@@ -12,7 +12,7 @@ import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
 import Data.List (find, foldl', sort)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
@@ -120,10 +120,10 @@ interpretCmd contents
   | cmd == "/about" = Right About
   | cmd == "/admin" =
       if length args /= 1
-        then Left $ InterpreterErr "/admin takes exactly one argument: the chat_id of the chat or channel to be administrate."
+        then Right $ AskForLogin Nothing
         else case readMaybe . T.unpack . head $ args :: Maybe ChatId of
           Nothing -> Left . InterpreterErr $ "The value passed to /admin could not be parsed into a valid chat_id."
-          Just chat_or_channel_id -> Right $ AskForLogin chat_or_channel_id
+          Just chat_or_channel_id -> Right $ AskForLogin $ Just chat_or_channel_id
   | cmd == "/announce" =
       if null args
         then Left . InterpreterErr $ "/announce takes exactly 1 argument, the text to broadcast to all users."
@@ -400,29 +400,24 @@ evalTgAct uid (Announce txt) admin_chat =
                 else case cfi_type chat_full_info of Channel -> acc; _ -> cfi_chat_id chat_full_info : acc
       )
       []
-evalTgAct uid (AskForLogin target_id) cid = do
+evalTgAct uid (AskForLogin maybe_tgt_cid) cid = do
   env <- ask
-  let tok = bot_token . tg_config $ env
-  isChatOfType tok cid Private >>= \case
-    Left err -> pure . Left $ err
-    Right private ->
-      if not private
-        then pure . Left $ ChatNotPrivate
-        else
-          isUserAdmin tok uid target_id >>= \case
-            Left err -> pure . Left $ err
-            Right ok ->
-              if not ok
-                then pure . Left $ UserNotAdmin
-                else do
-                  evalDb (DbAskForLogin uid cid) >>= \case
-                    Right (DbToken h) -> pure . Right . mkReply . FromAdmin (base_url env) $ h
-                    _ ->
-                      pure
-                        . Right
-                        . mkReply
-                        . FromAdmin (base_url env)
-                        $ "Unable to log you in. Are you sure you are an admin of this chat?"
+  if uid == cid
+    then continue env cid
+    else case maybe_tgt_cid of
+      Nothing -> deny env
+      Just tgt_cid -> check_further env tgt_cid
+ where
+  deny env = pure . Right . mkReply . FromAdmin (base_url env) $ "Unable to log you in. Are you sure you are an admin of this chat?"
+  check_further env tgt_cid =
+    let tok = bot_token . tg_config $ env
+     in isChatOfType tok tgt_cid Private >>= \case
+          Left err -> pure . Left $ err
+          Right private -> if private then continue env tgt_cid else deny env
+  continue env tgt_cid =
+    evalDb (DbAskForLogin uid tgt_cid) >>= \case
+      Right (DbToken access_token) -> pure . Right $ mkReply . FromAdmin (base_url env) $ access_token
+      _ -> deny env
 evalTgAct uid (AboutChannel channel_id ref) _ = evalTgAct uid (FeedInfo ref) channel_id
 evalTgAct _ Changelog _ = pure . Right $ mkReply FromChangelog
 evalTgAct uid (GetChannelItems channel_id ref) _ = evalTgAct uid (GetItems ref) channel_id
