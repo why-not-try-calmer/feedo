@@ -1,5 +1,5 @@
 # 9.0.2 required for static linking matching GHC version provided by lts-19.33
-FROM utdemir/ghc-musl:v25-ghc902 as builder
+FROM utdemir/ghc-musl:v25-ghc902 AS builder
 
 RUN ghcup install stack
 WORKDIR /opt/app/
