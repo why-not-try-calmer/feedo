@@ -21,7 +21,7 @@ RUN stack --resolver lts-19.33 install \
   --local-bin-path . \
   --flag feedfarer:static
 
-FROM alpine:latest as runner
+FROM alpine:latest AS runner
 
 # Version from build arg
 ARG app_version
