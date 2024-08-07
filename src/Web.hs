@@ -14,8 +14,10 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import qualified Data.Text as T
 import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, getCurrentTime, toGregorian)
+import Database.MongoDB (deleteMany, deleteOne, (=:))
+import Database.MongoDB.Query (select)
 import Feeds (eitherUrlScheme)
-import Mongo (HasMongo (evalDb))
+import Mongo (HasMongo (evalDb, withDb))
 import Network.HTTP.Req (renderUrl)
 import Network.URI.Encode (decodeText)
 import Replies (render)
@@ -45,8 +47,8 @@ renderDbRes (Right res) = case res of
             H.h3 . toHtml $ "Feeds (" `T.append` nbOfFlinks digest_items `T.append` ")"
             H.ul $ forM_ (flinks digest_items) (\fl -> let t = flt Map.! fl in H.li $ H.a ! Attr.href (textValue fl) $ toHtml t)
             H.h3 . toHtml $ "Items (" `T.append` nbOf digest_items `T.append` ")"
-            H.ul $
-              forM_
+            H.ul
+              $ forM_
                 (ordered_items digest_items)
                 ( \is -> do
                     H.p . toHtml $ (let fl = i_feed_link . head $ is in flt Map.! fl) `T.append` " (" `T.append` nbOf is `T.append` ") items"
@@ -66,8 +68,8 @@ renderDbRes (Right res) = case res of
             H.ul $ forM_ (flinks items) (\fl -> H.li $ H.a ! Attr.href (textValue fl) $ toHtml fl)
             H.p . toHtml $ "Time window: between " `T.append` from `T.append` " and " `T.append` to `T.append` "."
             H.h3 . toHtml $ "Items found (" `T.append` nbOf items `T.append` ")"
-            H.ul $
-              forM_
+            H.ul
+              $ forM_
                 (ordered_items items)
                 ( \is -> do
                     H.p . toHtml $ (i_feed_link . head $ is) `T.append` " (" `T.append` nbOf is `T.append` ") items"
@@ -113,8 +115,8 @@ home = pure . H.docTypeHtml $ do
     H.p "and this the time window"
     H.p . toHtml $ "between " `T.append` "a date to specifiy" `T.append` " and " `T.append` fromMaybe "now" (Just "another date to specify") `T.append` "."
     H.h3 "This might have been the results"
-    H.ul $
-      forM_
+    H.ul
+      $ forM_
         ["item1", "item2", "item3"]
         ( \i -> do
             H.p "To start the day with something beautiful"
@@ -215,7 +217,10 @@ writeSettings (WriteReq hash settings (Just True)) =
     Right (DbLoggedIn cid) ->
       withChat (SetChatSettings $ Immediate settings) Nothing cid >>= \case
         Left err -> pure . noUpdate . render $ err
-        Right _ -> pure ok
+        Right _ ->
+          withDb (deleteOne (select ["admin_chatid" =: cid] "admins")) >>= \case
+            Left err -> pure . noUpdate $ err
+            Right _ -> pure ok
     _ -> undefined
  where
   noLogin err = WriteResp 401 (Just . render $ err) Nothing
