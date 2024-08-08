@@ -2,3 +2,9 @@ resolver: lts-21.25
 packages:
   - .
 extra-deps: []
+
+nix: 
+  enable: false
+
+system-ghc: true
+install-ghc: false
