@@ -47,7 +47,7 @@ startNotifs =
   ask >>= \env ->
     let interval = worker_interval env
         onError (SomeException err) = do
-          let report = "notifier: exception met : " `T.append` (T.pack . show $ err)
+          let report = "startNotifs: onError: exception met : " `T.append` (T.pack . show $ err)
           alertAdmin (postjobs env) report
         send_tg_notif hmap now = forConcurrently (HMS.toList hmap) $ \(cid, (c, batch)) -> do
           unless (null batch) $
@@ -71,8 +71,9 @@ startNotifs =
           pure (cid, map f_link batch)
         notify = do
           digests <- makeDigests
+          liftIO $ putStrLn "startNotifs: notify: Digests ready. Sending"
           case digests of
-            Left err -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` err)
+            Left err -> alertAdmin (postjobs env) ("startNotifs: notifier: failed to acquire notification package and got this error:" `T.append` err)
             Right (CacheDigests batches) -> do
               (n, notified) <- liftIO $ do
                 now <- getCurrentTime
@@ -80,14 +81,14 @@ startNotifs =
                 pure (now, notified_chats)
               res <- evalDb $ BumpNotified notified n
               case res of
-                Left bump_error -> alertAdmin (postjobs env) ("notifier: failed to acquire notification package and got this error:" `T.append` render bump_error)
+                Left bump_error -> alertAdmin (postjobs env) ("startNotif: notifier: failed to acquire notification package and got this error:" `T.append` render bump_error)
                 Right _ -> pure ()
             something_else -> liftIO . print $ show something_else
         wait_action = do
           threadDelay interval
-          putStrLn "startNotifs: Woke up"
+          putStrLn "startNotifs: wait_action: Woke up"
           runApp env notify
-          putStrLn "startNotifs: Notified. Going back to sleep"
+          putStrLn "startNotifs: wait_action: Notified all chats. Going back to sleep"
         handler e = onError e >> runApp env notify
      in liftIO $ runForever_ wait_action handler >> putStrLn "startNotifs: started"
 
@@ -122,7 +123,7 @@ forkExecute env job =
     liftIO $ putStrLn "Jobs received: JobArchive"
     evalDb (ArchiveItems feeds) >>= \case
       Left err ->
-        let msg = "Unable to archive items. Reason: " `T.append` render err
+        let msg = "JobArchive: Unable to archive items. Reason: " `T.append` render err
          in go $ JobTgAlertAdmin msg
       _ -> liftIO $ putStrLn "successfully ran job"
     -- cleaning more than 1 month old archives
@@ -131,20 +132,20 @@ forkExecute env job =
   go (JobPin cid mid) = do
     runSend_ (bot_token . tg_config $ env) TgPinChatMessage (PinMessage cid mid) >>= \case
       Left _ ->
-        let msg = interpolateCidInTxt "Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
+        let msg = interpolateCidInTxt "JobPin: Tried to pin a message in (chat_id) " cid " but failed. Either the message was removed already, or perhaps the chat is a channel and I am not allowed to delete edit messages in it?"
          in go (JobTgAlertAdmin msg)
       _ -> pure ()
   go (JobPurge cid) = void $ withChat Purge Nothing cid
   go (JobRemoveMsg cid mid delay) = do
     let (msg, checked_delay) = checkDelay delay
-    liftIO $ putStrLn ("Removing message in " ++ msg)
+    liftIO $ putStrLn ("JobRemoveMsg: Removing message in " ++ msg)
     do
       liftIO $ threadDelay checked_delay
       runSend_ (bot_token . tg_config $ env) TgDeleteMessage (DeleteMessage cid mid) >>= \case
         Left _ ->
           go
             . JobTgAlertAdmin
-            . interpolateCidInTxt "Tried to delete a message in (chat_id) " cid
+            . interpolateCidInTxt "JobRemoveMsg: Tried to delete a message in (chat_id) " cid
             $ " but failed. Either the message was removed already, or perhaps  is a channel and I am not allowed to delete edit messages in it?"
         _ -> pure ()
   go (JobSetPagination cid mid pages mb_link) =
@@ -153,7 +154,7 @@ forkExecute env job =
      in to_db >> to_cache >>= \case
           Right _ -> pure ()
           _ ->
-            let report = "Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
+            let report = "JobSetPagination: Failed to update Redis on this key: " `T.append` T.append (T.pack . show $ cid) (T.pack . show $ mid)
              in go $ JobTgAlertAdmin report
   go (JobTgAlertAdmin contents) = do
     let msg = ServiceReply $ "Feedo is sending an alert: " `T.append` contents

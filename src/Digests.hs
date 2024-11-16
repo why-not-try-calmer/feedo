@@ -35,7 +35,10 @@ getPrebatch = do
               )
               ([], S.empty)
               bson_chats
-       in pure $ Right (feedlinks, chats)
+       in liftIO $ do
+            putStrLn ("getPreBatch: " ++ (show . length $ chats) ++ " chats ready.")
+            print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
+            pure $ Right (feedlinks, chats)
  where
   getChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats")
 
@@ -56,6 +59,7 @@ fillBatch (links, chats) = do
         let feeds' = without_blacklisted c (fresh_feeds c)
          in if null feeds' then acc else HMS.insert (sub_chatid c) (c, fresh_feeds c) acc
       results = foldl' step HMS.empty chats
+  liftIO . print $ "fillBatch: Done. " ++ show (length failed) ++ " errors."
   pure (failed, results)
  where
   fresh_only last_time f = filter (\i -> i_pubdate i > last_time) $ f_items f
