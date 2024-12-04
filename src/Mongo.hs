@@ -200,7 +200,15 @@ instance (MonadIO m) => HasMongo (App m) where
             if failed res
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
-  evalDb (BumpNotified cids now) =
+  evalDb (NotifyAttemptedToUpdateChats cids now) =
+    let action = withDb $ updateAll "chats" [(["subchat_id" =: ["$in" =: cids]], ["sub_last_digest_attempt" =: now], [])]
+     in action >>= \case
+          Left _ -> pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during connection."
+          Right res ->
+            if failed res
+              then pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during connection."
+              else pure $ Right DbDone
+  evalDb (NotifyUpdatedChats cids now) =
     let failure = FailedToUpdate (T.pack . show $ cids) "BumpNotified failed"
         action = withDb $ do
           docs <- find (select ["sub_chatid" =: ["$in" =: cids]] "chats") >>= rest
@@ -515,6 +523,7 @@ bsonToChat doc =
    in SubChat
         { sub_chatid = fromJust $ M.lookup "sub_chatid" doc
         , sub_last_digest = M.lookup "sub_last_digest" doc
+        , sub_last_digest_attempt = M.lookup "sub_last_digest_attempt" doc
         , sub_next_digest = M.lookup "sub_next_digest" doc
         , sub_feeds_links = S.fromList feeds_links
         , sub_linked_to = linked_to_chats
@@ -523,7 +532,7 @@ bsonToChat doc =
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings active_admins) =
+chatToBson (SubChat chat_id last_digest last_attempt next_digest flinks linked_to settings active_admins) =
   let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
       searchset = S.toList . match_searchset . settings_word_matches $ settings
       only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
@@ -556,6 +565,7 @@ chatToBson (SubChat chat_id last_digest next_digest flinks linked_to settings ac
           (digest_at . settings_digest_interval $ settings)
    in [ "sub_chatid" =: chat_id
       , "sub_last_digest" =: last_digest
+      , "sub_last_digest_attempt" =: last_attempt
       , "sub_next_digest" =: next_digest
       , "sub_feeds_links" =: S.toList flinks
       , "sub_linked_to_chats" =: linked_to
@@ -648,7 +658,7 @@ checkDbMapper = do
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
       settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
-      chat = SubChat 0 (Just now) (Just now) S.empty Nothing settings HMS.empty
+      chat = SubChat 0 (Just now) (Just now) (Just now) S.empty Nothing settings HMS.empty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]
       equalities =

@@ -225,6 +225,7 @@ data SubChat = SubChat
   { sub_chatid :: ChatId
   , sub_last_digest :: Maybe UTCTime
   , sub_next_digest :: Maybe UTCTime
+  , sub_last_digest_attempt :: Maybe UTCTime
   , sub_feeds_links :: S.Set FeedLink
   , sub_linked_to :: Maybe ChatId
   , sub_settings :: Settings
@@ -403,10 +404,10 @@ type AdminToken = T.Text
 
 data DbAction
   = ArchiveItems [Feed]
-  | BumpNotified [ChatId] UTCTime
   | CheckLogin AdminToken
   | DeleteChat ChatId
   | DbAskForLogin UserId ChatId
+  | DbSearch Keywords Scope (Maybe UTCTime)
   | GetAllFeeds
   | GetChat ChatId
   | GetAllChats
@@ -414,7 +415,8 @@ data DbAction
   | GetSomeFeeds [FeedLink]
   | GetXDays [FeedLink] Int
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
-  | DbSearch Keywords Scope (Maybe UTCTime)
+  | NotifyUpdatedChats [ChatId] UTCTime
+  | NotifyAttemptedToUpdateChats [ChatId] UTCTime
   | PruneOld UTCTime
   | ReadDigest T.Text
   | UpsertChat SubChat
