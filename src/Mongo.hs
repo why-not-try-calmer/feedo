@@ -412,6 +412,11 @@ buildSearchQuery keys =
 
 {- Items -}
 
+itemsIndex :: Index
+itemsIndex =
+  let fields = ["i_link" =: ("text" :: T.Text)]
+   in Index "items" fields "items__i_link__idx" True False Nothing
+
 itemToBson :: Item -> Document
 itemToBson i =
   [ "i_title" =: i_title i
