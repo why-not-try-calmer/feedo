@@ -220,26 +220,6 @@ instance (MonadIO m) => HasMongo (App m) where
      in action >>= \case
           Left _ -> pure $ Left failure
           Right _ -> pure $ Right DbDone
-  evalDb (DbSearch keywords scope mb_last_time) =
-    let action = aggregate "items" $ buildSearchQuery keywords
-     in withDb action >>= \case
-          Left err -> pure . Left $ FailedToUpdate mempty ("DbSearch failed on :" `T.append` err)
-          Right docs ->
-            let toSearchRes doc =
-                  SearchResult
-                    <$> M.lookup "i_title" doc
-                    <*> M.lookup "i_link" doc
-                    <*> M.lookup "i_pubdate" doc
-                    <*> M.lookup "i_feed_link" doc
-                results = mapM toSearchRes docs
-                f sr =
-                  sr_feedlink sr
-                    `S.member` scope
-                    && maybe True (\t -> sr_pubdate sr >= t) mb_last_time
-             in pure
-                  . Right
-                  $ DbSearchRes keywords scope
-                  $ maybe mempty (filter f) results
   evalDb (DeleteChat cid) =
     let action = withDb $ deleteOne (select ["sub_chatid" =: cid] "chats")
      in action >>= \case

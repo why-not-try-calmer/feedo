@@ -413,7 +413,6 @@ data DbAction
   | GetSomeFeeds [FeedLink]
   | GetXDays [FeedLink] Int
   | InsertPages ChatId Int [T.Text] (Maybe T.Text)
-  | DbSearch Keywords Scope (Maybe UTCTime)
   | PruneOld UTCTime
   | ReadDigest T.Text
   | UpsertChat SubChat
@@ -436,7 +435,6 @@ data DbResults
   | DbLoggedIn ChatId
   | DbToken T.Text
   | DbDone
-  | DbSearchRes Keywords Scope [SearchResult]
   | DbView [Item] UTCTime UTCTime
   | DbDigest Digest
   | DbDigestId T.Text

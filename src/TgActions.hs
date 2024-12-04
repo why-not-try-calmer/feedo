@@ -619,21 +619,6 @@ evalTgAct uid Reset cid = do
             Left err -> pure . Right . ServiceReply $ render err
             Right _ -> pure . Right . ServiceReply $ "Chat settings set to defaults."
 evalTgAct uid (ResetChannel chan_id) _ = evalTgAct uid Reset chan_id
-evalTgAct _ (Search keywords) cid =
-  getChats >>= \hmap -> case HMS.lookup cid hmap of
-    Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
-    Just c ->
-      let scope = case sub_linked_to c of
-            Nothing -> S.toList . sub_feeds_links $ c
-            Just cid' -> case HMS.lookup cid' hmap of
-              Nothing -> []
-              Just c' -> S.toList . sub_feeds_links $ c'
-       in if null scope
-            then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet. Subscribe to a feed to be able to search its items."
-            else
-              evalDb (DbSearch (S.fromList keywords) (S.fromList scope) Nothing) >>= \case
-                Right (DbSearchRes keys _ res) -> pure . Right $ mkReply (FromSearchRes keys res)
-                _ -> pure . Left . DbQueryError . BadQuery $ "The database was not able to run your query."
 evalTgAct uid (SetChannelSettings chan_id settings) _ = evalTgAct uid (SetChatSettings $ Parsed settings) chan_id
 evalTgAct uid (SetChatSettings settings) cid =
   ask >>= \env ->
