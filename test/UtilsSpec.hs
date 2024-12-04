@@ -36,6 +36,7 @@ mockFeedsChats now =
           0
           Nothing
           Nothing
+          Nothing
           (S.fromList fl)
           Nothing
           defaultChatSettings
