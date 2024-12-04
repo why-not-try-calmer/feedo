@@ -19,11 +19,12 @@ import Requests (alertAdmin)
 import TgramOutJson
 import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_desc, i_pubdate, i_title), LogItem (LogFailed), Settings (settings_word_matches), SubChat (..), WordMatches (match_blacklist), match_only_search_results, match_searchset)
 import Utils (partitionEither)
+import Data.Functor ((<&>))
 
 getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
 getPrebatch = do
   now <- liftIO getCurrentTime
-  docs <- withDb (getChats now >>= rest)
+  docs <- withDb ((getExpiredChats now >>= rest) <&> take 2)
   case docs of
     Left err -> pure . Left $ T.pack . show $ err
     Right bson_chats ->
@@ -40,7 +41,7 @@ getPrebatch = do
             print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
             pure $ Right (feedlinks, chats)
  where
-  getChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats")
+  getExpiredChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats")
 
 fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.HashMap ChatId (SubChat, [Feed]))
 {- Return only feeds with more than 0 items, along with failure messages -}
