@@ -410,11 +410,6 @@ buildSearchQuery keys =
         ]
    in [matchStage, sortStage, limitStage, projectStage]
 
-itemsIndex :: Index
-itemsIndex =
-  let fields = ["i_desc" =: ("text" :: T.Text)]
-   in Index "items" fields "items__i_desc__idx" True False Nothing
-
 {- Items -}
 
 itemToBson :: Item -> Document

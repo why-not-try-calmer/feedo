@@ -6,8 +6,8 @@ new Array(db_name, username, password).forEach(c => console.assert(c))
 const conn_str = `mongodb://${username}:${password}@127.0.0.1:27017/admin`
 const conn = new Mongo(conn_str)
 const db = conn.getDB(db_name)
-db.items.createIndex({ "i_desc": "text" })
+db.items.createIndex({ "i_link": "text" })
 
 const indexes = db.items.getIndexes()
-const found = indexes.find(idx => idx.name == "i_desc_text")
+const found = indexes.find(idx => idx.name == "i_link")
 console.assert(found)
