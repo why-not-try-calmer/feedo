@@ -420,7 +420,6 @@ itemsIndex =
 itemToBson :: Item -> Document
 itemToBson i =
   [ "i_title" =: i_title i
-  , "i_desc" =: i_desc i
   , "i_feed_link" =: i_feed_link i
   , "i_link" =: i_link i
   , "i_pubdate" =: i_pubdate i
@@ -430,7 +429,6 @@ bsonToItem :: Document -> Item
 bsonToItem doc =
   Item
     (fromJust $ M.lookup "i_title" doc)
-    (fromJust $ M.lookup "i_desc" doc)
     (fromJust $ M.lookup "i_link" doc)
     (fromJust $ M.lookup "i_feed_link" doc)
     (fromJust $ M.lookup "i_pubdate" doc)
@@ -644,7 +642,7 @@ saveToLog logitem =
 checkDbMapper :: (MonadIO m) => m ()
 checkDbMapper = do
   now <- liftIO getCurrentTime
-  let item = Item mempty mempty mempty mempty now
+  let item = Item mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
       settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty

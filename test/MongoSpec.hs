@@ -51,7 +51,7 @@ spec = withHooks [go, go1, go2, go3, go4]
         as = it "test search indexes creation"
         target = do
           now <- getCurrentTime
-          let items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
+          let items = [Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           res <- runApp env $ evalDb (ArchiveItems [feed])
           res `shouldSatisfy` (\(Right _) -> True)
@@ -66,7 +66,7 @@ spec = withHooks [go, go1, go2, go3, go4]
           now <- getCurrentTime
           let keywords = S.singleton "target"
               scope = S.singleton "https://hnrss.org/frontpage/item"
-              items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
+              items = [Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
               db_search = DbSearch keywords (S.singleton "https://hnrss.org/frontpage") Nothing
               query = aggregate "items" $ buildSearchQuery keywords
@@ -83,7 +83,7 @@ spec = withHooks [go, go1, go2, go3, go4]
         as = it "test writing feeds to db as upserts"
         target = do
           now <- getCurrentTime
-          let items = [Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
+          let items = [Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           res1 <- runApp env $ evalDb (UpsertFeeds [feed])
           res1 `shouldSatisfy` (\(Right _) -> True)

@@ -313,7 +313,7 @@ instance Renderable ([(T.Text, [Item])], Int, [FeedLink], Int) where
 
 instance Renderable (S.Set T.Text, [SearchResult]) where
   render (keys, search_res) =
-    let items = map (\SearchResult{..} -> Item sr_title mempty sr_link sr_feedlink sr_pubdate) search_res
+    let items = map (\SearchResult{..} -> Item sr_title sr_link sr_feedlink sr_pubdate) search_res
      in "Results from your search with keywords "
           `T.append` T.intercalate ", " (map (`escapeWhere` mkdSingles) . S.toList $ keys)
           `T.append` ":\n"

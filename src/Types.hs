@@ -53,7 +53,6 @@ newtype Path = Path T.Text
 
 data Item = Item
   { i_title :: T.Text
-  , i_desc :: T.Text
   , i_link :: T.Text
   , i_feed_link :: T.Text
   , i_pubdate :: UTCTime

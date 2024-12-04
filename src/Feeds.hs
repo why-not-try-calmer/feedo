@@ -47,14 +47,12 @@ buildFeed ty url = do
               Atom ->
                 Item
                   (T.concat $ child el >>= laxElement "title" >>= child >>= content)
-                  (T.concat $ child el >>= laxElement "content" >>= child >>= content)
                   (T.concat . attribute "href" . head $ child el >>= laxElement "link")
                   (renderUrl url)
                   (fromMaybe now $ get_date el)
               Rss ->
                 Item
                   (T.concat $ child el >>= element "title" >>= child >>= content)
-                  (T.concat $ child el >>= element "description" >>= child >>= content)
                   (T.concat $ child el >>= element "link" >>= child >>= content)
                   (renderUrl url)
                   (fromMaybe now $ get_date el)

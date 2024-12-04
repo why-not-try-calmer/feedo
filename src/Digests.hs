@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.RWS (MonadReader (..))
 import Data.Foldable (foldl')
+import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -17,9 +18,8 @@ import Mongo (HasMongo (evalDb), MongoDoc (readDoc), saveToLog, withDb)
 import Replies (render)
 import Requests (alertAdmin)
 import TgramOutJson
-import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_desc, i_pubdate, i_title), LogItem (LogFailed), Settings (settings_word_matches), SubChat (..), WordMatches (match_blacklist), match_only_search_results, match_searchset)
+import Types (App, AppConfig (..), DbAction (..), Feed (..), FeedError, FeedLink, FromCache (..), Item (i_pubdate, i_title), LogItem (LogFailed), Settings (settings_word_matches), SubChat (..), WordMatches (match_blacklist), match_only_search_results, match_searchset)
 import Utils (partitionEither)
-import Data.Functor ((<&>))
 
 getPrebatch :: (HasMongo m, MonadIO m) => m (Either T.Text (S.Set FeedLink, [SubChat]))
 getPrebatch = do
@@ -70,7 +70,7 @@ fillBatch (links, chats) = do
      in if flink `S.notMember` only_search_results
           then items
           else
-            let heystack i = T.words (T.intercalate " " [i_desc i, i_title i])
+            let heystack i = T.words (T.intercalate " " [i_title i])
              in filter (\i -> any (\needle -> T.toCaseFold needle `elem` heystack i) search_set) items
   without_blacklisted c fs =
     let bl = match_blacklist . settings_word_matches . sub_settings $ c

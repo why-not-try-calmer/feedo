@@ -11,7 +11,7 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Digests
 import Test.Hspec
 import TgramOutJson (ChatId)
-import Types (DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
+import Types (DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches))
 import Utils (
   defaultChatSettings,
   findNextTime,
@@ -24,8 +24,8 @@ import Utils (
 
 mockFeedsChats :: UTCTime -> ([T.Text], HMS.HashMap T.Text Feed, HMS.HashMap ChatId SubChat)
 mockFeedsChats now =
-  let i1 = Item "HackerNews item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
-      i2 = Item "Python item" "Until dawn we won't know what happened" "https://pyton.org/item" "https://python.org" now
+  let i1 = Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
+      i2 = Item "Python item" "https://pyton.org/item" "https://python.org" now
       fl = map i_feed_link [i1, i2]
       f1 = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" [i1] Nothing Nothing
       f2 = Feed Rss "Python.org Description" "Python.org Title" "https://python.org" [i2] Nothing Nothing
@@ -95,16 +95,16 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
         as = it "filters items in or out depending on textual occrrences"
         target = do
           now <- getCurrentTime
-          let i1 = Item "HackerNews item" "Here is my target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
-              i2 = Item "Python item" "Until dawn we won't know what happened" "https://pyton.org/item" "https://python.org" now
-              i3 = Item "my title" "something" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
+          let i1 = Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
+              i2 = Item "Python item" "https://pyton.org/item" "https://python.org" now
+              i3 = Item "my title" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
               onlyD = filter (\i -> i `has_keywords` ["is"]) [i1, i2, i3]
               exceptN = filter (\i -> i `lacks_keywords` ["my"]) [i1, i2, i3]
           onlyD `shouldBe` [i1]
           exceptN `shouldBe` [i2]
      in desc $ as target
    where
-    has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_desc i, i_link i, i_title i])
+    has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_link i, i_title i])
     lacks_keywords i kws = not $ has_keywords i kws
   go7 =
     let desc = describe "findNext time #2"

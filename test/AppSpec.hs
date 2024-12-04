@@ -28,7 +28,7 @@ spec = withHooks [go]
           runApp env startJobs
           now <- getCurrentTime
           let jobs = postjobs env
-              items = [Item "Nice Item" "Target" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
+              items = [Item "Nice Item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love (desc)" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
           writeChan jobs $ JobArchive [feed] now
           threadDelay 5000000
