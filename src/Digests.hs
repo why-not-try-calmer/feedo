@@ -40,7 +40,7 @@ getPrebatch = do
             print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
             pure $ Right (feedlinks, chats)
  where
-  getExpiredChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats"){limit = 2}
+  getExpiredChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats"){limit = 2, sort = ["sub_last_digest_attempt" =: 1]}
 
 fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.HashMap ChatId (SubChat, [Feed]))
 {- Return only feeds with more than 0 items, along with failure messages -}

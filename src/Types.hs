@@ -225,6 +225,7 @@ data SubChat = SubChat
   { sub_chatid :: ChatId
   , sub_last_digest :: Maybe UTCTime
   , sub_next_digest :: Maybe UTCTime
+  , sub_last_digest_attempt :: Maybe UTCTime
   , sub_feeds_links :: S.Set FeedLink
   , sub_linked_to :: Maybe ChatId
   , sub_settings :: Settings
