@@ -68,11 +68,8 @@ spec = withHooks [go, go1, go2, go3, go4]
               scope = S.singleton "https://hnrss.org/frontpage/item"
               items = [Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now]
               feed = Feed Rss "HackerNews is coming for love" "HackerNews is back to business" "https://hnrss.org/frontpage" items Nothing Nothing
-              query = aggregate "items" $ buildSearchQuery keywords
           res <- runApp env $ evalDb (ArchiveItems [feed])
           res `shouldSatisfy` (\(Right _) -> True)
-          res <- runApp env $ withDb query
-          res `shouldSatisfy` (\(Right docs) -> not . null $ docs)
           print res
      in desc $ as target
   go4 env =

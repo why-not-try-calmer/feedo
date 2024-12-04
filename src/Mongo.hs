@@ -365,31 +365,6 @@ runMongo dbName pipe = access pipe master dbName
 
 {- Search and indices -}
 
-buildSearchQuery :: Keywords -> [Document]
-{-
-  Searches for the 10 best full-text matches for the given keywords, filtering in
-  items from subscribed-to feeds, filtering out items saved before the last digest.
--}
-buildSearchQuery keys =
-  let searchExpr = ["$search" =: T.intercalate " " (S.toList keys)]
-      matchStage =
-        [ "$match"
-            =: ["$text" =: searchExpr]
-        ]
-      sortStage = ["$sort" =: ["score" =: ["$meta" =: ("textScore" :: T.Text)]]]
-      limitStage = ["$limit" =: (10 :: Int)]
-      projectStage =
-        [ "$project"
-            =: [ "_id" =: (0 :: Int)
-               , "i_title" =: (1 :: Int)
-               , "i_feed_link" =: (1 :: Int)
-               , "i_link" =: (1 :: Int)
-               , "i_pubdate" =: (1 :: Int)
-               , "score" =: ["$meta" =: ("searchScore" :: T.Text)]
-               ]
-        ]
-   in [matchStage, sortStage, limitStage, projectStage]
-
 {- Items -}
 
 itemsIndex :: Index

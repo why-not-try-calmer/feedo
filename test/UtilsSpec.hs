@@ -95,13 +95,13 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
         as = it "filters items in or out depending on textual occrrences"
         target = do
           now <- getCurrentTime
-          let i1 = Item "HackerNews item" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
+          let i1 = Item "HackerNews title" "https://hnrss.org/frontpage/item" "https://hnrss.org/frontpage" now
               i2 = Item "Python item" "https://pyton.org/item" "https://python.org" now
-              i3 = Item "my title" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
-              onlyD = filter (\i -> i `has_keywords` ["is"]) [i1, i2, i3]
-              exceptN = filter (\i -> i `lacks_keywords` ["my"]) [i1, i2, i3]
-          onlyD `shouldBe` [i1]
-          exceptN `shouldBe` [i2]
+              i3 = Item "My title item" "https://itmsmycountry.com/okok" "https://itmsmycountry.com" now
+              onlyD = filter (\i -> i `has_keywords` ["python"]) [i1, i2, i3]
+              exceptN = filter (\i -> i `lacks_keywords` ["python"]) [i1, i2, i3]
+          onlyD `shouldBe` [i2]
+          exceptN `shouldBe` [i1, i3]
      in desc $ as target
    where
     has_keywords i = any (\w -> any (\t -> T.toCaseFold w `T.isInfixOf` t) [i_link i, i_title i])
