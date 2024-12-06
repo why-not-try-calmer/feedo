@@ -206,10 +206,10 @@ instance (MonadIO m) => HasMongo (App m) where
           Left _ -> pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during connection."
           Right res ->
             if failed res
-              then pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during connection."
+              then pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during action."
               else pure $ Right DbDone
   evalDb (NotifyUpdatedChats cids now) =
-    let failure = FailedToUpdate (T.pack . show $ cids) "BumpNotified failed"
+    let failure = FailedToUpdate (T.pack . show $ cids) "NotifyUpdatedChats failed"
         action = withDb $ do
           docs <- find (select ["sub_chatid" =: ["$in" =: cids]] "chats") >>= rest
           let chats =
@@ -523,8 +523,8 @@ bsonToChat doc =
    in SubChat
         { sub_chatid = fromJust $ M.lookup "sub_chatid" doc
         , sub_last_digest = M.lookup "sub_last_digest" doc
-        , sub_last_digest_attempt = M.lookup "sub_last_digest_attempt" doc
         , sub_next_digest = M.lookup "sub_next_digest" doc
+        , sub_last_digest_attempt = M.lookup "sub_last_digest_attempt" doc
         , sub_feeds_links = S.fromList feeds_links
         , sub_linked_to = linked_to_chats
         , sub_settings = feeds_settings_docs
@@ -565,8 +565,8 @@ chatToBson (SubChat chat_id last_digest last_attempt next_digest flinks linked_t
           (digest_at . settings_digest_interval $ settings)
    in [ "sub_chatid" =: chat_id
       , "sub_last_digest" =: last_digest
-      , "sub_last_digest_attempt" =: last_attempt
       , "sub_next_digest" =: next_digest
+      , "sub_last_digest_attempt" =: last_attempt
       , "sub_feeds_links" =: S.toList flinks
       , "sub_linked_to_chats" =: linked_to
       , "sub_settings" =: settings' ++ with_secs ++ with_at

@@ -11,7 +11,7 @@ import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)
-import Database.MongoDB (Query (limit, sort), find, rest, select, (=:))
+import Database.MongoDB (Query (limit, sort), Value (Null), find, rest, select, (=:))
 import Feeds (rebuildFeed)
 import Mongo (HasMongo (evalDb), MongoDoc (readDoc), saveToLog, withDb)
 import Replies (render)
@@ -40,7 +40,7 @@ getPrebatch = do
             print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
             pure $ Right (feedlinks, chats)
  where
-  getExpiredChats now = find (select ["sub_next_digest" =: ["$lt" =: now]] "chats"){limit = 2, sort = ["sub_last_digest_attempt" =: (1 :: Int)]}
+  getExpiredChats now = find (select ["$or" =: [["sub_next_digest" =: Null], ["sub_next_digest" =: ["$lt" =: now]]]] "chats"){limit = 2, sort = ["sub_last_digest_attempt" =: (1 :: Int)]}
 
 fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.HashMap ChatId (SubChat, [Feed]))
 {- Return only feeds with more than 0 items, along with failure messages -}

@@ -43,8 +43,8 @@ withChat action maybe_userid cid = do
             SubChat
               { sub_chatid = cid
               , sub_last_digest = Nothing
-              , sub_last_digest_attempt = Nothing
               , sub_next_digest = Just $ findNextTime now (settings_digest_interval defaultChatSettings)
+              , sub_last_digest_attempt = Nothing
               , sub_linked_to = linked_to
               , sub_feeds_links = S.fromList flinks
               , sub_settings = defaultChatSettings
