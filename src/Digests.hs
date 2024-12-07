@@ -36,7 +36,12 @@ getPrebatch = do
               ([], S.empty)
               bson_chats
        in liftIO $ do
-            putStrLn ("getPreBatch: " ++ (show . length $ chats) ++ " chats ready.")
+            print
+              ( "getPreBatch: "
+                  `T.append` (T.pack . show . length $ chats)
+                  `T.append` " chats need an update: "
+                  `T.append` T.intercalate "," (map (T.pack . show . sub_chatid) chats)
+              )
             print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
             pure $ Right (feedlinks, chats)
  where
@@ -87,7 +92,9 @@ makeDigests = do
         else do
           (fetch_errors, batches) <- fillBatch (links, chats)
           now <- liftIO getCurrentTime
-          void . evalDb $ NotifyAttemptedToUpdateChats (map sub_chatid chats) now
+          evalDb (NotifyAttemptedToUpdateChats (map sub_chatid chats) now) >>= \case
+            Left err -> liftIO . print $ "makeDigests: Unable to notify chats of attempt to update: " `T.append` render err
+            Right _ -> pure ()
           let feeds = foldMap snd $ HMS.elems batches
           feeds_updated <- evalDb $ UpsertFeeds feeds
           feeds_archived <- evalDb $ ArchiveItems feeds

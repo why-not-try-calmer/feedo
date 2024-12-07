@@ -79,9 +79,8 @@ startNotifs =
                 now <- getCurrentTime
                 notified_chats <- map fst <$> send_tg_notif batches now
                 pure (now, notified_chats)
-              res <- evalDb $ NotifyUpdatedChats notified n
-              case res of
-                Left bump_error -> alertAdmin (postjobs env) ("startNotif: notifier: failed to acquire notification package and got this error:" `T.append` render bump_error)
+              evalDb (NotifyUpdatedChats notified n) >>= \case
+                Left notification_update_error -> liftIO . print $ "startNotif: notifier: failed to acquire notification package and got this error:" `T.append` render notification_update_error
                 Right _ -> pure ()
             something_else -> liftIO . print $ show something_else
         wait_action = do

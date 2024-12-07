@@ -201,7 +201,7 @@ instance (MonadIO m) => HasMongo (App m) where
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
   evalDb (NotifyAttemptedToUpdateChats cids now) =
-    let action = withDb $ updateAll "chats" [(["subchat_id" =: ["$in" =: cids]], ["sub_last_digest_attempt" =: now], [])]
+    let action = withDb $ updateAll "chats" [(["subchat_id" =: ["$in" =: cids]], ["sub_last_digest_attempt" =: now], [MultiUpdate])]
      in action >>= \case
           Left _ -> pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during connection."
           Right res ->
@@ -209,7 +209,7 @@ instance (MonadIO m) => HasMongo (App m) where
               then pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during action."
               else pure $ Right DbDone
   evalDb (NotifyUpdatedChats cids now) =
-    let failure = FailedToUpdate (T.pack . show $ cids) "NotifyUpdatedChats failed"
+    let failure = FailedToUpdate (T.pack . show $ cids) "evalDb: NotifyUpdateChats: NotifyUpdatedChats: failed"
         action = withDb $ do
           docs <- find (select ["sub_chatid" =: ["$in" =: cids]] "chats") >>= rest
           let chats =
@@ -223,11 +223,13 @@ instance (MonadIO m) => HasMongo (App m) where
                         chat{sub_last_digest = Just now, sub_next_digest = Just next_time}
                   )
                   docs
-              selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [Upsert])) chats
+              selector = map (\c -> (["sub_chatid" =: sub_chatid c], writeDoc c, [MultiUpdate])) chats
           updateAll "chats" selector
      in action >>= \case
           Left _ -> pure $ Left failure
-          Right _ -> pure $ Right DbDone
+          Right _ -> do
+            liftIO $ print ("evalDb: NotifyUpdateChats: Digest for chats just sent." `T.append` T.intercalate "," (map (T.pack . show) cids))
+            pure $ Right DbDone
   evalDb (DbSearch keywords scope mb_last_time) =
     let action = aggregate "items" $ buildSearchQuery keywords
      in withDb action >>= \case
