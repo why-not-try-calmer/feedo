@@ -534,7 +534,7 @@ bsonToChat doc =
         }
 
 chatToBson :: SubChat -> Document
-chatToBson (SubChat chat_id last_digest last_attempt next_digest flinks linked_to settings active_admins) =
+chatToBson (SubChat chat_id last_digest next_digest last_attempt flinks linked_to settings active_admins) =
   let blacklist = S.toList . match_blacklist . settings_word_matches $ settings
       searchset = S.toList . match_searchset . settings_word_matches $ settings
       only_search_results = S.toList . match_only_search_results . settings_word_matches $ settings
