@@ -94,12 +94,21 @@ makeDigests = do
           now <- liftIO getCurrentTime
           evalDb (NotifyAttemptedToUpdateChats (map sub_chatid chats) now) >>= \case
             Left err -> liftIO . print $ "makeDigests: Unable to notify chats of attempt to update: " `T.append` render err
-            Right _ -> pure ()
+            Right _ -> liftIO . print $ "makeDigests: Notified " `T.append` (T.pack . show . length $ chats) `T.append` " chats of pending updates."
           let feeds = foldMap snd $ HMS.elems batches
           feeds_updated <- evalDb $ UpsertFeeds feeds
           feeds_archived <- evalDb $ ArchiveItems feeds
           let (archive_errors, _) = partitionEither [feeds_archived, feeds_updated]
               n_fs = length feeds
+              report = 
+                "makeDigests: Batches ready for sending: "
+                  `T.append` (T.pack . show . length $ feeds)
+                  `T.append` " feeds "
+                  `T.append` " out of "
+                  `T.append` (T.pack . show . length $ links)
+                  `T.append` " urls between "
+                  `T.append` (T.pack . show . length $ chats)
+                  `T.append` " chats."
           do
             unless (null fetch_errors) $ (mapM_ $ saveToLog . LogFailed) fetch_errors
             unless (null archive_errors) $
@@ -107,4 +116,5 @@ makeDigests = do
                   make_msg start end = "Error while " `T.append` start `T.append` (T.pack . show $ n_fs) `T.append` " feeds: " `T.append` end
                   m = make_msg " archiving " error_text_db
                in alertAdmin (postjobs env) m
+          liftIO $ print report
           pure . Right $ CacheDigests batches
