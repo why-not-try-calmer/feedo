@@ -1,0 +1,305 @@
+
+[
+    {
+      _id: ObjectId('61d418d3648fc5fe55772ba9'),
+      sub_chatid: Long('-1001303471763'),
+      sub_last_digest: ISODate('2024-12-06T16:25:16.720Z'),
+      sub_next_digest: ISODate('2024-12-07T17:02:29.075Z'),
+      sub_last_digest_attempt: ISODate('2024-12-08T16:25:16.720Z'),
+      sub_feeds_links: [
+        'https://bas.codes/rss.xml',
+        'https://pycoders.com/feed/ayl3pWAj',
+        'https://pythonbytes.fm/episodes/rss'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [ 'beginner', 'itsmycode' ],
+        settings_digest_collapse: 3,
+        settings_disable_web_view: true,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [ 'https://hnrss.org/frontpage' ],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [ 'python' ],
+        settings_share_link: true,
+        settings_pagination: true,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-03T00:00:00.000Z')
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('61ea5b9d60fe281a749ef2ab'),
+      sub_chatid: Long('226151044'),
+      sub_last_digest: ISODate('2024-12-08T08:18:58.491Z'),
+      sub_next_digest: ISODate('2024-12-09T07:00:00.000Z'),
+      sub_last_digest_attempt: ISODate('2024-12-08T07:00:00.000Z'),
+      sub_feeds_links: [
+        'https://devclass.com/feed',
+        'https://discourse.nixos.org/c/announcements/8.rss',
+        'https://discourse.nixos.org/c/events/13.rss',
+        'https://engineeringatscale.substack.com/feed',
+        'https://fasterthanli.me/index.xml',
+        'https://haskellweekly.news/newsletter.atom',
+        'https://hnrss.org/frontpage',
+        'https://hnrss.org/newest',
+        'https://nixsanctuary.com/rss',
+        'https://www.parsonsmatt.org/feed',
+        'https://www.phoronix.com/rss.php'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [ 'dominus' ],
+        settings_digest_collapse: null,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [ 'https://hnrss.org/frontpage', 'https://hnrss.org/newest' ],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [ 'haskell', 'rust' ],
+        settings_share_link: true,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 7, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('61f4159392638316f53e6f13'),
+      sub_chatid: Long('-1001607431141'),
+      sub_last_digest: ISODate('2024-12-08T08:15:03.953Z'),
+      sub_next_digest: ISODate('2024-12-09T08:00:00.000Z'),
+      sub_last_digest_attempt: ISODate('2024-12-07T08:00:00.000Z'),
+      sub_feeds_links: [
+        'https://blog.system76.com/rss',
+        'https://lemmy.world/feeds/c/pop_os.xml',
+        'https://www.phoronix.com/rss.php'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [],
+        settings_digest_collapse: null,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [ 'https://www.phoronix.com/rss.php' ],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [ 'pop!_os' ],
+        settings_share_link: false,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 8, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('6223a00a91128a2dea5b945c'),
+      sub_chatid: Long('-1001256345011'),
+      sub_last_digest: ISODate('2024-12-01T17:01:20.562Z'),
+      sub_next_digest: ISODate('2024-12-08T11:00:00.000Z'),
+      sub_feeds_links: [
+        'https://forums.opensuse.org/top.rss',
+        'https://lists.opensuse.org/archives/list/project@lists.opensuse.org/feed',
+        'https://news.opensuse.org/feed.xml',
+        'https://planet.opensuse.org/en/rss20.xml'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [],
+        settings_digest_collapse: 3,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: ' Last Week In openSUSE',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [],
+        settings_share_link: true,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-08T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 11, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('62585fa3bd5e17a56a501f63'),
+      sub_chatid: Long('-1001591437216'),
+      sub_last_digest: ISODate('2024-12-08T08:20:01.226Z'),
+      sub_next_digest: ISODate('2024-12-09T08:00:00.000Z'),
+      sub_last_digest_attempt: ISODate('2024-12-08T08:00:00.000Z'),
+      sub_feeds_links: [
+        'https://discourse.haskell.org/latest.rss',
+        'https://haskellweekly.news/podcast.rss',
+        'https://hnrss.org/newest',
+        'https://www.haskell.org/ghc/rss.xml'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [ 'dominus' ],
+        settings_digest_collapse: null,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [ 'https://hnrss.org/frontpage', 'https://hnrss.org/newest' ],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [ 'haskell' ],
+        settings_share_link: true,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 8, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('6273ea367cae488188ab4dfb'),
+      sub_chatid: Long('-1001700659558'),
+      sub_last_digest: ISODate('2024-12-08T08:20:01.226Z'),
+      sub_next_digest: ISODate('2024-12-09T08:00:00.000Z'),
+      sub_last_digest_attempt: ISODate('2024-12-08T08:00:00.000Z'),
+      sub_feeds_links: [ 'https://users.rust-lang.org/latest.rss' ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [],
+        settings_digest_collapse: null,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [],
+        settings_share_link: true,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 8, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('629014fbd7428dc8c5f4bdf7'),
+      sub_chatid: Long('-1001729607229'),
+      sub_last_digest: ISODate('2024-12-07T09:24:49.151Z'),
+      sub_next_digest: ISODate('2024-12-07T08:00:00.000Z'),
+      sub_last_digest_attempt: ISODate('2024-12-08T08:00:00.000Z'),
+      sub_feeds_links: [
+        'https://racer.com/f1/feed',
+        'https://the-race.com/category/formula-1/feed',
+        'https://www.formula1.com/content/fom-website/en/latest/all.xml'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [],
+        settings_digest_collapse: null,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [],
+        settings_share_link: false,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 8, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('62fe40f14953df1a16a61081'),
+      sub_chatid: Long('-1001708028114'),
+      sub_last_digest: ISODate('2024-12-08T08:18:58.491Z'),
+      sub_next_digest: ISODate('2024-12-09T07:00:00.000Z'),
+      sub_last_digest_attempt: ISODate('2024-12-08T07:00:00.000Z'),
+      sub_feeds_links: [
+        'https://lgballiance.org.uk/feed',
+        'https://media.rss.com/gcstoryhour/feed.xml',
+        'https://ovarit.com/o/Activism/new.rss',
+        'https://ovarit.com/o/Announcements/new.rss',
+        'https://ovarit.com/o/GenderCritical/new.rss',
+        'https://www.transgendertrend.com/feed'
+      ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [],
+        settings_digest_collapse: 3,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [],
+        settings_share_link: true,
+        settings_pagination: false,
+        settings_digest_no_collapse: [ 'https://ovarit.com/o/GenderCritical/new.rss' ],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z'),
+        settings_digest_at: [ { hour: 7, minute: 0 } ]
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('67119be78ad27a409186b9e7'),
+      sub_chatid: Long('2136881145'),
+      sub_last_digest: ISODate('2024-12-08T08:15:03.953Z'),
+      sub_next_digest: ISODate('2024-12-09T08:15:03.953Z'),
+      sub_last_digest_attempt: ISODate('2024-12-07T17:03:34.930Z'),
+      sub_feeds_links: [ 'https://www.formula1.com/en/latest/all.xml' ],
+      sub_linked_to_chats: null,
+      sub_settings: {
+        settings_blacklist: [],
+        settings_digest_collapse: null,
+        settings_disable_web_view: false,
+        settings_digest_size: 10,
+        settings_digest_title: 'A new digest is available',
+        settings_digest_start: null,
+        settings_forward_to_admins: false,
+        settings_only_search_results: [],
+        settings_paused: false,
+        settings_pin: false,
+        settings_searchset: [],
+        settings_share_link: true,
+        settings_pagination: false,
+        settings_digest_no_collapse: [],
+        settings_digest_every_secs: ISODate('1970-01-02T00:00:00.000Z')
+      },
+      sub_active_admins: []
+    },
+    {
+      _id: ObjectId('675555878f920001b328af46'),
+      sub_last_digest_attempt: ISODate('2024-12-08T08:15:03.933Z')
+    },
+    {
+      _id: ObjectId('675555e48f920001b328af50'),
+      sub_last_digest_attempt: ISODate('2024-12-08T08:16:25.957Z')
+    },
+    {
+      _id: ObjectId('675556b08f920001b328af67'),
+      sub_last_digest_attempt: ISODate('2024-12-08T08:20:00.664Z')
+    }
+  ]
