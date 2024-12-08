@@ -40,7 +40,7 @@ getPrebatch = do
               ( "getPreBatch: "
                   `T.append` (T.pack . show . length $ chats)
                   `T.append` " chats need an update: "
-                  `T.append` T.intercalate "," (map (T.pack . show . sub_chatid) chats)
+                  `T.append` T.intercalate ", " (map (T.pack . show . sub_chatid) chats)
               )
             print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
             pure $ Right (feedlinks, chats)
