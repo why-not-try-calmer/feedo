@@ -71,7 +71,7 @@ startNotifs =
           pure (cid, map f_link batch)
         notify = do
           digests <- makeDigests
-          liftIO $ putStrLn "startNotifs: notify: Digests ready. Sending"
+          liftIO $ putStrLn "startNotifs: notify: Digests ready. Sending..."
           case digests of
             Left err -> alertAdmin (postjobs env) ("startNotifs: notifier: failed to acquire notification package and got this error:" `T.append` err)
             Right (CacheDigests batches) -> do

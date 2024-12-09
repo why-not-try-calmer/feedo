@@ -42,7 +42,7 @@ getPrebatch = do
                   `T.append` " chats need an update: "
                   `T.append` T.intercalate ", " (map (T.pack . show . sub_chatid) chats)
               )
-            print ("The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
+            print ("getPreBatch: The following links need a rebuild: " `T.append` T.intercalate ", " (S.toList feedlinks))
             pure $ Right (feedlinks, chats)
  where
   getExpiredChats now = find (select ["$or" =: [["sub_next_digest" =: Null], ["sub_next_digest" =: ["$lt" =: now]]]] "chats"){limit = 2, sort = ["sub_last_digest_attempt" =: (1 :: Int)]}
@@ -51,20 +51,20 @@ fillBatch :: (MonadIO m) => (S.Set FeedLink, [SubChat]) -> m ([FeedError], HMS.H
 {- Return only feeds with more than 0 items, along with failure messages -}
 fillBatch (links, chats) = do
   (failed, feeds) <- liftIO $ partitionEither <$> mapConcurrently rebuildFeed (S.toList links)
-  let filter_feeds_items c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
-      fresh_feeds c = case sub_last_digest c of
-        Nothing -> filter_feeds_items c
+  let feeds_subscribed c = filter (\f -> f_link f `S.member` sub_feeds_links c) feeds
+      fresh_or_subs c = case sub_last_digest c of
+        Nothing -> feeds_subscribed c
         Just last_time ->
           let step' !fs !f =
                 let fresh_relevant = without_irrelevant c (fresh_only last_time f) $ f_link f
                     f' = f{f_items = fresh_relevant}
                  in if null fresh_relevant then fs else fs ++ [f']
-           in foldl' step' [] $ filter_feeds_items c
-      step acc !c =
-        let feeds' = without_blacklisted c (fresh_feeds c)
-         in if null feeds' then acc else HMS.insert (sub_chatid c) (c, fresh_feeds c) acc
-      results = foldl' step HMS.empty chats
-  liftIO . print $ "fillBatch: Done. " ++ show (length failed) ++ " errors."
+           in foldl' step' [] $ feeds_subscribed c
+      build_batches acc !c =
+        let feeds' = without_blacklisted c (fresh_or_subs c)
+         in if null feeds' then acc else HMS.insert (sub_chatid c) (c, fresh_or_subs c) acc
+      results = foldl' build_batches HMS.empty chats
+  liftIO . print $ "fillBatch: Done. " ++ show (length failed) ++ " errors and " ++ show (length results) ++ " results."
   pure (failed, results)
  where
   fresh_only last_time f = filter (\i -> i_pubdate i > last_time) $ f_items f
@@ -100,11 +100,10 @@ makeDigests = do
           feeds_archived <- evalDb $ ArchiveItems feeds
           let (archive_errors, _) = partitionEither [feeds_archived, feeds_updated]
               n_fs = length feeds
-              report = 
+              report =
                 "makeDigests: Batches ready for sending: "
                   `T.append` (T.pack . show . length $ feeds)
-                  `T.append` " feeds "
-                  `T.append` " out of "
+                  `T.append` " feeds out of "
                   `T.append` (T.pack . show . length $ links)
                   `T.append` " urls between "
                   `T.append` (T.pack . show . length $ chats)
