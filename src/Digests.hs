@@ -64,7 +64,7 @@ fillBatch (links, chats) = do
         let feeds' = without_blacklisted c (fresh_or_subs c)
          in if null feeds' then acc else HMS.insert (sub_chatid c) (c, fresh_or_subs c) acc
       results = foldl' build_batches HMS.empty chats
-  liftIO . print $ "fillBatch: Done. " ++ show (length failed) ++ " errors and " ++ show (length results) ++ " results."
+  liftIO . print $ "fillBatch: Done. " ++ show (length failed) ++ " failed and " ++ show (length results) ++ " results."
   pure (failed, results)
  where
   fresh_only last_time f = filter (\i -> i_pubdate i > last_time) $ f_items f

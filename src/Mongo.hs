@@ -207,7 +207,9 @@ instance (MonadIO m) => HasMongo (App m) where
           Right res ->
             if failed res
               then pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat" "Action failed during action."
-              else pure $ Right DbDone
+              else do
+                liftIO . print $ "NotifyAttemptedToUpdateChats: WriteResult: " ++ show res
+                pure $ Right DbDone
   evalDb (NotifyUpdatedChats cids now) =
     let failure = FailedToUpdate (T.pack . show $ cids) "evalDb: NotifyUpdateChats: NotifyUpdatedChats: failed"
         action = withDb $ do
