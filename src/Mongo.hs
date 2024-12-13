@@ -201,7 +201,7 @@ instance (MonadIO m) => HasMongo (App m) where
               then pure . Left $ FailedToUpdate "ArchiveItems failed to write feeds" (T.pack . show $ res)
               else pure $ Right DbDone
   evalDb (NotifyAttemptedToUpdateChats cids now) =
-    let action = withDb $ updateAll "chats" [(["subchat_id" =: ["$in" =: cids]], ["sub_last_digest_attempt" =: now], [])]
+    let action = withDb $ updateAll "chats" [(["sub_chatid" =: ["$in" =: cids]], ["sub_last_digest_attempt" =: now], [])]
      in action >>= \case
           Left err -> pure . Left $ FailedToUpdate "NotifyAttemptedToUpdateChat: " err
           Right res ->
