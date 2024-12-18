@@ -5,12 +5,13 @@
 module Server (startApp, makeConfig) where
 
 import Control.Concurrent (newChan, writeChan)
-import Control.Exception (SomeException (SomeException), throwIO, try)
+import Control.Exception (Exception (fromException), SomeAsyncException (SomeAsyncException), SomeException (SomeException), throwIO, try)
 import Control.Monad.Reader
 import Data.Foldable (for_)
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
+import GHC.IO (catch, onException)
 import Jobs
 import Mongo (setupDb)
 import Network.Wai
@@ -151,6 +152,14 @@ startApp = do
   initStart config
   putStrLn $ "Startup completed for version " ++ T.unpack (app_version config)
   putStrLn $ "Running now using " ++ show port
-  run port $ withServer config
+  run port (withServer config)
+    `catch` ( \e -> do
+                let (analysis, err) = case fromException e of
+                      Just (SomeAsyncException _) -> ("async", show e)
+                      _ -> ("synchronous", show e)
+                    report = "An exception (" ++ analysis ++ ") made it to the main thread, rethrowing after logging: " ++ show err
+                print report
+                throwIO e
+            )
  where
   port = 8000
