@@ -12,7 +12,7 @@ import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
 import Data.List (find, foldl', sort)
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
@@ -63,15 +63,13 @@ import Types (
   SubChat (sub_feeds_links, sub_linked_to, sub_settings),
   TgEvalError (
     BadRef,
-    ChatNotPrivate,
     DbQueryError,
     MaxFeedsAlready,
     NotAdmin,
     NotFoundChat,
     NotFoundFeed,
     NotSubscribed,
-    TelegramErr,
-    UserNotAdmin
+    TelegramErr
   ),
   UserAction (..),
   runApp,
@@ -303,6 +301,9 @@ subFeed cid = startWithValidateUrls
             old_schemes = getScheme old_feeds
         unless (null new_valid_urls) (void $ withChat (Sub $ getLinks old_feeds) Nothing cid)
         fetchMore old_schemes new_valid_urls
+      Right DbNoFeed -> do
+        void $ withChat (Sub urls) Nothing cid
+        prepareResponseWith $ "Successfully subscribed to " `T.append` T.intercalate ", " urls
       _ -> prepareResponseWith "Unknown error when trying to subscribe."
    where
     urls = map renderUrl valid_urls
