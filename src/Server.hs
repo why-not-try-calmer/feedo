@@ -11,7 +11,7 @@ import Data.Foldable (for_)
 import Data.IORef (newIORef)
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text as T
-import GHC.IO (catch, onException)
+import GHC.IO (catch)
 import Jobs
 import Mongo (setupDb)
 import Network.Wai
