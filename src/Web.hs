@@ -30,7 +30,7 @@ import Utils (mbTime)
 renderDbRes :: DbRes -> H.Html
 renderDbRes (Left err) = H.toHtml . render $ err
 renderDbRes (Right res) = case res of
-  DbNoDigest -> "No item found for this digest. Make sure to use a valid reference to digests."
+  DbNoDigest -> "<p>No item found for this digest. Make sure to use a valid reference to digests. If you arrived here from https://t.me/formula1_daily_news, be informed that this channel is no longer maintained. You can use https://t.me/formula1_dailynews instead.</p>"
   DbBadOID -> "Unable to find a digest matching this identifier."
   DbDigest Digest{..} ->
     let flt =
