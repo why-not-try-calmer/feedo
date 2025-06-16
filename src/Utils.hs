@@ -305,3 +305,12 @@ sliceIfAboveTelegramMax :: T.Text -> [T.Text]
 sliceIfAboveTelegramMax msg
   | T.length msg <= 4096 = pure msg
   | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096
+
+areAllInts :: [T.Text] -> Either T.Text [Int]
+areAllInts ts =
+  let (err, ok) = foldr step (mempty, []) ts
+   in if err == mempty then Left err else Right ok
+ where
+  step val (err, ok) = case readMaybe . T.unpack $ val :: Maybe Int of
+    Nothing -> (val, ok)
+    Just n -> (err, n : ok)

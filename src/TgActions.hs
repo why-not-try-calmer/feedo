@@ -16,6 +16,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
+import Database.Redis.Sentinel (eval)
 import Feeds (eitherUrlScheme, getFeedFromUrlScheme, rebuildFeed)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
@@ -74,7 +75,7 @@ import Types (
   UserAction (..),
   runApp,
  )
-import Utils (maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (areAllInts, maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
@@ -192,6 +193,15 @@ interpretCmd contents
                     else case readMaybe . T.unpack . head $ xs :: Maybe ChatId of
                       Nothing -> Left . InterpreterErr $ "The second value passed to /migrate could not be parsed into a valid chat_id."
                       Just m -> Right $ MigrateChannel n m
+  | cmd == "/order" =
+      if null args
+        then
+          Left
+            . InterpreterErr
+            $ "/order takes at least two arguments, standing for two channels' identifier."
+        else case areAllInts args of
+          Left x -> Left $ InterpreterErr ("This string fails to represent a number: " `T.append` x)
+          Right ints -> Right $ OrderFeeds ints
   | cmd == "/pause" || cmd == "/p" =
       if null args
         then Right . Pause $ True
@@ -367,6 +377,7 @@ evalTgAct _ (FeedInfo ref) cid = do
                           Nothing -> pure . Left $ NotFoundFeed mempty
                           Just f -> pure . Right . mkReply $ FromFeedDetails f
                 _ -> pure . Left $ NotFoundFeed mempty
+evalTgAct uid (OrderFeeds ns) cid = pure . Right . mkReply $ FromCmds
 evalTgAct uid (Announce txt) admin_chat =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env

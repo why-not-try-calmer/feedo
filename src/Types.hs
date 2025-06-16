@@ -6,7 +6,7 @@
 module Types where
 
 import Control.Concurrent (Chan)
-import Control.Monad.List (foldM)
+import Control.Monad (foldM)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as A
@@ -293,6 +293,7 @@ data UserAction
   | ListSubsChannel ChatId
   | Migrate ChatId
   | MigrateChannel ChatId ChatId
+  | OrderFeeds [Int]
   | Pause Bool
   | PauseChannel ChatId Bool
   | Purge
