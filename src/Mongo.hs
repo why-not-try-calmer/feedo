@@ -13,7 +13,8 @@ import qualified Data.ByteString.Char8 as B
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.List as List
-import Data.Maybe (fromJust, fromMaybe)
+import qualified Data.Map.Strict as M
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -21,7 +22,7 @@ import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Data.Time.Clock.System (getSystemTime)
 import Database.MongoDB
-import qualified Database.MongoDB as M
+import qualified Database.MongoDB as Mon
 import qualified Database.MongoDB.Transport.Tls as Tls
 import GHC.IORef (atomicModifyIORef', readIORef)
 import Replies (render)
@@ -239,10 +240,10 @@ instance (MonadIO m) => HasMongo (App m) where
           Right docs ->
             let toSearchRes doc =
                   SearchResult
-                    <$> M.lookup "i_title" doc
-                    <*> M.lookup "i_link" doc
-                    <*> M.lookup "i_pubdate" doc
-                    <*> M.lookup "i_feed_link" doc
+                    <$> Mon.lookup "i_title" doc
+                    <*> Mon.lookup "i_link" doc
+                    <*> Mon.lookup "i_pubdate" doc
+                    <*> Mon.lookup "i_feed_link" doc
                 results = mapM toSearchRes docs
                 f sr =
                   sr_feedlink sr
@@ -293,8 +294,8 @@ instance (MonadIO m) => HasMongo (App m) where
      in action >>= \case
           Left err -> pure $ Left . BadQuery $ err
           Right Nothing -> pure . Right $ DbNoPage cid mid
-          Right (Just doc) -> case M.lookup "pages" doc of
-            Just pages -> pure $ Right $ DbPages pages (M.lookup "url" doc)
+          Right (Just doc) -> case Mon.lookup "pages" doc of
+            Just pages -> pure $ Right $ DbPages pages (Mon.lookup "url" doc)
             Nothing -> pure . Right $ DbNoPage cid mid
   evalDb (InsertPages cid mid pages mb_link) =
     let base_payload = ["chat_id" =: cid, "message_id" =: mid, "pages" =: pages]
@@ -441,11 +442,11 @@ itemToBson i =
 bsonToItem :: Document -> Item
 bsonToItem doc =
   Item
-    (fromJust $ M.lookup "i_title" doc)
-    (fromJust $ M.lookup "i_desc" doc)
-    (fromJust $ M.lookup "i_link" doc)
-    (fromJust $ M.lookup "i_feed_link" doc)
-    (fromJust $ M.lookup "i_pubdate" doc)
+    (fromJust $ Mon.lookup "i_title" doc)
+    (fromJust $ Mon.lookup "i_desc" doc)
+    (fromJust $ Mon.lookup "i_link" doc)
+    (fromJust $ Mon.lookup "i_feed_link" doc)
+    (fromJust $ Mon.lookup "i_pubdate" doc)
 
 {- Feeds -}
 
@@ -462,39 +463,51 @@ feedToBson Feed{..} =
 
 bsonToFeed :: Document -> Feed
 bsonToFeed doc =
-  let raw_items = fromJust $ M.lookup "f_items" doc
+  let raw_items = fromJust $ Mon.lookup "f_items" doc
       items = map readDoc raw_items
    in Feed
-        { f_avg_interval = M.lookup "f_avg_interval" doc
-        , f_desc = fromJust $ M.lookup "f_desc" doc
+        { f_avg_interval = Mon.lookup "f_avg_interval" doc
+        , f_desc = fromJust $ Mon.lookup "f_desc" doc
         , f_items = items
-        , f_last_refresh = M.lookup "f_last_refresh" doc
-        , f_link = fromJust $ M.lookup "f_link" doc
-        , f_title = fromJust $ M.lookup "f_title" doc
-        , f_type = if fromJust (M.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom
+        , f_last_refresh = Mon.lookup "f_last_refresh" doc
+        , f_link = fromJust $ Mon.lookup "f_link" doc
+        , f_title = fromJust $ Mon.lookup "f_title" doc
+        , f_type = if fromJust (Mon.lookup "f_type" doc) == (T.pack . show $ Rss) then Rss else Atom
         }
 
 {- Chats, Settings -}
 
+documentToMap :: (Val a) => Document -> M.Map T.Text a
+documentToMap = M.fromList . mapMaybe castField
+ where
+  castField f = fmap ((,) (label f)) (cast $ value f)
+
+mapToDocument :: M.Map T.Text Int -> Document
+mapToDocument = map (\(k, v) -> k := Int32 (fromIntegral v)) . M.toList
+
 bsonToChat :: Document -> SubChat
 bsonToChat doc =
-  let feeds_links = fromJust $ M.lookup "sub_feeds_links" doc :: [T.Text]
-      linked_to_chats = M.lookup "sub_linked_to_chats" doc :: Maybe ChatId
-      settings_doc = fromJust $ M.lookup "sub_settings" doc :: Document
-      active_admins_doc = M.lookup "sub_active_admins" doc :: Maybe [Document]
+  let feeds_links = fromJust $ Mon.lookup "sub_feeds_links" doc :: [T.Text]
+      linked_to_chats = Mon.lookup "sub_linked_to_chats" doc :: Maybe ChatId
+      settings_doc = fromJust $ Mon.lookup "sub_settings" doc :: Document
+      active_admins_doc = Mon.lookup "sub_active_admins" doc :: Maybe [Document]
       active_admins =
-        let f d = (,) <$> (M.lookup "sub_active_userid" d :: Maybe UserId) <*> (M.lookup "sub_active_time" d :: Maybe UTCTime)
+        let f d = (,) <$> (Mon.lookup "sub_active_userid" d :: Maybe UserId) <*> (Mon.lookup "sub_active_time" d :: Maybe UTCTime)
          in maybe mempty (mapM f) active_admins_doc
+      order_feeds = case Mon.lookup "settings_digest_feeds_order" settings_doc :: Maybe Document of
+        Just doc' -> Just $ documentToMap doc'
+        Nothing -> Nothing
+
       feeds_settings_docs =
         Settings
           { settings_word_matches =
               WordMatches
-                (maybe S.empty S.fromList $ M.lookup "settings_blacklist" settings_doc)
-                (maybe S.empty S.fromList $ M.lookup "settings_searchset" settings_doc)
-                (maybe S.empty S.fromList $ M.lookup "settings_only_search_results" settings_doc)
+                (maybe S.empty S.fromList $ Mon.lookup "settings_blacklist" settings_doc)
+                (maybe S.empty S.fromList $ Mon.lookup "settings_searchset" settings_doc)
+                (maybe S.empty S.fromList $ Mon.lookup "settings_only_search_results" settings_doc)
           , settings_digest_interval =
-              let every = M.lookup "settings_digest_every_secs" settings_doc :: Maybe NominalDiffTime
-                  hm_docs = M.lookup "settings_digest_at" settings_doc :: Maybe [Document]
+              let every = Mon.lookup "settings_digest_every_secs" settings_doc :: Maybe NominalDiffTime
+                  hm_docs = Mon.lookup "settings_digest_at" settings_doc :: Maybe [Document]
                   adjust n
                     | n < 6 && n > 0 = n * 10
                     | otherwise = n
@@ -503,8 +516,8 @@ bsonToChat doc =
                     Just docs ->
                       foldr
                         ( \d acc ->
-                            let h = M.lookup "hour" d :: Maybe Int
-                                m = M.lookup "minute" d :: Maybe Int
+                            let h = Mon.lookup "hour" d :: Maybe Int
+                                m = Mon.lookup "minute" d :: Maybe Int
                              in case sequence [h, m] of
                                   Nothing -> []
                                   Just hm -> acc ++ [(head hm, adjust $ last hm)]
@@ -512,23 +525,24 @@ bsonToChat doc =
                         []
                         docs
                in DigestInterval every (if null $ extract hm_docs then Nothing else Just $ extract hm_docs)
-          , settings_digest_collapse = fromMaybe (settings_digest_collapse defaultChatSettings) $ M.lookup "settings_digest_collapse" settings_doc
-          , settings_digest_size = fromMaybe (settings_digest_size defaultChatSettings) $ M.lookup "settings_digest_size" settings_doc :: Int
-          , settings_digest_title = fromMaybe (settings_digest_title defaultChatSettings) $ M.lookup "settings_digest_title" settings_doc
-          , settings_digest_start = fromMaybe (settings_digest_start defaultChatSettings) $ M.lookup "settings_digest_start" settings_doc :: Maybe UTCTime
-          , settings_paused = Just True == M.lookup "settings_paused" settings_doc
-          , settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ M.lookup "settings_disable_web_view" settings_doc
-          , settings_pin = fromMaybe (settings_pin defaultChatSettings) $ M.lookup "settings_pin" settings_doc
-          , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ M.lookup "settings_share_link" settings_doc
-          , settings_forward_to_admins = fromMaybe (settings_forward_to_admins defaultChatSettings) $ M.lookup "settings_forward_to_admins" settings_doc
-          , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ M.lookup "settings_pagination" settings_doc
-          , settings_digest_no_collapse = maybe S.empty S.fromList $ M.lookup "settings_digest_no_collapse" settings_doc
+          , settings_digest_collapse = fromMaybe (settings_digest_collapse defaultChatSettings) $ Mon.lookup "settings_digest_collapse" settings_doc
+          , settings_digest_size = fromMaybe (settings_digest_size defaultChatSettings) $ Mon.lookup "settings_digest_size" settings_doc :: Int
+          , settings_digest_title = fromMaybe (settings_digest_title defaultChatSettings) $ Mon.lookup "settings_digest_title" settings_doc
+          , settings_digest_start = fromMaybe (settings_digest_start defaultChatSettings) $ Mon.lookup "settings_digest_start" settings_doc :: Maybe UTCTime
+          , settings_paused = Just True == Mon.lookup "settings_paused" settings_doc
+          , settings_disable_web_view = fromMaybe (settings_disable_web_view defaultChatSettings) $ Mon.lookup "settings_disable_web_view" settings_doc
+          , settings_pin = fromMaybe (settings_pin defaultChatSettings) $ Mon.lookup "settings_pin" settings_doc
+          , settings_share_link = fromMaybe (settings_share_link defaultChatSettings) $ Mon.lookup "settings_share_link" settings_doc
+          , settings_forward_to_admins = fromMaybe (settings_forward_to_admins defaultChatSettings) $ Mon.lookup "settings_forward_to_admins" settings_doc
+          , settings_pagination = fromMaybe (settings_pagination defaultChatSettings) $ Mon.lookup "settings_pagination" settings_doc
+          , settings_digest_no_collapse = maybe S.empty S.fromList $ Mon.lookup "settings_digest_no_collapse" settings_doc
+          , settings_digest_feeds_order = order_feeds
           }
    in SubChat
-        { sub_chatid = fromJust $ M.lookup "sub_chatid" doc
-        , sub_last_digest = M.lookup "sub_last_digest" doc
-        , sub_next_digest = M.lookup "sub_next_digest" doc
-        , sub_last_digest_attempt = M.lookup "sub_last_digest_attempt" doc
+        { sub_chatid = fromJust $ Mon.lookup "sub_chatid" doc
+        , sub_last_digest = Mon.lookup "sub_last_digest" doc
+        , sub_next_digest = Mon.lookup "sub_next_digest" doc
+        , sub_last_digest_attempt = Mon.lookup "sub_last_digest_attempt" doc
         , sub_feeds_links = S.fromList feeds_links
         , sub_linked_to = linked_to_chats
         , sub_settings = feeds_settings_docs
@@ -556,6 +570,7 @@ chatToBson (SubChat chat_id last_digest next_digest last_attempt flinks linked_t
         , "settings_share_link" =: settings_share_link settings
         , "settings_pagination" =: settings_pagination settings
         , "settings_digest_no_collapse" =: S.toList (settings_digest_no_collapse settings)
+        , "settings_digest_feeds_order" =: (mapToDocument <$> settings_digest_feeds_order settings)
         ]
       with_secs =
         maybe
@@ -581,11 +596,11 @@ chatToBson (SubChat chat_id last_digest next_digest last_attempt flinks linked_t
 
 bsonToDigest :: Document -> Digest
 bsonToDigest doc =
-  let items = map readDoc . fromJust $ M.lookup "digest_items" doc
-      created = fromJust $ M.lookup "digest_created" doc
-      _id = M.lookup "_id" doc :: Maybe T.Text
-      flinks = fromJust $ M.lookup "digest_flinks" doc
-      ftitles = fromMaybe [] $ M.lookup "digest_ftitles" doc
+  let items = map readDoc . fromJust $ Mon.lookup "digest_items" doc
+      created = fromJust $ Mon.lookup "digest_created" doc
+      _id = Mon.lookup "_id" doc :: Maybe T.Text
+      flinks = fromJust $ Mon.lookup "digest_flinks" doc
+      ftitles = fromMaybe [] $ Mon.lookup "digest_ftitles" doc
    in Digest _id created items flinks ftitles
 
 digestToBson :: Digest -> Document
@@ -600,10 +615,10 @@ digestToBson Digest{..} =
 
 bsonToAdmin :: Document -> AdminUser
 bsonToAdmin doc =
-  let uid = fromJust $ M.lookup "admin_uid" doc
-      token = fromJust $ M.lookup "admin_token" doc
-      cid = fromJust $ M.lookup "admin_chatid" doc
-      created = fromJust $ M.lookup "admin_created" doc
+  let uid = fromJust $ Mon.lookup "admin_uid" doc
+      token = fromJust $ Mon.lookup "admin_token" doc
+      cid = fromJust $ Mon.lookup "admin_chatid" doc
+      created = fromJust $ Mon.lookup "admin_created" doc
    in AdminUser uid token cid created
 
 adminToBson :: AdminUser -> Document
@@ -661,7 +676,7 @@ checkDbMapper = do
   let item = Item mempty mempty mempty mempty now
       digest_interval = DigestInterval (Just 0) (Just [(1, 20)])
       word_matches = WordMatches S.empty S.empty (S.fromList ["1", "2", "3"])
-      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False True True False False word_matches mempty
+      settings = Settings (Just 3) digest_interval 0 Nothing "title" True False Nothing True True False False word_matches mempty
       chat = SubChat 0 (Just now) (Just now) (Just now) S.empty Nothing settings HMS.empty
       feed = Feed Rss "1" "2" "3" [item] (Just 0) (Just now)
       digest = Digest Nothing now [item] [mempty] [mempty]

@@ -74,7 +74,7 @@ import Types (
   UserAction (..),
   runApp,
  )
-import Utils (maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (areAllInts, maybeUserIdx, partitionEither, reindex, toFeedRef, tooManySubs, unFeedRefs)
 
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
@@ -192,6 +192,12 @@ interpretCmd contents
                     else case readMaybe . T.unpack . head $ xs :: Maybe ChatId of
                       Nothing -> Left . InterpreterErr $ "The second value passed to /migrate could not be parsed into a valid chat_id."
                       Just m -> Right $ MigrateChannel n m
+  | cmd == "/order" =
+      if null args
+        then Left . InterpreterErr $ "/order needs a sequence of numbers to use to re-order feeds list."
+        else case areAllInts args of
+          Left _ -> Left . InterpreterErr $ "All words following '/order' must be integers."
+          Right ns -> Right $ Order ns
   | cmd == "/pause" || cmd == "/p" =
       if null args
         then Right . Pause $ True
