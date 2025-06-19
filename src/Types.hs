@@ -14,6 +14,7 @@ import Data.Aeson.TH
 import Data.Aeson.Types
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
+import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -135,6 +136,7 @@ data Settings = Settings
   , settings_digest_title :: T.Text
   , settings_disable_web_view :: Bool
   , settings_forward_to_admins :: Bool
+  , settings_digest_feeds_order :: Maybe (M.Map FeedLink Int)
   , settings_pagination :: Bool
   , settings_paused :: Bool
   , settings_pin :: Bool
@@ -190,6 +192,7 @@ instance FromJSON Settings where
           <*> o
             .:? "settings_forward_to_admins"
             .!= False
+          <*> o .:? "settings_digest_feeds_order"
           <*> o
             .:? "settings_pagination"
             .!= True
@@ -265,6 +268,7 @@ data ParsingSettings
   | PDisableWebview Bool
   | PPagination Bool
   | PForwardToAdmins Bool
+  | POrder Int
   | PPaused Bool
   | PPin Bool
   | PDigestCollapse Int

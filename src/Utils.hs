@@ -221,6 +221,7 @@ defaultChatSettings =
     , settings_digest_title = "A new digest is available"
     , settings_paused = False
     , settings_disable_web_view = False
+    , settings_digest_feeds_order = Nothing
     , settings_pagination = False
     , settings_pin = False
     , settings_share_link = True

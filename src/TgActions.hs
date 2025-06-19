@@ -551,39 +551,6 @@ evalTgAct uid (Migrate to) cid = do
         `T.append` (T.pack . show $ to)
   onErr err = pure . Right . ServiceReply $ render err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
-evalTgAct uid (Order ns) cid = do
-  chats_hmap <- getChats
-  case HMS.lookup cid chats_hmap of
-    Nothing -> pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
-    Just c ->
-      let subs = case sub_linked_to c of
-            Nothing -> sort . S.toList . sub_feeds_links $ c
-            Just cid' -> case HMS.lookup cid' chats_hmap of
-              Nothing -> []
-              Just c' -> sort . S.toList . sub_feeds_links $ c'
-       in if null subs
-            then pure . Right . ServiceReply $ "This chat is not subscribed to any feed yet!"
-            else
-              evalDb GetAllFeeds >>= \case
-                Right (DbFeeds fs) ->
-                  let hmap = HMS.fromList $ map (\f -> (f_link f, f)) fs
-                   in case mapM (`HMS.lookup` hmap) subs of
-                        Nothing ->
-                          pure
-                            . Left
-                            . NotFoundFeed
-                            $ "Unable to find these feeds "
-                              `T.append` T.intercalate " " subs
-                        Just feeds -> do
-                          evalDb (UpsertFeeds $ reindex feeds ns) >>= \case
-                            Left _ -> pure . Right $ mkReply (FromChatFeeds c feeds)
-                            Right _ -> pure . Right $ mkReply (FromChatFeeds c feeds)
-                _ ->
-                  pure
-                    . Left
-                    . NotFoundFeed
-                    $ "Unable to find these feeds "
-                      `T.append` T.intercalate " " subs
 evalTgAct uid (Pause pause_or_resume) cid =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
