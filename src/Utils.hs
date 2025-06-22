@@ -2,7 +2,7 @@ module Utils where
 
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
-import Data.List (foldl', sort, sortOn)
+import Data.List (sort, sortOn)
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T

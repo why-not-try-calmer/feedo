@@ -3,7 +3,6 @@
 
 module Markdown (parse, render, parsing) where
 
-import Data.Foldable
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 

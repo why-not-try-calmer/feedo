@@ -2,7 +2,6 @@
 
 module Settings (parseSettings) where
 
-import Data.Foldable (foldl')
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time

@@ -5,7 +5,6 @@ module Web where
 import Chats (getChats, withChat)
 import Control.Monad (forM_)
 import Control.Monad.Reader (MonadIO (liftIO))
-import Data.Foldable (Foldable (foldl'))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet as S

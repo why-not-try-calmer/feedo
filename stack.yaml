@@ -1,4 +1,4 @@
-resolver: lts-21.25
+resolver: nightly-2025-06-16
 packages:
   - .
 extra-deps: []
@@ -8,3 +8,4 @@ nix:
 
 system-ghc: true
 install-ghc: false
+notify-if-nix-on-path: false

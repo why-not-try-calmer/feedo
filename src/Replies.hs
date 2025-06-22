@@ -4,7 +4,6 @@
 
 module Replies (defaultReply, mkdSingles, mkdDoubles, renderCmds, render, Reply (..), mkReply, Replies (..), mkViewUrl, mkDigestUrl) where
 
-import Data.Foldable (foldl')
 import qualified Data.HashMap.Strict as HMS
 import Data.List (sortOn)
 import Data.Ord (Down (Down))

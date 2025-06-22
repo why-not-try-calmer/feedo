@@ -11,7 +11,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor
 import qualified Data.HashMap.Strict as HMS
-import Data.List (find, foldl', sort)
+import Data.List (find, sort)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -74,7 +74,7 @@ import Types (
   UserAction (..),
   runApp,
  )
-import Utils (areAllInts, maybeUserIdx, partitionEither, reindex, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (areAllInts, maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =

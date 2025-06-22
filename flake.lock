@@ -18,21 +18,38 @@
         "type": "github"
       }
     },
+    "haskell-updates": {
+      "locked": {
+        "lastModified": 1750551965,
+        "narHash": "sha256-Qz7kvBM/fDPpbR9jc7Bu72ACigv60/3SakreuqPyQuk=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "9f581af8b95f360239dc76031ee88da83c05aff8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "haskell-updates",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1703013332,
-        "narHash": "sha256-+tFNwMvlXLbJZXiMHqYq77z/RfmpfpiI3yjL6o/Zo9M=",
+        "lastModified": 1750365781,
+        "narHash": "sha256-XE/lFNhz5lsriMm/yjXkvSZz5DfvKJLUjsS6pP8EC50=",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/54aac082a4d9.tar.gz"
+        "url": "https://github.com/NixOS/nixpkgs/archive/08f2208.tar.gz"
       },
       "original": {
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/54aac082a4d9.tar.gz"
+        "url": "https://github.com/NixOS/nixpkgs/archive/08f2208.tar.gz"
       }
     },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "haskell-updates": "haskell-updates",
         "nixpkgs": "nixpkgs"
       }
     },
