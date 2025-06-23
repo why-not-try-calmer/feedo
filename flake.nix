@@ -32,7 +32,7 @@
             pkgs.openssl
             pkgs.zlib
           ];
-          NIX_LD = pkgs.lib.fileContents "${pkgs.stdenv.cc}/nix-support/dynamic-linker";
+          NIX_LD = builtins.readFile "${pkgs.stdenv.cc}/nix-support/dynamic-linker";
         };
       }
     );
