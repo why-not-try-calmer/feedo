@@ -13,8 +13,8 @@ import qualified Data.ByteString.Char8 as B
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.List as List
-import qualified Data.Map.Strict as M
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import qualified Data.IntMap.Strict as M
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -477,13 +477,19 @@ bsonToFeed doc =
 
 {- Chats, Settings -}
 
-documentToMap :: (Val a) => Document -> M.Map T.Text a
-documentToMap = M.fromList . mapMaybe castField
- where
-  castField f = fmap ((,) (label f)) (cast $ value f)
+documentToMap :: [Field] -> M.IntMap T.Text
+documentToMap doc = 
+  let elems = map (\kv -> (toInt $ label kv, toText $ value kv)) doc
+  in  M.fromList elems 
+  where 
+    toText x = T.pack . show $ x
+    toInt x = case readMaybe (T.unpack x) :: Maybe Int of
+      Just n -> n
+      Nothing -> undefined
 
-mapToDocument :: M.Map T.Text Int -> Document
-mapToDocument = map (\(k, v) -> k := Int32 (fromIntegral v)) . M.toList
+mapToDocument :: M.IntMap T.Text -> Document
+mapToDocument m = [ T.pack (show k) := String v | (k, v) <- M.toList m ]
+
 
 bsonToChat :: Document -> SubChat
 bsonToChat doc =

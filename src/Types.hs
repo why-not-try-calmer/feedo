@@ -14,7 +14,7 @@ import Data.Aeson.TH
 import Data.Aeson.Types
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
-import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -136,7 +136,7 @@ data Settings = Settings
   , settings_digest_title :: T.Text
   , settings_disable_web_view :: Bool
   , settings_forward_to_admins :: Bool
-  , settings_digest_feeds_order :: Maybe (M.Map FeedLink Int)
+  , settings_digest_feeds_order :: Maybe (M.IntMap FeedLink)
   , settings_pagination :: Bool
   , settings_paused :: Bool
   , settings_pin :: Bool

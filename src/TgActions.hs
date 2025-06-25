@@ -12,7 +12,7 @@ import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor (void, (<&>))
 import qualified Data.HashMap.Strict as HMS
 import Data.List (find, sort)
-import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -567,7 +567,7 @@ evalTgAct uid (Order ns) cid =
                   Just c ->
                     let prev_settings = sub_settings c
                         new_order =
-                          let reordered = M.fromList $ zip (S.toList $ sub_feeds_links c) ns
+                          let reordered = M.fromList $ zip ns (S.toList $ sub_feeds_links c)
                            in Just reordered
                         new_settings = Immediate $ prev_settings{settings_digest_feeds_order = new_order}
                      in withChat (SetChatSettings new_settings) (Just uid) cid >>= \case
