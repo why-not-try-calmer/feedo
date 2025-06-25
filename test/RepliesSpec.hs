@@ -2,18 +2,20 @@
 
 module RepliesSpec where
 
-import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
+import Hooks (withHooks)
 import Replies (mkReply)
 import Test.Hspec
 import Types
+import Utils (sortFeedsOnSettings)
 
 spec :: Spec
-spec = go
+spec = go1
  where
-  go =
+  go1 =
     let desc = describe "Validates reply from settings x notification payload"
         as = it "makes sure that no_collapse is respected"
         target = do

@@ -308,8 +308,8 @@ sliceIfAboveTelegramMax msg
   | T.length msg <= 4096 = pure msg
   | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096
 
-areAllInts :: [T.Text] -> Either T.Text [Int]
-areAllInts = foldr step (Right [])
+mapToInts :: [T.Text] -> Either T.Text [Int]
+mapToInts = foldr step (Right [])
  where
   step t acc =
     case readMaybe (T.unpack t) of
@@ -322,8 +322,8 @@ sortFeedsOnSettings settings feeds =
       prev_intmap = M.fromList . zip [1 .. length feeds] $ feeds
       merged new_intmap = mergeMatching f_link new_intmap prev_intmap
    in case sort_settings of
-    Nothing -> feeds
-    Just m -> M.elems $ merged m
+        Nothing -> feeds
+        Just m -> M.elems $ merged m
 
 mergeMatching :: (Eq a) => (b -> a) -> M.IntMap a -> M.IntMap b -> M.IntMap b
 mergeMatching f m1 m2 =

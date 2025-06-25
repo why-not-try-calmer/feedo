@@ -76,7 +76,7 @@ import Types (
   UserAction (..),
   runApp,
  )
-import Utils (areAllInts, maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (mapToInts, maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
@@ -197,7 +197,7 @@ interpretCmd contents
   | cmd == "/order" =
       if null args
         then Left . InterpreterErr $ "/order needs a sequence of numbers to use to re-order feeds list."
-        else case areAllInts args of
+        else case mapToInts args of
           Left _ -> Left . InterpreterErr $ "All words following '/order' must be integers."
           Right ns -> Right $ Order ns
   | cmd == "/pause" || cmd == "/p" =

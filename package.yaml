@@ -49,6 +49,8 @@ library:
   source-dirs: src
   ghc-options:
   - -Wall
+  - -Wno-x-partial
+  - -Wno-unrecognised-warning-flags
 
 executables:
   feedfarer-exe:
@@ -79,6 +81,9 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wno-x-partial
+    - -Wno-unrecognised-warning-flags
+
     dependencies:
     - feedfarer
 

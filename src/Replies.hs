@@ -13,7 +13,7 @@ import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
 import TgramOutJson (TgRequestMethod (TgDeleteMessage, TgEditMessage, TgGetChat, TgGetChatAdministrators, TgPinChatMessage, TgSendMessage))
 import Types
-import Utils (nomDiffToReadable, sortFeedsOnSettings, renderAvgInterval, utcToYmd, utcToYmdHMS)
+import Utils (nomDiffToReadable, renderAvgInterval, sortFeedsOnSettings, utcToYmd, utcToYmdHMS)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
