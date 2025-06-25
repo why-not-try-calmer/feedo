@@ -13,7 +13,7 @@ import Data.Time (UTCTime (utctDay), defaultTimeLocale, formatTime, toGregorian)
 import Network.URI.Encode (encodeText)
 import TgramOutJson (TgRequestMethod (TgDeleteMessage, TgEditMessage, TgGetChat, TgGetChatAdministrators, TgPinChatMessage, TgSendMessage))
 import Types
-import Utils (nomDiffToReadable, renderAvgInterval, utcToYmd, utcToYmdHMS)
+import Utils (nomDiffToReadable, sortFeedsOnSettings, renderAvgInterval, utcToYmd, utcToYmdHMS)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -115,14 +115,16 @@ mkReply (FromAbout version) =
 mkReply (FromAdmin base hash) = ServiceReply . mkAccessSettingsUrl base $ hash
 mkReply (FromAnnounce txt) = defaultReply txt
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedo_the_bot_channel"
-mkReply (FromChatFeeds _ feeds) =
-  let step (!txt, !counter) f =
+mkReply (FromChatFeeds c feeds) =
+  let settings = sub_settings c
+      sorted_feeds = sortFeedsOnSettings settings feeds
+      step (!txt, !counter) f =
         let link = f_link f
             title = f_title f
             rendered = toHrefEntities (Just counter) title link
          in (T.append txt rendered `T.append` "\n", counter + 1)
       start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
-      payload = fst $ foldl' step start feeds
+      payload = fst $ foldl' step start sorted_feeds
    in defaultReply payload
 mkReply (FromChat chat confirmation) = ServiceReply $ confirmation `T.append` render chat
 mkReply (FromFeedDetails feed) = ServiceReply $ render feed
@@ -135,7 +137,8 @@ mkReply (FromFeedItems f) =
           $ f
    in defaultReply rendered_items
 mkReply (FromDigest fs mb_link s) =
-  let fitems = map (\f -> (f_title f, f_items f)) fs
+  let sorted_feeds = sortFeedsOnSettings s fs
+      fitems = map (\f -> (f_title f, f_items f)) sorted_feeds
       -- pagination preempting collapse when both are enabled and
       -- collapsing would have occurred
       collapse = maybe 0 (\v -> if settings_pagination s then 0 else v) $ settings_digest_collapse s

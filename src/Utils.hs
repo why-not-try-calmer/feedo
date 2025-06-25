@@ -2,6 +2,7 @@ module Utils where
 
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
+import qualified Data.IntMap as M
 import Data.List (sort, sortOn)
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
@@ -314,3 +315,21 @@ areAllInts = foldr step (Right [])
     case readMaybe (T.unpack t) of
       Nothing -> Left t
       Just n -> (n :) <$> acc
+
+sortFeedsOnSettings :: Settings -> [Feed] -> [Feed]
+sortFeedsOnSettings settings feeds =
+  let sort_settings = settings_digest_feeds_order settings
+      prev_intmap = M.fromList . zip [1 .. length feeds] $ feeds
+      merged new_intmap = mergeMatching f_link new_intmap prev_intmap
+   in case sort_settings of
+    Nothing -> feeds
+    Just m -> M.elems $ merged m
+
+mergeMatching :: (Eq a) => (b -> a) -> M.IntMap a -> M.IntMap b -> M.IntMap b
+mergeMatching f m1 m2 =
+  M.mergeWithKey
+    (\_ a b -> if a == f b then Just b else Nothing)
+    (const M.empty)
+    (const M.empty)
+    m1
+    m2

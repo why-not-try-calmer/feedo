@@ -12,8 +12,8 @@ import Crypto.Hash (SHA256 (SHA256), hashWith)
 import qualified Data.ByteString.Char8 as B
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HMS
-import qualified Data.List as List
 import qualified Data.IntMap.Strict as M
+import qualified Data.List as List
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord
 import qualified Data.Set as S
@@ -478,18 +478,17 @@ bsonToFeed doc =
 {- Chats, Settings -}
 
 documentToMap :: [Field] -> M.IntMap T.Text
-documentToMap doc = 
+documentToMap doc =
   let elems = map (\kv -> (toInt $ label kv, toText $ value kv)) doc
-  in  M.fromList elems 
-  where 
-    toText x = T.pack . show $ x
-    toInt x = case readMaybe (T.unpack x) :: Maybe Int of
-      Just n -> n
-      Nothing -> undefined
+   in M.fromList elems
+ where
+  toText x = T.pack . show $ x
+  toInt x = case readMaybe (T.unpack x) :: Maybe Int of
+    Just n -> n
+    Nothing -> throw $ userError ("Unable to read this number: " ++ show x)
 
 mapToDocument :: M.IntMap T.Text -> Document
-mapToDocument m = [ T.pack (show k) := String v | (k, v) <- M.toList m ]
-
+mapToDocument m = [T.pack (show k) := String v | (k, v) <- M.toList m]
 
 bsonToChat :: Document -> SubChat
 bsonToChat doc =

@@ -11,8 +11,8 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
 import Data.Functor (void, (<&>))
 import qualified Data.HashMap.Strict as HMS
-import Data.List (find, sort)
 import qualified Data.IntMap.Strict as M
+import Data.List (find, sort)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
