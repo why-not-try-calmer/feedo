@@ -5,13 +5,13 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           feedfarer
-version:        1.2
+version:        2.5
 description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
 homepage:       https://github.com/githubuser/feedfarer#readme
 bug-reports:    https://github.com/githubuser/feedfarer/issues
 author:         Adrien Glauser
 maintainer:     mrnycticorax@gmail.com
-copyright:      2021 Adrien Glauser
+copyright:      2021, 2025 Adrien Glauser
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple

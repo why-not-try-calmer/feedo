@@ -411,6 +411,7 @@ items - <optional: channel_id> <# or url> display all the items fetched from the
 list - <optional: channel_id> list all the feeds this chat or that channel is subscribed to
 link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.
 migrate - <optional: chat_id of the origin> <chat_id of the destination> migrate this chat's settings, or the settings of the channel at the origin, to the destination
+order - <1 2 3 ...> Sort feeds in digests and in reply to /list according after reindexing them with <1 2 3 ...>
 pause - <optional: channel_id> stop posting updates to this chat or to that channel
 purge - <optional: channel_id> delete all data about this chat or that channel
 reset - <optional: channel_id> set this chat's (or that channels') settings to their default values
