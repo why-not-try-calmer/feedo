@@ -314,10 +314,3 @@ areAllInts = foldr step (Right [])
     case readMaybe (T.unpack t) of
       Nothing -> Left t
       Just n -> (n :) <$> acc
-
-reindex :: (Ord b) => [a] -> [b] -> [a]
-reindex a b =
-  map snd
-    . sortOn fst
-    . zip b
-    $ a
