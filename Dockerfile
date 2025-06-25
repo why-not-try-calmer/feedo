@@ -1,12 +1,10 @@
 # 9.0.2 required for static linking matching GHC version provided by lts-19.33
-FROM utdemir/ghc-musl:v25-ghc902 AS builder
-
-RUN ghcup install stack
+FROM docker.io/benz0li/ghc-musl:9.10.2 AS builder
 WORKDIR /opt/app/
 COPY feedfarer.cabal stack.yaml .
 
 # Dependencies for caching
-RUN stack --resolver lts-19.33 build \
+RUN stack --resolver nightly-2025-06-16 build \
   --no-install-ghc \
   --system-ghc \
   --no-library-profiling \
@@ -15,7 +13,7 @@ RUN stack --resolver lts-19.33 build \
 # Build main
 COPY . .
 
-RUN stack --resolver lts-19.33 install \
+RUN stack --resolver nightly-2025-06-16 install \
   --no-install-ghc \
   --system-ghc \
   --local-bin-path . \

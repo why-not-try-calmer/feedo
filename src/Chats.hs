@@ -5,7 +5,6 @@ module Chats (withChat, getChats) where
 
 import Control.Monad.Reader
 import qualified Data.HashMap.Strict as HMS
-import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T

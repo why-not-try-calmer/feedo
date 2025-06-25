@@ -2,17 +2,20 @@
 
 module RepliesSpec where
 
+import qualified Data.IntMap.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
+import Hooks (withHooks)
 import Replies (mkReply)
 import Test.Hspec
 import Types
+import Utils (sortFeedsOnSettings)
 
 spec :: Spec
-spec = go
+spec = go1
  where
-  go =
+  go1 =
     let desc = describe "Validates reply from settings x notification payload"
         as = it "makes sure that no_collapse is respected"
         target = do
@@ -20,7 +23,7 @@ spec = go
           let protected = "https://specially.protected.org"
               unprotected = "https://notspecially.andunprotected.org"
               matches = WordMatches S.empty S.empty S.empty
-              settings = Settings (Just 3) (DigestInterval Nothing Nothing) 10 Nothing "title" False False False False False False matches (S.singleton protected)
+              settings = Settings (Just 3) (DigestInterval Nothing Nothing) 10 Nothing "title" False False Nothing False False False False matches (S.singleton protected)
               protected_items = map (\i -> let n = show i in Item ("protected_title" `T.append` T.pack n) "protected_desc" "protected_link" protected now) [1 .. 10]
               unprotected_items = map (\i -> let n = show i in Item ("unprotected_title" `T.append` T.pack n) "unprotected_desc" "unprotected_link" unprotected now) [1 .. 10]
               feeds =

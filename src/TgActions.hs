@@ -9,9 +9,10 @@ import Control.Concurrent.Async (concurrently, mapConcurrently, mapConcurrently_
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ask)
-import Data.Functor
+import Data.Functor (void, (<&>))
 import qualified Data.HashMap.Strict as HMS
-import Data.List (find, foldl', sort)
+import qualified Data.IntMap.Strict as M
+import Data.List (find, sort)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -59,7 +60,8 @@ import Types (
   ),
   Reply (EditReply, ServiceReply),
   ServerConfig (alert_chat, bot_token),
-  SettingsUpdater (Parsed),
+  Settings (settings_digest_feeds_order),
+  SettingsUpdater (Immediate, Parsed),
   SubChat (sub_feeds_links, sub_linked_to, sub_settings),
   TgEvalError (
     BadRef,
@@ -74,7 +76,7 @@ import Types (
   UserAction (..),
   runApp,
  )
-import Utils (maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
+import Utils (mapToInts, maybeUserIdx, partitionEither, toFeedRef, tooManySubs, unFeedRefs)
 
 isUserAdmin :: (TgReqM m) => BotToken -> UserId -> ChatId -> m (Either TgEvalError Bool)
 isUserAdmin tok uid cid =
@@ -192,6 +194,12 @@ interpretCmd contents
                     else case readMaybe . T.unpack . head $ xs :: Maybe ChatId of
                       Nothing -> Left . InterpreterErr $ "The second value passed to /migrate could not be parsed into a valid chat_id."
                       Just m -> Right $ MigrateChannel n m
+  | cmd == "/order" =
+      if null args
+        then Left . InterpreterErr $ "/order needs a sequence of numbers to use to re-order feeds list."
+        else case mapToInts args of
+          Left _ -> Left . InterpreterErr $ "All words following '/order' must be integers."
+          Right ns -> Right $ Order ns
   | cmd == "/pause" || cmd == "/p" =
       if null args
         then Right . Pause $ True
@@ -545,6 +553,28 @@ evalTgAct uid (Migrate to) cid = do
         `T.append` (T.pack . show $ to)
   onErr err = pure . Right . ServiceReply $ render err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
+evalTgAct uid (Order ns) cid =
+  ask >>= \env ->
+    let tok = bot_token . tg_config $ env
+     in isUserAdmin tok uid cid >>= \case
+          Left err -> pure . Left $ err
+          Right verdict ->
+            if not verdict
+              then exitNotAuth uid
+              else
+                HMS.lookup cid <$> getChats >>= \case
+                  Nothing -> undefined
+                  Just c ->
+                    let prev_settings = sub_settings c
+                        new_order =
+                          let reordered = M.fromList $ zip ns (S.toList $ sub_feeds_links c)
+                           in Just reordered
+                        new_settings = Immediate $ prev_settings{settings_digest_feeds_order = new_order}
+                     in withChat (SetChatSettings new_settings) (Just uid) cid >>= \case
+                          Left err -> pure . Right . ServiceReply . render $ err
+                          Right _ -> pure . Right . ServiceReply $ succeeded
+ where
+  succeeded = "Re-ordered feeds in digests. Use /list to view the new order."
 evalTgAct uid (Pause pause_or_resume) cid =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env

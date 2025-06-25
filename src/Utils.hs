@@ -2,7 +2,9 @@ module Utils where
 
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
-import Data.List (foldl', sort, sortOn)
+import qualified Data.IntMap as M
+import Data.List (sort, sortOn)
+import qualified Data.Map.Strict as Ms
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -221,6 +223,7 @@ defaultChatSettings =
     , settings_digest_title = "A new digest is available"
     , settings_paused = False
     , settings_disable_web_view = False
+    , settings_digest_feeds_order = Nothing
     , settings_pagination = False
     , settings_pin = False
     , settings_share_link = True
@@ -236,11 +239,15 @@ updateSettings [] orig = orig
 updateSettings parsed orig = foldl' (flip inject) orig parsed
  where
   inject p o = case p of
-    PDigestCollapse v -> o{settings_digest_collapse = if v == 0 then Nothing else Just v}
+    PBlacklist v ->
+      let wm = settings_word_matches o
+          wm' = wm{match_blacklist = v}
+       in o{settings_word_matches = wm'}
     PDigestAt v ->
       let bi = settings_digest_interval o
           bi' = bi{digest_at = if null v then Nothing else Just v}
        in o{settings_digest_interval = bi'}
+    PDigestCollapse v -> o{settings_digest_collapse = if v == 0 then Nothing else Just v}
     PDigestEvery v ->
       let bi = settings_digest_interval o
           bi' = bi{digest_every_secs = if v == 0 then Nothing else Just v}
@@ -248,12 +255,8 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
     PDigestSize v -> o{settings_digest_size = v}
     PDigestStart v -> o{settings_digest_start = Just v}
     PDigestTitle v -> o{settings_digest_title = v}
-    PBlacklist v ->
-      let wm = settings_word_matches o
-          wm' = wm{match_blacklist = v}
-       in o{settings_word_matches = wm'}
-    PDisableWebview v -> o{settings_disable_web_view = v}
     PPaused v -> o{settings_paused = v}
+    PDisableWebview v -> o{settings_disable_web_view = v}
     PPin v -> o{settings_pin = v}
     PSearchKws v ->
       let wm = settings_word_matches o
@@ -305,3 +308,25 @@ sliceIfAboveTelegramMax :: T.Text -> [T.Text]
 sliceIfAboveTelegramMax msg
   | T.length msg <= 4096 = pure msg
   | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096
+
+mapToInts :: [T.Text] -> Either T.Text [Int]
+mapToInts = foldr step (Right [])
+ where
+  step t acc =
+    case readMaybe (T.unpack t) of
+      Nothing -> Left t
+      Just n -> (n :) <$> acc
+
+sortFeedsOnSettings :: Settings -> [Feed] -> [Feed]
+sortFeedsOnSettings s fs = case settings_digest_feeds_order s of
+  Nothing -> fs
+  Just pref ->
+    let inv_pref = invertIntMap pref
+        orig = map (\f -> (f_link f, f)) fs
+        src = Ms.fromList $ zip (map f_link fs) [1 .. length orig]
+        rekeyed = Ms.intersection (Ms.union inv_pref src) src
+        sorted = sortOn snd $ Ms.toList rekeyed
+        m_orig = Ms.fromList orig
+     in map (\(link, _) -> m_orig Ms.! link) sorted
+   where
+    invertIntMap m = M.foldrWithKey (\k v acc -> Ms.insert v k acc) Ms.empty m

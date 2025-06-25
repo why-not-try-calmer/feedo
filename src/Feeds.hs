@@ -4,7 +4,6 @@ module Feeds (buildFeed, eitherUrlScheme, getFeedFromUrlScheme, rebuildFeed) whe
 
 import Control.Exception (SomeException (SomeException))
 import Control.Monad.Reader
-import Data.Foldable (Foldable (..))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Time (getCurrentTime)

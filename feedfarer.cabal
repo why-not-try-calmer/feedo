@@ -1,17 +1,17 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.36.0.
+-- This file has been generated from package.yaml by hpack version 0.38.0.
 --
 -- see: https://github.com/sol/hpack
 
 name:           feedfarer
-version:        1.2
+version:        2.5
 description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
 homepage:       https://github.com/githubuser/feedfarer#readme
 bug-reports:    https://github.com/githubuser/feedfarer/issues
 author:         Adrien Glauser
 maintainer:     mrnycticorax@gmail.com
-copyright:      2021 Adrien Glauser
+copyright:      2021, 2025 Adrien Glauser
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -55,7 +55,7 @@ library
       OverloadedStrings
       StrictData
       BangPatterns
-  ghc-options: -Wall
+  ghc-options: -Wall -Wno-x-partial -Wno-unrecognised-warning-flags
   build-depends:
       aeson
     , async
@@ -154,7 +154,7 @@ test-suite feedfarer-test
       OverloadedStrings
       StrictData
       BangPatterns
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wno-x-partial -Wno-unrecognised-warning-flags
   build-depends:
       aeson
     , async

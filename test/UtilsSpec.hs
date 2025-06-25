@@ -4,6 +4,7 @@ module UtilsSpec where
 
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
+import qualified Data.IntMap as M
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -11,7 +12,7 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Digests
 import Test.Hspec
 import TgramOutJson (ChatId)
-import Types (DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
+import Types (DigestInterval (DigestInterval), Feed (Feed, f_items, f_link), FeedType (Rss), Item (Item, i_feed_link, i_link, i_title), Settings (Settings, settings_word_matches), SubChat (SubChat), WordMatches (WordMatches), i_desc)
 import Utils (
   defaultChatSettings,
   findNextTime,
@@ -20,6 +21,7 @@ import Utils (
   mbTime,
   partitionEither,
   scanTimeSlices,
+  sortFeedsOnSettings,
  )
 
 mockFeedsChats :: UTCTime -> ([T.Text], HMS.HashMap T.Text Feed, HMS.HashMap ChatId SubChat)
@@ -47,7 +49,7 @@ mockFeedsChats now =
    in (fl, feeds, chats)
 
 spec :: Spec
-spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
+spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8]
  where
   go =
     let desc = describe "partitionEither"
@@ -116,4 +118,24 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7]
               interval = DigestInterval (Just 172800) (Just [(0, 1)])
               t1 = findNextTime t0 interval
           t1 `shouldSatisfy` (\t -> diffUTCTime t t0 >= 172800)
+     in desc $ as target
+  go8 =
+    let desc = describe "Validates reply from settings x notification payload with preferred order"
+        as = it "makes sure that preferred order is respected"
+        target = do
+          now <- getCurrentTime
+          let url1 = "https://specially.protected.org"
+              url2 = "https://notspecially.andunprotected.org"
+              matches = WordMatches S.empty S.empty S.empty
+              scope = S.empty
+              preferred_order = Just $ M.fromList [(1, url2), (2, url1)]
+              settings = Settings (Just 3) (DigestInterval Nothing Nothing) 10 Nothing "title" False False preferred_order False False False False matches scope
+              items1 = map (\i -> let n = show i in Item ("protected_title" `T.append` T.pack n) "protected_desc" "protected_link" url1 now) [1 .. 10]
+              items2 = map (\i -> let n = show i in Item ("unprotected_title" `T.append` T.pack n) "unprotected_desc" "unprotected_link" url2 now) [1 .. 10]
+              feeds =
+                let one = Feed Rss "desc" "title" url1 items1 Nothing Nothing
+                    two = Feed Rss "desc" "title" url2 items2 Nothing Nothing
+                 in [one, two]
+              reordered_feeds = sortFeedsOnSettings settings feeds
+          reordered_feeds `shouldSatisfy` (\fs -> (f_link . head $ fs) == url2)
      in desc $ as target

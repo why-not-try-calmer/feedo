@@ -6,7 +6,7 @@
 module Types where
 
 import Control.Concurrent (Chan)
-import Control.Monad.List (foldM)
+import Control.Monad (foldM)
 import Control.Monad.Reader (MonadIO, MonadReader, ReaderT (runReaderT))
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as A
@@ -14,6 +14,7 @@ import Data.Aeson.TH
 import Data.Aeson.Types
 import qualified Data.HashMap.Strict as HMS
 import Data.IORef (IORef)
+import qualified Data.IntMap.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -135,6 +136,7 @@ data Settings = Settings
   , settings_digest_title :: T.Text
   , settings_disable_web_view :: Bool
   , settings_forward_to_admins :: Bool
+  , settings_digest_feeds_order :: Maybe (M.IntMap FeedLink)
   , settings_pagination :: Bool
   , settings_paused :: Bool
   , settings_pin :: Bool
@@ -190,6 +192,7 @@ instance FromJSON Settings where
           <*> o
             .:? "settings_forward_to_admins"
             .!= False
+          <*> o .:? "settings_digest_feeds_order"
           <*> o
             .:? "settings_pagination"
             .!= True
@@ -293,6 +296,7 @@ data UserAction
   | ListSubsChannel ChatId
   | Migrate ChatId
   | MigrateChannel ChatId ChatId
+  | Order [Int]
   | Pause Bool
   | PauseChannel ChatId Bool
   | Purge

@@ -6,7 +6,6 @@ import Control.Concurrent.Async
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.RWS (MonadReader (..))
-import Data.Foldable (foldl')
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Set as S
 import qualified Data.Text as T
