@@ -137,5 +137,5 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8]
                     two = Feed Rss "desc" "title" url2 items2 Nothing Nothing
                  in [one, two]
               reordered_feeds = sortFeedsOnSettings settings feeds
-          reordered_feeds `shouldSatisfy` (\feeds -> (f_link . head $ feeds) == url2)
+          reordered_feeds `shouldSatisfy` (\fs -> (f_link . head $ fs) == url2)
      in desc $ as target

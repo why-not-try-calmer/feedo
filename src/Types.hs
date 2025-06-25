@@ -268,7 +268,6 @@ data ParsingSettings
   | PDisableWebview Bool
   | PPagination Bool
   | PForwardToAdmins Bool
-  | POrder Int
   | PPaused Bool
   | PPin Bool
   | PDigestCollapse Int

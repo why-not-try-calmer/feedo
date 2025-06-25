@@ -4,6 +4,7 @@ import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int64)
 import qualified Data.IntMap as M
 import Data.List (sort, sortOn)
+import qualified Data.Map.Strict as Ms
 import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -317,19 +318,18 @@ mapToInts = foldr step (Right [])
       Just n -> (n :) <$> acc
 
 sortFeedsOnSettings :: Settings -> [Feed] -> [Feed]
-sortFeedsOnSettings settings feeds =
-  let sort_settings = settings_digest_feeds_order settings
-      prev_intmap = M.fromList . zip [1 .. length feeds] $ feeds
-      merged new_intmap = mergeMatching f_link new_intmap prev_intmap
-   in case sort_settings of
-        Nothing -> feeds
-        Just m -> M.elems $ merged m
+sortFeedsOnSettings s fs =
+  let orig = map (\f -> (f_link f, f)) fs
+      orig_map = Ms.fromList orig
+      feeds_intmap = Ms.fromList $ zip (map f_link fs) [1 .. length orig]
+   in case settings_digest_feeds_order s of
+        Nothing -> fs
+        Just pref_map ->
+          let pref_map_inv = invertIntMap pref_map
+              rekeyed = Ms.mapWithKey (\link idx -> case Ms.lookup link pref_map_inv of Nothing -> idx; Just idx' -> idx') feeds_intmap
+              reordered = sortOn snd $ Ms.toList rekeyed
+              refilled = map (\(link, _) -> orig_map Ms.! link) reordered
+           in refilled
 
-mergeMatching :: (Eq a) => (b -> a) -> M.IntMap a -> M.IntMap b -> M.IntMap b
-mergeMatching f m1 m2 =
-  M.mergeWithKey
-    (\_ a b -> if a == f b then Just b else Nothing)
-    (const M.empty)
-    (const M.empty)
-    m1
-    m2
+invertIntMap :: M.IntMap T.Text -> Ms.Map T.Text Int
+invertIntMap m = M.foldrWithKey (\k v acc -> Ms.insert v k acc) Ms.empty m
