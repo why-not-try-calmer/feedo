@@ -118,13 +118,13 @@ mkReply (FromAnnounce txt) = defaultReply txt
 mkReply FromChangelog = ServiceReply "check out https://t.me/feedo_the_bot_channel"
 mkReply (FromChatFeeds c feeds) =
   let settings = sub_settings c
-      sorted_feeds = sortFeedsOnSettings settings feeds
       step (!txt, !counter) f =
         let link = f_link f
             title = f_title f
             rendered = toHrefEntities (Just counter) title link
          in (T.append txt rendered `T.append` "\n", counter + 1)
       start = ("Feeds subscribed to (#, link):\n", 1 :: Int)
+      sorted_feeds = sortFeedsOnSettings settings feeds
       payload = fst $ foldl' step start sorted_feeds
    in defaultReply payload
 mkReply (FromChat chat confirmation) = ServiceReply $ confirmation `T.append` render chat
