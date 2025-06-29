@@ -124,18 +124,24 @@ spec = sequence_ [go, go1, go2, go3, go4, go5, go6, go7, go8]
         as = it "makes sure that preferred order is respected"
         target = do
           now <- getCurrentTime
-          let url1 = "https://specially.protected.org"
-              url2 = "https://notspecially.andunprotected.org"
+          let url1 = "https://specially1.protected.org"
+              url2 = "https://notspecially2.andunprotected.org"
+              url3 = "https://specially3.protected.org"
+              url4 = "https://notspecially4.andunprotected.org"
               matches = WordMatches S.empty S.empty S.empty
               scope = S.empty
-              preferred_order = Just $ M.fromList [(1, url2), (2, url1)]
+              preferred_order = Just $ M.fromList [(1, url2), (4, url3), (3, url4), (2, url1)]
               settings = Settings (Just 3) (DigestInterval Nothing Nothing) 10 Nothing "title" False False preferred_order False False False False matches scope
               items1 = map (\i -> let n = show i in Item ("protected_title" `T.append` T.pack n) "protected_desc" "protected_link" url1 now) [1 .. 10]
               items2 = map (\i -> let n = show i in Item ("unprotected_title" `T.append` T.pack n) "unprotected_desc" "unprotected_link" url2 now) [1 .. 10]
+              items3 = map (\i -> let n = show i in Item ("protected_title" `T.append` T.pack n) "protected_desc" "protected_link" url3 now) [1 .. 10]
+              items4 = map (\i -> let n = show i in Item ("unprotected_title" `T.append` T.pack n) "unprotected_desc" "unprotected_link" url4 now) [1 .. 10]
               feeds =
                 let one = Feed Rss "desc" "title" url1 items1 Nothing Nothing
                     two = Feed Rss "desc" "title" url2 items2 Nothing Nothing
-                 in [one, two]
+                    three = Feed Rss "desc" "title" url3 items3 Nothing Nothing
+                    four = Feed Rss "desc" "title" url4 items4 Nothing Nothing
+                 in [one, two, three, four]
               reordered_feeds = sortFeedsOnSettings settings feeds
-          reordered_feeds `shouldSatisfy` (\fs -> (f_link . head $ fs) == url2)
+          reordered_feeds `shouldSatisfy` (\fs -> (f_link . head $ fs) == url2 && (f_link . last $ fs) == url3)
      in desc $ as target

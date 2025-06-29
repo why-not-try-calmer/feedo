@@ -361,7 +361,7 @@ data Replies
   | FromAdmin T.Text T.Text
   | FromAnnounce T.Text
   | FromChangelog
-  | FromChatFeeds SubChat [Feed]
+  | FromSubsList SubChat [Feed]
   | FromChat SubChat T.Text
   | FromCmds
   | FromFeedDetails Feed

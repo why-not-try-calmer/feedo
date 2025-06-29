@@ -477,12 +477,13 @@ bsonToFeed doc =
 
 {- Chats, Settings -}
 
-documentToMap :: [Field] -> M.IntMap T.Text
+documentToMap :: Document -> M.IntMap T.Text
 documentToMap doc =
   let elems = map (\kv -> (toInt $ label kv, toText $ value kv)) doc
    in M.fromList elems
  where
-  toText x = T.pack . show $ x
+  toText (String x) = x
+  toText x = throw $ userError ("Unable to parse to text: " ++ show x)
   toInt x = case readMaybe (T.unpack x) :: Maybe Int of
     Just n -> n
     Nothing -> throw $ userError ("Unable to read this number: " ++ show x)
