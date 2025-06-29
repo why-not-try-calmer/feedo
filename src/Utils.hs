@@ -5,7 +5,6 @@ import Data.Int (Int64)
 import qualified Data.IntMap as M
 import Data.List (sort, sortOn)
 import qualified Data.Map.Strict as Ms
-import Data.Ord (Down (Down))
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime (..), defaultTimeLocale, diffUTCTime, formatTime, parseTimeM, rfc822DateFormat, timeToDaysAndTimeOfDay)
@@ -157,6 +156,7 @@ mbTime s = maybe second_pass pure $ iso8601ParseM s
   formats = [rfc822DateFormat, "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 averageInterval :: [UTCTime] -> Maybe NominalDiffTime
+{-# INLINEABLE averageInterval #-}
 averageInterval [] = Nothing
 averageInterval (x : xs) = go [] x (sort xs)
  where
@@ -177,6 +177,7 @@ renderAvgInterval (Just i) =
   go !hs !d = if hs < 24 then (d, hs) else go (hs - 24 :: Integer) (d + 1 :: Integer)
 
 freshLastXDays :: Int -> UTCTime -> [Item] -> [Item]
+{-# INLINEABLE freshLastXDays #-}
 freshLastXDays days now items =
   let x = fromIntegral $ days * 86400
       x_days_ago = posixSecondsToUTCTime $ utcTimeToPOSIXSeconds now - x
@@ -207,6 +208,7 @@ sortTimePairs = go []
           else go (s : p : ss) ps
 
 scanTimeSlices :: [Int64] -> [Int64]
+{-# INLINEABLE scanTimeSlices #-}
 scanTimeSlices [] = []
 scanTimeSlices (x : xs) = fst . foldl' step ([], x) $ xs
  where
@@ -271,12 +273,6 @@ updateSettings parsed orig = foldl' (flip inject) orig parsed
     PPagination v -> o{settings_pagination = v}
     PNoCollapse v -> o{settings_digest_no_collapse = v}
 
-{- Items -}
-
-sortItems :: Feed -> Feed
-{-# INLINEABLE sortItems #-}
-sortItems f = f{f_items = take 30 . sortOn (Down . i_pubdate) $ f_items f}
-
 {- Replies -}
 
 sliceOnN :: T.Text -> Int -> [T.Text]
@@ -305,6 +301,7 @@ removeAllEmptyLines = fst . T.foldl' step tuple_acc
     | otherwise = (acc `T.append` T.singleton val, counter)
 
 sliceIfAboveTelegramMax :: T.Text -> [T.Text]
+{-# INLINEABLE sliceIfAboveTelegramMax #-}
 sliceIfAboveTelegramMax msg
   | T.length msg <= 4096 = pure msg
   | otherwise = removeAllEmptyLines <$> sliceOnN msg 4096

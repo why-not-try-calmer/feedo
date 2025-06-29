@@ -49,14 +49,14 @@ import Types (
     FromAnnounce,
     FromChangelog,
     FromChat,
-    FromChatFeeds,
     FromCmds,
     FromDigest,
     FromFeedDetails,
     FromFeedItems,
     FromFeedLinkItems,
     FromSearchRes,
-    FromStart
+    FromStart,
+    FromSubsList
   ),
   Reply (EditReply, ServiceReply),
   ServerConfig (alert_chat, bot_token),
@@ -498,7 +498,7 @@ evalTgAct _ ListSubs cid = do
                             . NotFoundFeed
                             $ "Unable to find these feeds "
                               `T.append` T.intercalate " " subs
-                        Just feeds -> pure . Right $ mkReply (FromChatFeeds c feeds)
+                        Just feeds -> pure . Right $ mkReply (FromSubsList c feeds)
                 _ ->
                   pure
                     . Left

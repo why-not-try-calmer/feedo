@@ -1,4 +1,4 @@
-FROM docker.io/benz0li/ghc-musl:9.10.2 as dependencies
+FROM docker.io/benz0li/ghc-musl:9.10.2
 # Version from build arg
 ARG app_version
 ENV APP_VERSION=$app_version
