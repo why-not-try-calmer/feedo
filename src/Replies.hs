@@ -171,7 +171,9 @@ mkReply FromStart =
         \ \nA ready-to-use list of settings can be viewed [here](https://github.com/why-not-try-calmer/feedfarer2/blob/master/SETTINGS_EXAMPLES.md).\
         \ \nAll the settings and commands are explained [there](https://github.com/why-not-try-calmer/feedfarer2/blob/master/COMMANDS.md).\
         \ \nHave fun and don't hesitate to [get in touch](https://t.me/ad_himself) if you have questions or issues."
-   in (defaultReply txt){reply_disable_webview = True}
+   in case defaultReply txt of
+        rep@(ChatReply{}) -> rep{reply_disable_webview = True}
+        _ -> undefined
 
 class Renderable e where
   render :: e -> T.Text
@@ -414,7 +416,7 @@ items - <optional: channel_id> <# or url> display all the items fetched from the
 list - <optional: channel_id> list all the feeds this chat or that channel is subscribed to
 link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.
 migrate - <optional: chat_id of the origin> <chat_id of the destination> migrate this chat's settings, or the settings of the channel at the origin, to the destination
-order - <1 2 3 ...> Oder feeds in digests and in reply to /list. /order <3 2 1 ...> for example will inverse the order in which the first three feeds are rendered in digests.
+order - <1 2 3 ...> Order feeds in digests and in reply to /list. /order <3 2 1> for example will inverse the order in which the first three feeds are rendered in digests.
 pause - <optional: channel_id> stop posting updates to this chat or to that channel
 purge - <optional: channel_id> delete all data about this chat or that channel
 reset - <optional: channel_id> set this chat's (or that channels') settings to their default values
