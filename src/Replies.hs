@@ -15,6 +15,7 @@ import Network.URI.Encode (encodeText)
 import TgramOutJson (TgRequestMethod (TgDeleteMessage, TgEditMessage, TgGetChat, TgGetChatAdministrators, TgPinChatMessage, TgSendMessage))
 import Types
 import Utils (nomDiffToReadable, renderAvgInterval, sortFeedsOnSettings, utcToYmd, utcToYmdHMS)
+import Control.Exception (throw)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -173,7 +174,7 @@ mkReply FromStart =
         \ \nHave fun and don't hesitate to [get in touch](https://t.me/ad_himself) if you have questions or issues."
    in case defaultReply txt of
         rep@(ChatReply{}) -> rep{reply_disable_webview = True}
-        _ -> undefined
+        _ -> throw $ userError "Unable to handle non-ChatReply values."
 
 class Renderable e where
   render :: e -> T.Text
