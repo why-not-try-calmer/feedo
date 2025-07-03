@@ -21,7 +21,7 @@ import Feeds (eitherUrlScheme, getFeedFromUrlScheme, rebuildFeed)
 import Mongo (evalDb)
 import Network.HTTP.Req (JsonResponse, renderUrl, responseBody)
 import Redis
-import Replies (Replies (FromAbout), mkReply, render)
+import Replies (Replies (FromAbout, FromIsUserAdmin), mkReply, render)
 import Requests (TgReqM (runSend), alertAdmin, answer, mkKeyboard, reply, runSend)
 import Settings
 import Text.Read (readMaybe)
@@ -194,6 +194,7 @@ interpretCmd contents
                     else case readMaybe . T.unpack . head $ xs :: Maybe ChatId of
                       Nothing -> Left . InterpreterErr $ "The second value passed to /migrate could not be parsed into a valid chat_id."
                       Just m -> Right $ MigrateChannel n m
+  | cmd == "/mine" = Right $ GetMyChats
   | cmd == "/order" =
       if null args
         then Left . InterpreterErr $ "/order needs a sequence of numbers to use to re-order feeds list."
@@ -475,6 +476,20 @@ evalTgAct _ GetSubchatSettings cid =
     case HMS.lookup cid hmap of
       Nothing -> pure . Left $ NotFoundChat
       Just ch -> pure . Right . ServiceReply . render $ ch
+evalTgAct uid GetMyChats _ = do
+  env <- ask
+  let tok = bot_token . tg_config $ env
+      isUserAdminOf cid =
+        isUserAdmin tok uid cid >>= \case
+          Left err -> print err >> pure (False, cid)
+          Right verdict -> pure (verdict, cid)
+  admin_of <- HMS.keys <$> getChats >>= liftIO . mapConcurrently isUserAdminOf
+  let verified_admin = foldl' (\acc !(verdict, cid) -> if verdict then cid : acc else acc) [] admin_of
+  if null verified_admin
+    then
+      pure . Left $ TelegramErr $ "Apparently Telegram is unable to verify any chat admin privileges for your account. Is there something wrong with your account?"
+    else
+      pure . Right $ mkReply (FromIsUserAdmin verified_admin)
 evalTgAct _ ListSubs cid = do
   chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of

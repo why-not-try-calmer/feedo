@@ -4,6 +4,7 @@
 
 module Replies (defaultReply, mkdSingles, mkdDoubles, renderCmds, render, Reply (..), mkReply, Replies (..), mkViewUrl, mkDigestUrl) where
 
+import Control.Exception (throw)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.IntMap.Strict as M
 import Data.List (sortOn)
@@ -15,7 +16,6 @@ import Network.URI.Encode (encodeText)
 import TgramOutJson (TgRequestMethod (TgDeleteMessage, TgEditMessage, TgGetChat, TgGetChatAdministrators, TgPinChatMessage, TgSendMessage))
 import Types
 import Utils (nomDiffToReadable, renderAvgInterval, sortFeedsOnSettings, utcToYmd, utcToYmdHMS)
-import Control.Exception (throw)
 
 escapeWhere :: T.Text -> [T.Text] -> T.Text
 escapeWhere txt suspects =
@@ -175,6 +175,9 @@ mkReply FromStart =
    in case defaultReply txt of
         rep@(ChatReply{}) -> rep{reply_disable_webview = True}
         _ -> throw $ userError "Unable to handle non-ChatReply values."
+mkReply (FromIsUserAdmin ids) =
+  defaultReply $
+    "You are a verified admin in these chats or channels:" `T.append` (T.intercalate "\n" $ map (T.pack . show) ids)
 
 class Renderable e where
   render :: e -> T.Text
@@ -392,6 +395,7 @@ renderCmds =
     , "/list `<optional: channel id`: list all the feeds this chat or that channel is subscribed to"
     , "/link `<channel id>`: allow the current chat to get the same permissions as the target channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel"
     , "/migrate `<optional: id of the origin> <id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination."
+    , "/mine - List all chats and channels which use the bot and in which you are an admin"
     , "/order - <1 2 3 ...> Oder feeds in digests and in reply to /list. /order <3 2 1 ...> for example will inverse the order in which the first three feeds are rendered in digests."
     , "/pause `<optional: channel id>`: stop posting updates to this chat or to that channel"
     , "/purge `<optional: channel id>`: delete all data about this chat or that channel"
@@ -417,6 +421,7 @@ items - <optional: channel_id> <# or url> display all the items fetched from the
 list - <optional: channel_id> list all the feeds this chat or that channel is subscribed to
 link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.
 migrate - <optional: chat_id of the origin> <chat_id of the destination> migrate this chat's settings, or the settings of the channel at the origin, to the destination
+mine - List all chats and channels which use the bot and in which you are an admin
 order - <1 2 3 ...> Order feeds in digests and in reply to /list. /order <3 2 1> for example will inverse the order in which the first three feeds are rendered in digests.
 pause - <optional: channel_id> stop posting updates to this chat or to that channel
 purge - <optional: channel_id> delete all data about this chat or that channel
