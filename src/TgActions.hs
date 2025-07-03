@@ -407,7 +407,7 @@ evalTgAct uid (Announce txt) admin_chat =
               chat_full_info = resp_result res_c
            in if not $ resp_ok res_c
                 then acc
-                else case cfi_type chat_full_info of Channel -> acc; _ -> cfi_chat_id chat_full_info : acc
+                else case cfi_type chat_full_info of Channel -> acc; _ -> cfi_id chat_full_info : acc
       )
       []
 evalTgAct uid (AskForLogin maybe_tgt_cid) cid = do
@@ -491,10 +491,14 @@ evalTgAct uid GetMyChats _ = do
     else
       let get_chat_username_title cid =
             runSend tok TgGetChat (GetChatMessage cid) >>= \case
-              Left _ -> pure (cid, mempty, mempty)
+              Left _ -> pure (cid, mempty, mempty, mempty)
               Right resp ->
-                let msg = responseBody resp :: TgChatFullInfo
-                 in pure (cid, fromMaybe mempty $ cfi_title msg, fromMaybe mempty $ cfi_username msg)
+                let msg = responseBody resp :: TgGetChatResponse
+                    res = resp_result msg
+                    ty = T.pack . show $ cfi_type res
+                    title = fromMaybe mempty $ cfi_title res
+                    username = fromMaybe mempty $ cfi_username res
+                 in pure (cid, ty, title, username)
           get_all_chats_usernames cids = mapConcurrently get_chat_username_title cids
        in liftIO (get_all_chats_usernames verified_admin) >>= pure . Right . mkReply . FromIsUserAdmin
 evalTgAct _ ListSubs cid = do
