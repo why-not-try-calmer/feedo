@@ -7,38 +7,38 @@ import Data.Aeson.TH (deriveFromJSON)
 import Data.Text (Text)
 import TgramOutJson (ChatId, UserFirstName, UserId)
 
-data ChatType
+data TgChatType
   = Private
   | Group
   | Supergroup
   | Channel
   deriving (Eq, Show)
 
-data UserStatus
-  = Creator
-  | Administrator
-  | Member
-  | UserRestricted
-  | UserLeft
-  | UserKicked
+data TgChatMemberType
+  = TgChatMemberOwner
+  | TgChatMemberAdministrator
+  | TgChatMemberMember
+  | TgChatMemberRestricted
+  | TgChatMemberLeft
+  | TgChatMemberBanned
   deriving (Eq, Show)
 
-instance FromJSON UserStatus where
-  parseJSON "creator" = pure Creator
-  parseJSON "administrator" = pure Administrator
-  parseJSON "member" = pure Member
-  parseJSON "restricted" = pure UserRestricted
-  parseJSON "left" = pure UserLeft
-  parseJSON "kicked" = pure UserKicked
-  parseJSON _ = fail "Failed to parse UserStatus"
+instance FromJSON TgChatMemberType where
+  parseJSON "creator" = pure TgChatMemberOwner
+  parseJSON "administrator" = pure TgChatMemberAdministrator
+  parseJSON "member" = pure TgChatMemberMember
+  parseJSON "restricted" = pure TgChatMemberRestricted
+  parseJSON "left" = pure TgChatMemberLeft
+  parseJSON "kicked" = pure TgChatMemberBanned
+  parseJSON _ = fail "Failed to parse ChatMemberType"
 
-instance ToJSON ChatType where
+instance ToJSON TgChatType where
   toJSON Private = "private"
   toJSON Group = "group"
   toJSON Supergroup = "supergroup"
   toJSON Channel = "channel"
 
-instance FromJSON ChatType where
+instance FromJSON TgChatType where
   parseJSON "private" = pure Private
   parseJSON "group" = pure Group
   parseJSON "supergroup" = pure Supergroup
@@ -47,7 +47,7 @@ instance FromJSON ChatType where
 
 data Chat = Chat
   { chat_id :: ChatId
-  , chat_type :: ChatType
+  , chat_type :: TgChatType
   }
   deriving (Show)
 
@@ -55,7 +55,7 @@ $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''Chat)
 
 data ChatFullInfo = ChatFullInfo
   { cfi_chat_id :: ChatId
-  , cfi_type :: ChatType
+  , cfi_type :: TgChatType
   , cfi_accent_color_id :: Maybe Int
   , cfi_max_reaction_count :: Maybe Int
   }
@@ -89,13 +89,13 @@ $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''User)
 data ChatMember
   = ChatMemberOwner
       { cmo_user :: User
-      , cmo_status :: UserStatus
+      , cmo_status :: TgChatMemberType
       , cmo_is_anonymous :: Bool
       , cmo_custom_title :: Maybe Bool
       }
   | ChatMemberAdministrator
       { cma_user :: User
-      , cma_status :: UserStatus
+      , cma_status :: TgChatMemberType
       , cma_can_be_edited :: Bool
       , cma_is_anonymous :: Bool
       , cma_can_manage_chat :: Bool
@@ -116,12 +116,12 @@ data ChatMember
       }
   | ChatMemberMember
       { cmm_user :: User
-      , cmm_status :: UserStatus
+      , cmm_status :: TgChatMemberType
       }
 
 $(deriveFromJSON defaultOptions{sumEncoding = UntaggedValue, fieldLabelModifier = drop 4, omitNothingFields = True} ''ChatMember)
 
-getUserStatus :: ChatMember -> (UserId, UserStatus)
+getUserStatus :: ChatMember -> (UserId, TgChatMemberType)
 getUserStatus member@ChatMemberMember{} = (user_id $ cmm_user member, cmm_status member)
 getUserStatus member@ChatMemberAdministrator{} = (user_id $ cma_user member, cma_status member)
 getUserStatus member@ChatMemberOwner{} = (user_id $ cmo_user member, cmo_status member)

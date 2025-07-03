@@ -94,12 +94,12 @@ isUserAdmin tok uid cid =
   if_admin = foldr is_admin False
   is_admin member acc
     | uid /= uid' = acc
-    | status `elem` [Administrator, Creator] = True
+    | status `elem` [TgChatMemberAdministrator, TgChatMemberOwner] = True
     | otherwise = False
    where
     (uid', status) = getUserStatus member
 
-isChatOfType :: (MonadIO m) => BotToken -> ChatId -> ChatType -> m (Either TgEvalError Bool)
+isChatOfType :: (MonadIO m) => BotToken -> ChatId -> TgChatType -> m (Either TgEvalError Bool)
 isChatOfType tok cid ty =
   liftIO $
     getChatType
