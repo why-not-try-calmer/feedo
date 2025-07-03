@@ -175,9 +175,9 @@ mkReply FromStart =
    in case defaultReply txt of
         rep@(ChatReply{}) -> rep{reply_disable_webview = True}
         _ -> throw $ userError "Unable to handle non-ChatReply values."
-mkReply (FromIsUserAdmin cids_usernames_titles) =
+mkReply (FromIsUserAdmin cids_types_usernames_titles) =
   defaultReply $
-    "You are a verified admin in these chats or channels:\n" `T.append` render cids_usernames_titles
+    "You are a verified admin in these chats or channels:\n" `T.append` render cids_types_usernames_titles
 
 class Renderable e where
   render :: e -> T.Text
@@ -381,9 +381,18 @@ instance Renderable FeedError where
       `T.append` ". Last attempt: "
       `T.append` (T.pack . show $ last_attempt)
 
-instance Renderable [(ChatId, T.Text, T.Text)] where
+instance Renderable [(ChatId, T.Text, T.Text, T.Text)] where
   render cids_usernames_titles =
-    let one_line (cid, title, username) = "`" `T.append` (T.pack . show $ cid) `T.append` "`" `T.append` " -- " `T.append` title `T.append` " -- " `T.append` username
+    let one_line (cid, ty, title, username) =
+          "`"
+            `T.append` (T.pack . show $ cid)
+            `T.append` "`"
+            `T.append` " -- "
+            `T.append` ty
+            `T.append` " -- @"
+            `T.append` title
+            `T.append` " -- "
+            `T.append` username
      in T.intercalate "\n" $ map one_line cids_usernames_titles
 
 renderCmds :: T.Text

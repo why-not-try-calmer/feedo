@@ -54,7 +54,7 @@ data TgChat = TgChat
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''TgChat)
 
 data TgChatFullInfo = TgChatFullInfo
-  { cfi_chat_id :: ChatId
+  { cfi_id :: ChatId
   , cfi_type :: TgChatType
   , cfi_title :: Maybe Text
   , cfi_username :: Maybe Text

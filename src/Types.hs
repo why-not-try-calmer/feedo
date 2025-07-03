@@ -368,7 +368,7 @@ data Replies
   | FromFeedDetails Feed
   | FromFeedItems Feed
   | FromFeedLinkItems [(FeedLink, [Item])]
-  | FromIsUserAdmin [(ChatId, T.Text, T.Text)]
+  | FromIsUserAdmin [(ChatId, T.Text, T.Text, T.Text)]
   | FromSearchRes Keywords [SearchResult]
   | FromStart
   | FromSubsList SubChat [Feed]
