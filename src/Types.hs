@@ -291,6 +291,7 @@ data UserAction
   | GetLastXDaysItems Int
   | GetSubchannelSettings ChatId
   | GetSubchatSettings
+  | GetMyChats
   | Link ChatId
   | ListSubs
   | ListSubsChannel ChatId
@@ -361,15 +362,16 @@ data Replies
   | FromAdmin T.Text T.Text
   | FromAnnounce T.Text
   | FromChangelog
-  | FromSubsList SubChat [Feed]
   | FromChat SubChat T.Text
   | FromCmds
+  | FromDigest [Feed] (Maybe T.Text) Settings
   | FromFeedDetails Feed
   | FromFeedItems Feed
   | FromFeedLinkItems [(FeedLink, [Item])]
-  | FromDigest [Feed] (Maybe T.Text) Settings
+  | FromIsUserAdmin [(ChatId, T.Text, T.Text)]
   | FromSearchRes Keywords [SearchResult]
   | FromStart
+  | FromSubsList SubChat [Feed]
   deriving (Eq, Show)
 
 type Batch = [Feed]
