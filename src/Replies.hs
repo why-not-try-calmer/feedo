@@ -383,7 +383,7 @@ instance Renderable FeedError where
 
 instance Renderable [(ChatId, T.Text, T.Text)] where
   render cids_usernames_titles =
-    let one_line (cid, title, username) = "`" `T.append` (T.pack . show $ cid) `T.append` "`" `T.append` "--" `T.append` title `T.append` "--" `T.append` username
+    let one_line (cid, title, username) = "`" `T.append` (T.pack . show $ cid) `T.append` "`" `T.append` " -- " `T.append` title `T.append` " -- " `T.append` username
      in T.intercalate "\n" $ map one_line cids_usernames_titles
 
 renderCmds :: T.Text
