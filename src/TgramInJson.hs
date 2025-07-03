@@ -45,37 +45,31 @@ instance FromJSON TgChatType where
   parseJSON "channel" = pure Channel
   parseJSON _ = fail "Failed to parse ChatType"
 
-data Chat = Chat
+data TgChat = TgChat
   { chat_id :: ChatId
   , chat_type :: TgChatType
   }
   deriving (Show)
 
-$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''Chat)
+$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''TgChat)
 
-data ChatFullInfo = ChatFullInfo
+data TgChatFullInfo = TgChatFullInfo
   { cfi_chat_id :: ChatId
   , cfi_type :: TgChatType
-  , cfi_accent_color_id :: Maybe Int
-  , cfi_max_reaction_count :: Maybe Int
+  , cfi_title :: Maybe Text
+  , cfi_username :: Maybe Text
+  , cfi_is_forum :: Maybe Bool
+  , cfi_description :: Maybe Text
   }
   deriving (Show)
 
-instance FromJSON ChatFullInfo where
-  -- Cannot rely on `allowOmittedFields` here as not implemented as of this old version of Aeson
-  parseJSON = withObject "ChatFullInfo" $ \o ->
-    ChatFullInfo
-      <$> o .: "chat_id"
-      <*> o .: "type"
-      -- not sure about these two
-      <*> o .:? "accent_color_id"
-      <*> o .:? "max_reaction_count"
+$(deriveFromJSON defaultOptions{allowOmittedFields = True, fieldLabelModifier = drop 4} ''TgChatFullInfo)
 
-data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: ChatFullInfo} deriving (Show)
+data TgGetChatResponse = TgGetChatResponse {resp_ok :: Bool, resp_result :: TgChatFullInfo} deriving (Show)
 
 $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''TgGetChatResponse)
 
-data User = User
+data TgUser = TgUser
   { user_id :: UserId
   , user_is_bot :: Bool
   , user_first_name :: UserFirstName
@@ -84,17 +78,17 @@ data User = User
   }
   deriving (Show)
 
-$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''User)
+$(deriveFromJSON defaultOptions{fieldLabelModifier = drop 5} ''TgUser)
 
 data ChatMember
   = ChatMemberOwner
-      { cmo_user :: User
+      { cmo_user :: TgUser
       , cmo_status :: TgChatMemberType
       , cmo_is_anonymous :: Bool
       , cmo_custom_title :: Maybe Bool
       }
   | ChatMemberAdministrator
-      { cma_user :: User
+      { cma_user :: TgUser
       , cma_status :: TgChatMemberType
       , cma_can_be_edited :: Bool
       , cma_is_anonymous :: Bool
@@ -115,7 +109,7 @@ data ChatMember
       , cma_custom_title :: Maybe Text
       }
   | ChatMemberMember
-      { cmm_user :: User
+      { cmm_user :: TgUser
       , cmm_status :: TgChatMemberType
       }
 
@@ -132,8 +126,8 @@ $(deriveFromJSON defaultOptions{fieldLabelModifier = drop 8} ''TgGetChatMembersR
 
 data Message = Message
   { message_id :: Int
-  , from :: Maybe User
-  , chat :: Chat
+  , from :: Maybe TgUser
+  , chat :: TgChat
   , text :: Maybe Text
   , reply_to_message :: Maybe Message
   }
@@ -143,7 +137,7 @@ $(deriveFromJSON defaultOptions ''Message)
 
 data CallbackQuery = CallbackQuery
   { cbq_id :: Text
-  , cbq_from :: User
+  , cbq_from :: TgUser
   , cbq_message :: Maybe Message
   , cbq_chat_instance :: Text
   , cbq_data :: Maybe Text

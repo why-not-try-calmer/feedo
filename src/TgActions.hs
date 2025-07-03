@@ -13,7 +13,7 @@ import Data.Functor (void, (<&>))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.IntMap.Strict as M
 import Data.List (find, sort)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
@@ -107,7 +107,7 @@ isChatOfType tok cid ty =
         Left err -> pure . Left . TelegramErr $ err
         Right res_chat ->
           let chat_resp = responseBody res_chat :: TgGetChatResponse
-              chat_full_info = resp_result chat_resp :: ChatFullInfo
+              chat_full_info = resp_result chat_resp :: TgChatFullInfo
            in pure . Right $ cfi_type chat_full_info == ty
  where
   getChatType = runSend tok TgGetChat $ GetChatMessage cid
@@ -489,7 +489,14 @@ evalTgAct uid GetMyChats _ = do
     then
       pure . Left $ TelegramErr $ "Apparently Telegram is unable to verify any chat admin privileges for your account. Is there something wrong with your account?"
     else
-      pure . Right $ mkReply (FromIsUserAdmin verified_admin)
+      let get_chat_username_title cid =
+            runSend tok TgGetChat (GetChatMessage cid) >>= \case
+              Left _ -> pure (cid, mempty, mempty)
+              Right resp ->
+                let msg = responseBody resp :: TgChatFullInfo
+                 in pure (cid, fromMaybe mempty $ cfi_title msg, fromMaybe mempty $ cfi_username msg)
+          get_all_chats_usernames cids = mapConcurrently get_chat_username_title cids
+       in liftIO (get_all_chats_usernames verified_admin) >>= pure . Right . mkReply . FromIsUserAdmin
 evalTgAct _ ListSubs cid = do
   chats_hmap <- getChats
   case HMS.lookup cid chats_hmap of

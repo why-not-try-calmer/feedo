@@ -24,7 +24,7 @@ import Servant.HTML.Blaze
 import System.Environment (getEnvironment)
 import Text.Blaze
 import TgActions
-import TgramInJson (Message (chat, from, reply_to_message, text), Update (callback_query, message), User (user_id), chat_id)
+import TgramInJson (Message (chat, from, reply_to_message, text), TgUser (user_id), Update (callback_query, message), chat_id)
 import Types
 import Web
 
