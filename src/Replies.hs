@@ -176,8 +176,8 @@ mkReply FromStart =
         rep@(ChatReply{}) -> rep{reply_disable_webview = True}
         _ -> throw $ userError "Unable to handle non-ChatReply values."
 mkReply (FromIsUserAdmin cids_types_usernames_titles) =
-  defaultReply $
-    "You are a verified admin in these chats or channels:\n" `T.append` render cids_types_usernames_titles
+  let reply = defaultReply $ "You are a verified admin in these chats or channels:\n" `T.append` render cids_types_usernames_titles
+   in reply{reply_markdown = False}
 
 class Renderable e where
   render :: e -> T.Text
@@ -385,10 +385,10 @@ instance Renderable [(ChatId, T.Text, T.Text, T.Text)] where
   render cids_usernames_titles =
     let one_line (cid, ty, title, username) =
           T.intercalate
-            ","
+            ", "
             [ "`" `T.append` (T.pack . show $ cid) `T.append` "`"
             , ty
-            , title
+            , if T.length title > 0 then title else "(no title)"
             , "@" `T.append` username
             ]
      in T.intercalate "\n" $ map one_line cids_usernames_titles
