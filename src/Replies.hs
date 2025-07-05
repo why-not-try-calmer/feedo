@@ -386,7 +386,7 @@ instance Renderable [(ChatId, T.Text, T.Text, T.Text)] where
     let one_line (cid, ty, title, username) =
           T.intercalate
             ", "
-            [ "`" `T.append` (T.pack . show $ cid) `T.append` "`"
+            [ T.pack . show $ cid
             , ty
             , if T.length title > 0 then title else "(no title)"
             , "@" `T.append` username
