@@ -1,19 +1,10 @@
-FROM docker.io/benz0li/ghc-musl:9.10.2
+FROM ghcr.io/why-not-try-calmer/feedo-deps
+COPY . . 
+COPY /static /var/www/feedfarer-webui
+
 # Version from build arg
 ARG app_version
 ENV APP_VERSION=$app_version
-
-# Dependencies for caching
-WORKDIR /opt/app
-COPY feedfarer.cabal stack.yaml .
-RUN stack --resolver nightly-2025-06-16 build \
-  --fast \
-  --only-dependencies \
-  --no-library-profiling \
-  --no-run-tests
-
-COPY . . 
-COPY /static /var/www/feedfarer-webui
 
 # Build and run tests
 CMD ["stack", "--resolver", "nightly-2025-06-16", "test", "--fast"]

@@ -1,0 +1,9 @@
+# Only dependencies to speed up build times
+FROM docker.io/benz0li/ghc-musl:9.10.2
+WORKDIR /opt/app/
+COPY feedfarer.cabal stack.yaml .
+RUN stack --resolver nightly-2025-06-16 build \
+  --no-install-ghc \
+  --system-ghc \
+  --no-library-profiling \
+  --only-dependencies
