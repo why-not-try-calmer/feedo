@@ -408,7 +408,7 @@ renderCmds =
     , "/link `<channel id>`: allow the current chat to get the same permissions as the target channel when accessing feeds data. This means that /feed, /fresh, /list and /search will retrieve data as if the commands were sent from the target chat or channel"
     , "/migrate `<optional: id of the origin> <id of the destination>`: migrate this chat's settings, or the settings of the channel at the origin, to the destination."
     , "/mine - List all chats and channels which use the bot and in which you are an admin"
-    , "/order - <1 2 3 ...> Oder feeds in digests and in reply to /list. /order <3 2 1 ...> for example will inverse the order in which the first three feeds are rendered in digests."
+    , "/order - <optional: chat_id of channel_id> <1 2 3 ...> Order feeds in digests and in reply to /list <optional: chat or channel_id>. /order <3 2 1> for example will inverse the order in which the first three feeds are rendered in digests."
     , "/pause `<optional: channel id>`: stop posting updates to this chat or to that channel"
     , "/purge `<optional: channel id>`: delete all data about this chat or that channel"
     , "/reset `<optional: channel id>`: set this chat's (or that channels') settings to their default values"
@@ -434,7 +434,7 @@ list - <optional: channel_id> list all the feeds this chat or that channel is su
 link - <chat_id or channel_id> allow the current chat to get the same permissions as the target chat or channel when accessing feeds data.
 migrate - <optional: chat_id of the origin> <chat_id of the destination> migrate this chat's settings, or the settings of the channel at the origin, to the destination
 mine - List all chats and channels which use the bot and in which you are an admin
-order - <1 2 3 ...> Order feeds in digests and in reply to /list. /order <3 2 1> for example will inverse the order in which the first three feeds are rendered in digests.
+order - <optional: chat_id of channel_id> <1 2 3 ...> Order feeds in digests and in reply to /list <optional: chat or channel_id>. /order <3 2 1> for example will inverse the order in which the first three feeds are rendered in digests.
 pause - <optional: channel_id> stop posting updates to this chat or to that channel
 purge - <optional: channel_id> delete all data about this chat or that channel
 reset - <optional: channel_id> set this chat's (or that channels') settings to their default values

@@ -298,6 +298,7 @@ data UserAction
   | Migrate ChatId
   | MigrateChannel ChatId ChatId
   | Order [Int]
+  | OrderSubsChannel ChatId [Int]
   | Pause Bool
   | PauseChannel ChatId Bool
   | Purge

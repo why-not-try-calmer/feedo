@@ -200,7 +200,12 @@ interpretCmd contents
         then Left . InterpreterErr $ "/order needs a sequence of numbers to use to re-order feeds list."
         else case mapToInts args of
           Left _ -> Left . InterpreterErr $ "All words following '/order' must be integers."
-          Right ns -> Right $ Order ns
+          Right ns ->
+            let (first : others) = ns
+                first64 = fromIntegral first :: ChatId
+             in if length (show first) > 3
+                  then Right $ OrderSubsChannel first64 others
+                  else Right $ Order ns
   | cmd == "/pause" || cmd == "/p" =
       if null args
         then Right . Pause $ True
@@ -579,6 +584,7 @@ evalTgAct uid (Migrate to) cid = do
         `T.append` (T.pack . show $ to)
   onErr err = pure . Right . ServiceReply $ render err
 evalTgAct uid (MigrateChannel fr to) _ = evalTgAct uid (Migrate to) fr
+evalTgAct uid (OrderSubsChannel cid ns) _ = evalTgAct uid (Order ns) cid
 evalTgAct uid (Order ns) cid =
   ask >>= \env ->
     let tok = bot_token . tg_config $ env
