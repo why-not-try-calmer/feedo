@@ -1,0 +1,11 @@
+# 9.0.2 required for static linking matching GHC version provided by lts-19.33
+FROM docker.io/benz0li/ghc-musl:9.10.2 AS builder
+WORKDIR /opt/app/
+COPY feedfarer.cabal stack.yaml .
+
+# Dependencies for caching
+RUN stack --resolver nightly-2025-06-16 build \
+  --no-install-ghc \
+  --system-ghc \
+  --no-library-profiling \
+  --only-dependencies
