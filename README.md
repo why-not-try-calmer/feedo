@@ -27,7 +27,7 @@ Check out [our channel](https://t.me/feedo_the_bot_channel) for the latest updat
 - web interface for managing per-group settings (currently in beta)
 - does __not__ require permissions
 
-All chats types are supported:
+All chat types are supported:
 - one-to-one chats (with the bot)
 - group private
 - group public
