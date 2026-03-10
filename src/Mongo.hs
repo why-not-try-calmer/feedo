@@ -323,7 +323,11 @@ instance (MonadIO m) => HasMongo (App m) where
           Right selector ->
             withDb (action selector) >>= \case
               Left _ -> pure . Left $ FailedToUpdate "digest" "Read digest refused to read from the database."
-              Right doc -> maybe (pure . Right $ DbNoDigest) (pure . Right . DbDigest . readDoc) doc
+              Right dbres -> case dbres of
+                Nothing -> pure . Right $ DbNoDigest
+                Just doc ->
+                  let parsed_doc = readDoc doc :: Digest
+                   in pure . Right . DbDigest $ parsed_doc{digest_id = Just _id}
   evalDb (UpsertChat chat) =
     let action = withDb $ upsert (select ["sub_chatid" =: sub_chatid chat] "chats") $ writeDoc chat
      in action >>= \case

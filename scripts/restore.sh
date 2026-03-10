@@ -2,8 +2,10 @@
 path_to_dump=$1
 username=$2
 password=$3
+db_name=$4 # feedfarer, feedfarer-test...
 
-# from directory
-mongorestore -d feedfarer $1 --username=$2 --password=$3 --authenticationDatabase=admin
-# from archive
-# mongorestore --archive=$path_to_dump
+mongorestore -d $db_name \
+    --username=$username \
+    --password=$password \
+    --authenticationDatabase=admin \
+    --archive=$path_to_dump
