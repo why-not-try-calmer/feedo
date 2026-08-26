@@ -1,17 +1,17 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.36.0.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
 name:           feedfarer
-version:        1.2
+version:        2.6
 description:    Please see the README on GitHub at <https://github.com/githubuser/feedfarer#readme>
 homepage:       https://github.com/githubuser/feedfarer#readme
 bug-reports:    https://github.com/githubuser/feedfarer/issues
 author:         Adrien Glauser
 maintainer:     mrnycticorax@gmail.com
-copyright:      2021 Adrien Glauser
+copyright:      2021, 2026 Adrien Glauser
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -63,7 +63,7 @@ library
     , blaze-markup
     , bytestring
     , containers
-    , cryptonite
+    , crypton
     , directory
     , hedis
     , hspec
@@ -103,7 +103,7 @@ executable feedfarer-exe
     , blaze-markup
     , bytestring
     , containers
-    , cryptonite
+    , crypton
     , directory
     , feedfarer
     , hedis
@@ -159,7 +159,7 @@ test-suite feedfarer-test
     , blaze-markup
     , bytestring
     , containers
-    , cryptonite
+    , crypton
     , directory
     , feedfarer
     , hedis
